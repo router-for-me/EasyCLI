@@ -1,0 +1,104 @@
+name: Release on Tag
+
+on:
+    push:
+        tags:
+            - 'v*'
+    workflow_dispatch:
+
+jobs:
+    create_release:
+        name: Create GitHub Release
+        runs-on: ubuntu-latest
+        steps:
+            - name: Create release for tag
+              uses: softprops/action-gh-release@v2
+              with:
+                  name: Release ${{ github.ref_name }}
+                  tag_name: ${{ github.ref_name }}
+                  generate_release_notes: true
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    build:
+        name: Build (${{ matrix.platform }}-${{ matrix.arch }}) on ${{ matrix.os }}
+        needs: create_release
+        runs-on: ${{ matrix.os }}
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    # Linux x64 and arm64
+                    - os: ubuntu-latest
+                      platform: linux
+                      arch: x64
+                      targets: default
+                    - os: ubuntu-latest
+                      platform: linux
+                      arch: arm64
+                      targets: default
+
+                    # Windows x64 using Squirrel, arm64 use ZIP
+                    - os: windows-latest
+                      platform: win32
+                      arch: x64
+                      targets: '@electron-forge/maker-squirrel'
+                    - os: windows-latest
+                      platform: win32
+                      arch: arm64
+                      targets: '@electron-forge/maker-zip'
+
+                    # macOS Intel (x64) and Apple Silicon (arm64), ZIP output
+                    - os: macos-13
+                      platform: darwin
+                      arch: x64
+                      targets: '@electron-forge/maker-zip'
+                    - os: macos-14
+                      platform: darwin
+                      arch: arm64
+                      targets: '@electron-forge/maker-zip'
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 20
+                  cache: 'npm'
+
+            - name: Install Linux packaging deps (rpm)
+              if: runner.os == 'Linux'
+              run: |
+                  sudo apt-get update
+                  sudo apt-get install -y rpm
+
+            - name: Install dependencies
+              run: npm ci
+
+            - name: Prepare targets argument
+              id: prep
+              shell: bash
+              run: |
+                  if [ "${{ matrix.targets }}" = "default" ]; then
+                      echo "TARGETS_ARG=" >> $GITHUB_ENV
+                  else
+                      echo "TARGETS_ARG=--targets=${{ matrix.targets }}" >> $GITHUB_ENV
+                  fi
+
+            - name: Build artifacts
+              run: |
+                  npx electron-forge make --platform=${{ matrix.platform }} --arch=${{ matrix.arch }} $TARGETS_ARG
+
+            - name: Upload to GitHub Release
+              uses: softprops/action-gh-release@v2
+              with:
+                  tag_name: ${{ github.ref_name }}
+                  files: |
+                      out/make/**/*
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

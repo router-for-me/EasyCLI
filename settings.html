@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8" />
+    <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP -->
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' http: https:" />
+    <meta http-equiv="X-Content-Security-Policy"
+        content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' http: https:" />
+    <title>CLIProxyAPI Control Panel</title>
+    <link rel="stylesheet" href="css/settings.css">
+    <script src="js/config-manager.js"></script>
+</head>
+
+<body>
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <h1 class="sidebar-title">CLIProxyAPI Control Panel</h1>
+        </div>
+        <div class="tabs-container">
+            <button class="tab active" data-tab="basic">Basic Setting</button>
+            <button class="tab" data-tab="access-token">Access Token</button>
+            <button class="tab" data-tab="auth">Authentication Files</button>
+            <button class="tab" data-tab="api">Third Party API Keys</button>
+            <button class="tab" data-tab="openai">OpenAI Compatibility</button>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <!-- Basic Setting Content -->
+        <div class="tab-content active" id="basic-content">
+            <div class="settings-container">
+                <div class="settings-form">
+                    <!-- Local Mode Only Settings -->
+                    <div class="setting-item local-only" id="port-setting">
+                        <div class="setting-label">
+                            <label for="port-input">Port</label>
+                            <span class="setting-description">Server port number (default: 8080)</span>
+                        </div>
+                        <div class="setting-control">
+                            <input type="number" id="port-input" class="number-input" min="1" max="65535"
+                                placeholder="8080">
+                        </div>
+                    </div>
+
+                    <div class="setting-item local-only" id="allow-remote-setting">
+                        <div class="setting-label">
+                            <label for="allow-remote-switch">Allow Remote Management</label>
+                            <span class="setting-description">Allow remote management access from other hosts</span>
+                        </div>
+                        <div class="setting-control">
+                            <label class="switch">
+                                <input type="checkbox" id="allow-remote-switch" class="switch-input">
+                                <span class="switch-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="setting-item local-only" id="secret-key-setting">
+                        <div class="setting-label">
+                            <label for="secret-key-input">Remote Management Secret Key</label>
+                            <span class="setting-description">Secret key for remote management authentication</span>
+                        </div>
+                        <div class="setting-control">
+                            <input type="password" id="secret-key-input" class="form-input"
+                                placeholder="Enter secret key">
+                        </div>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-label">
+                            <label for="debug-switch">Debug Mode</label>
+                            <span class="setting-description">Enable debug logging for troubleshooting</span>
+                        </div>
+                        <div class="setting-control">
+                            <label class="switch">
+                                <input type="checkbox" id="debug-switch" class="switch-input">
+                                <span class="switch-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-label">
+                            <label for="proxy-url-input">Proxy URL</label>
+                            <span class="setting-description">Configure proxy server URL (e.g.,
+                                socks5://user:pass@127.0.0.1:1080/)</span>
+                        </div>
+                        <div class="setting-control">
+                            <input type="text" id="proxy-url-input" class="form-input" placeholder="Enter proxy URL">
+                        </div>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-label">
+                            <label for="request-log-switch">Request Log</label>
+                            <span class="setting-description">Enable request logging for debugging</span>
+                        </div>
+                        <div class="setting-control">
+                            <label class="switch">
+                                <input type="checkbox" id="request-log-switch" class="switch-input">
+                                <span class="switch-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-label">
+                            <label for="request-retry-input">Request Retry</label>
+                            <span class="setting-description">Number of retry attempts for failed requests</span>
+                        </div>
+                        <div class="setting-control">
+                            <input type="number" id="request-retry-input" class="number-input" min="0" max="10"
+                                placeholder="3">
+                        </div>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-label">
+                            <label for="allow-localhost-switch">Allow Localhost Unauthenticated</label>
+                            <span class="setting-description">Allow unauthenticated access from localhost</span>
+                        </div>
+                        <div class="setting-control">
+                            <label class="switch">
+                                <input type="checkbox" id="allow-localhost-switch" class="switch-input">
+                                <span class="switch-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-label">
+                            <label for="switch-project-switch">Switch Project on Quota Exceeded</label>
+                            <span class="setting-description">Automatically switch to another project when quota is
+                                exceeded</span>
+                        </div>
+                        <div class="setting-control">
+                            <label class="switch">
+                                <input type="checkbox" id="switch-project-switch" class="switch-input">
+                                <span class="switch-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="setting-item">
+                        <div class="setting-label">
+                            <label for="switch-preview-model-switch">Switch Preview Model on Quota Exceeded</label>
+                            <span class="setting-description">Automatically switch to preview model when quota is
+                                exceeded</span>
+                        </div>
+                        <div class="setting-control">
+                            <label class="switch">
+                                <input type="checkbox" id="switch-preview-model-switch" class="switch-input">
+                                <span class="switch-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Access Token Content -->
+        <div class="tab-content" id="access-token-content">
+            <div class="api-keys-container">
+                <!-- Access Token Section -->
+                <div class="api-section local-only" id="local-api-keys-section">
+                    <div class="api-section-header">
+                        <h3 class="api-section-title">Access Token</h3>
+                        <button class="add-key-btn" id="add-local-api-key-btn">Add Key</button>
+                    </div>
+                    <div class="api-keys-list" id="local-api-keys-list">
+                        <div class="loading-state" id="local-api-keys-loading">
+                            <div class="loading-spinner"></div>
+                            <span>Loading access tokens...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Access Token Section -->
+                <div class="api-section remote-only" id="remote-api-keys-section">
+                    <div class="api-section-header">
+                        <h3 class="api-section-title">Access Token</h3>
+                        <button class="add-key-btn" id="add-remote-api-key-btn">Add Key</button>
+                    </div>
+                    <div class="api-keys-list" id="remote-api-keys-list">
+                        <div class="loading-state" id="remote-api-keys-loading">
+                            <div class="loading-spinner"></div>
+                            <span>Loading access tokens...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Auth Files Content -->
+        <div class="tab-content" id="auth-content">
+            <div class="auth-files-container">
+                <div class="auth-files-list" id="auth-files-list">
+                    <div class="loading-state" id="auth-loading">
+                        <div class="loading-spinner"></div>
+                        <span>Loading authentication files...</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- API Keys Content -->
+        <div class="tab-content" id="api-content">
+            <div class="api-keys-container">
+                <!-- Gemini API Keys Section -->
+                <div class="api-section">
+                    <div class="api-section-header">
+                        <h3 class="api-section-title">Gemini API Keys</h3>
+                        <button class="add-key-btn" id="add-gemini-key-btn">Add Key</button>
+                    </div>
+                    <div class="api-keys-list" id="gemini-keys-list">
+                        <div class="loading-state" id="gemini-loading">
+                            <div class="loading-spinner"></div>
+                            <span>Loading Gemini API keys...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Codex API Keys Section -->
+                <div class="api-section">
+                    <div class="api-section-header">
+                        <h3 class="api-section-title">Codex API Keys</h3>
+                        <button class="add-key-btn" id="add-codex-key-btn">Add Key</button>
+                    </div>
+                    <div class="api-keys-list" id="codex-keys-list">
+                        <div class="loading-state" id="codex-loading">
+                            <div class="loading-spinner"></div>
+                            <span>Loading Codex API keys...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Claude API Keys Section -->
+                <div class="api-section">
+                    <div class="api-section-header">
+                        <h3 class="api-section-title">Claude Code API Keys</h3>
+                        <button class="add-key-btn" id="add-claude-key-btn">Add Key</button>
+                    </div>
+                    <div class="api-keys-list" id="claude-keys-list">
+                        <div class="loading-state" id="claude-loading">
+                            <div class="loading-spinner"></div>
+                            <span>Loading Claude API keys...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- OpenAI Compatibility Content -->
+        <div class="tab-content" id="openai-content">
+            <div class="openai-compatibility-container">
+                <div class="openai-section">
+                    <div class="openai-section-header">
+                        <h3 class="openai-section-title">OpenAI Compatibility Providers</h3>
+                        <button class="add-provider-btn" id="add-provider-btn">Add Provider</button>
+                    </div>
+                    <div class="openai-providers-list" id="openai-providers-list">
+                        <div class="loading-state" id="openai-loading">
+                            <div class="loading-spinner"></div>
+                            <span>Loading OpenAI compatibility providers...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="error-toast" id="error-toast"></div>
+
+    <!-- Custom Confirmation Dialog -->
+    <div class="modal" id="confirm-modal">
+        <div class="modal-content confirm-modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title" id="confirm-title">Confirm Delete</h3>
+                <button class="modal-close" id="confirm-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="confirm-message" id="confirm-message">
+                    Are you sure you want to delete this API key? This action cannot be undone.
+                </div>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn-cancel" id="confirm-cancel">Cancel</button>
+                <button type="button" class="btn-delete" id="confirm-delete">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- API Key Modal -->
+    <div class="modal" id="api-key-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title" id="modal-title">Add API Key</h3>
+                <button class="modal-close" id="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="api-key-form">
+                    <div class="form-group">
+                        <label for="api-key-input">API Key <span class="required">*</span></label>
+                        <input type="text" id="api-key-input" class="form-input" placeholder="Enter API key" required>
+                    </div>
+                    <div class="form-group" id="base-url-group" style="display: none;">
+                        <label for="base-url-input">Base URL <span class="required">*</span></label>
+                        <input type="url" id="base-url-input" class="form-input" placeholder="https://api.example.com">
+                    </div>
+                </form>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn-cancel" id="modal-cancel">Cancel</button>
+                <button type="submit" class="btn-save" id="modal-save">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Access Token Modal -->
+    <div class="modal" id="access-token-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title" id="access-token-modal-title">Add Access Token</h3>
+                <button class="modal-close" id="access-token-modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="access-token-form">
+                    <div class="form-group">
+                        <label for="access-token-input">Access Token <span class="required">*</span></label>
+                        <input type="text" id="access-token-input" class="form-input" placeholder="Enter access token"
+                            required>
+                    </div>
+                </form>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn-cancel" id="access-token-modal-cancel">Cancel</button>
+                <button type="submit" class="btn-save" id="access-token-modal-save">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- OpenAI Provider Modal -->
+    <div class="modal" id="openai-provider-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title" id="provider-modal-title">Add Provider</h3>
+                <button class="modal-close" id="provider-modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="openai-provider-form">
+                    <div class="form-group">
+                        <label for="provider-name-input">Provider Name <span class="required">*</span></label>
+                        <input type="text" id="provider-name-input" class="form-input" placeholder="e.g., openrouter"
+                            required>
+                    </div>
+                    <div class="form-group">
+                        <label for="provider-base-url-input">Base URL <span class="required">*</span></label>
+                        <input type="url" id="provider-base-url-input" class="form-input"
+                            placeholder="https://api.example.com/v1" required>
+                    </div>
+                    <div class="form-group">
+                        <label>API Keys <span class="required">*</span></label>
+                        <div id="api-keys-container" class="dynamic-input-container">
+                            <div class="dynamic-input-row">
+                                <input type="text" class="form-input dynamic-input" placeholder="Enter API key"
+                                    required>
+                                <button type="button" class="add-row-btn" onclick="addApiKeyRow()">+</button>
+                                <button type="button" class="remove-row-btn"
+                                    onclick="removeApiKeyRow(this.parentElement)">−</button>
+                            </div>
+                        </div>
+                        <small class="form-help">Enter one API key per row</small>
+                    </div>
+                    <div class="form-group">
+                        <label>Models</label>
+                        <div id="models-container" class="dynamic-input-container">
+                            <div class="dynamic-input-row">
+                                <input type="text" class="form-input dynamic-input" placeholder="Model name">
+                                <input type="text" class="form-input dynamic-input" placeholder="Alias name">
+                                <button type="button" class="add-row-btn" onclick="addModelRow()">+</button>
+                                <button type="button" class="remove-row-btn"
+                                    onclick="removeModelRow(this.parentElement)">−</button>
+                            </div>
+                        </div>
+                        <small class="form-help">Enter model name and alias name. Leave empty if no custom
+                            models.</small>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn-cancel" id="provider-modal-cancel">Cancel</button>
+                        <button type="submit" class="btn-save" id="provider-modal-save">Save</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="action-bar">
+        <div class="action-bar-left">
+            <button class="select-all-btn" id="select-all-btn" style="display: none;">Select All</button>
+        </div>
+        <div class="action-bar-right">
+            <button class="reset-btn" id="reset-btn">Reset</button>
+            <button class="apply-btn" id="apply-btn">Apply</button>
+            <div class="dropdown-container" id="new-dropdown" style="display: none;">
+                <button class="new-btn" id="new-btn">New</button>
+                <div class="dropdown-menu" id="dropdown-menu">
+                    <div class="dropdown-item" data-type="gemini">Gemini CLI</div>
+                    <div class="dropdown-item" data-type="claude">Claude Code</div>
+                    <div class="dropdown-item" data-type="codex">Codex</div>
+                    <div class="dropdown-item" data-type="qwen">Qwen Code</div>
+                    <div class="dropdown-item" data-type="local">Local File</div>
+                </div>
+            </div>
+            <button class="download-btn" id="download-btn" style="display: none;">Download</button>
+            <button class="delete-btn" id="delete-btn" style="display: none;">Delete</button>
+        </div>
+    </div>
+
+    <script src="js/settings-utils.js"></script>
+    <script src="js/settings-core.js"></script>
+    <script src="js/settings-confirm.js"></script>
+    <script src="js/settings-auth-files.js"></script>
+    <script src="js/settings-api-keys.js"></script>
+    <script src="js/settings-access-token.js"></script>
+    <script src="js/settings-openai.js"></script>
+    <script src="js/settings-auth-codex.js"></script>
+    <script src="js/settings-auth-claude.js"></script>
+    <script src="js/settings-auth-gemini.js"></script>
+    <script src="js/settings-auth-qwen.js"></script>
+    <script src="js/settings-tabs.js"></script>
+    <script src="js/settings-ipc.js"></script>
+    <script src="js/settings-init.js"></script>
+    <script src="js/settings.js"></script>
+</body>
+
+</html>

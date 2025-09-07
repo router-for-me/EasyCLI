@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8" />
+    <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP -->
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' http: https:" />
+    <meta http-equiv="X-Content-Security-Policy"
+        content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' http: https:" />
+    <title>CLIProxyAPI</title>
+    <link rel="stylesheet" href="css/login.css">
+    <script src="js/config-manager.js"></script>
+</head>
+
+<body>
+
+    <div class="cards-container">
+        <div class="card selected" id="local-card">
+            <div class="card-icon">💻</div>
+            <h2 class="card-title">Local</h2>
+            <p class="card-description">Run CLIProxyAPI server on your local machine.</p>
+        </div>
+
+        <div class="card" id="remote-card">
+            <div class="card-icon">🌐</div>
+            <h2 class="card-title">Remote</h2>
+            <p class="card-description">Remote controller for a remote CLIProxyAPI server.</p>
+        </div>
+    </div>
+
+    <div class="remote-url-section" id="remote-url-section">
+        <div class="remote-url-label">Remote URL:</div>
+        <input type="text" class="remote-url-input" id="remote-url-input" value="http://www.example.com:8317" />
+        <div class="password-label">Password:</div>
+        <input type="password" class="password-input" id="password-input" placeholder="Enter password" />
+    </div>
+
+    <button class="continue-btn" id="continue-btn">Connect</button>
+
+    <div class="progress-container" id="progress-container">
+        <div class="progress-label" id="progress-label">Downloading CLIProxyAPI...</div>
+        <div class="progress-bar">
+            <div class="progress-fill" id="progress-fill"></div>
+        </div>
+        <div class="progress-text" id="progress-text">0%</div>
+    </div>
+
+    <div class="error-toast" id="error-toast"></div>
+    <div class="success-toast" id="success-toast"></div>
+
+    <div class="update-dialog" id="update-dialog">
+        <div class="update-dialog-content">
+            <div class="update-dialog-title">New Version Found</div>
+            <div class="update-dialog-message" id="update-dialog-message">
+                A new version is available. Do you want to update to the latest version?
+            </div>
+            <div class="update-dialog-buttons">
+                <button class="update-dialog-btn cancel" id="update-cancel-btn">Update Later</button>
+                <button class="update-dialog-btn update" id="update-confirm-btn">Update Now</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="password-dialog" id="password-dialog">
+        <div class="password-dialog-content">
+            <div class="password-dialog-title">Set Remote Management Password</div>
+            <div class="password-dialog-message">
+                For security reasons, please set a password for the remote management feature.
+            </div>
+            <div class="password-input-group">
+                <label class="password-input-label" for="password-input-1">Password:</label>
+                <input type="password" class="password-input-field" id="password-input-1"
+                    placeholder="Please enter password">
+            </div>
+            <div class="password-input-group">
+                <label class="password-input-label" for="password-input-2">Confirm Password:</label>
+                <input type="password" class="password-input-field" id="password-input-2"
+                    placeholder="Please enter password again">
+            </div>
+            <div class="password-dialog-buttons">
+                <button class="password-dialog-btn cancel" id="password-cancel-btn">Cancel</button>
+                <button class="password-dialog-btn save" id="password-save-btn">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/login.js"></script>
+</body>
+
+</html>

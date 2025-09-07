@@ -1,0 +1,468 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    background: #ffffff;
+    color: #000000;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px 10px;
+}
+
+
+.cards-container {
+    display: flex;
+    gap: 12px;
+    max-width: 400px;
+    width: 100%;
+    margin-bottom: 20px;
+}
+
+.card {
+    flex: 1;
+    background: #f9f9f9;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 16px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.card:hover {
+    transform: translateY(-1px);
+    border-color: #8b5cf6;
+}
+
+.card.selected {
+    background: #f3f0ff;
+    border-color: #8b5cf6;
+}
+
+.card-icon {
+    width: 20px;
+    height: 20px;
+    background: #e0e7ff;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 10px;
+    font-size: 9px;
+}
+
+.card-title {
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: #000000;
+}
+
+.card-description {
+    font-size: 8px;
+    line-height: 1.5;
+    color: #6b7280;
+}
+
+.great-for {
+    max-width: 400px;
+    width: 100%;
+}
+
+.great-for-title {
+    font-size: 10px;
+    font-weight: 600;
+    margin-bottom: 10px;
+    color: #000000;
+}
+
+.great-for-list {
+    list-style: none;
+    padding: 0;
+}
+
+.great-for-list li {
+    font-size: 8px;
+    color: #6b7280;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+}
+
+.great-for-list li::before {
+    content: "•";
+    color: #8b5cf6;
+    font-size: 10px;
+    margin-right: 6px;
+}
+
+.continue-btn {
+    width: 100%;
+    max-width: 400px;
+    background: #8b5cf6;
+    color: #ffffff;
+    border: none;
+    border-radius: 8px;
+    padding: 12px 20px;
+    font-size: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    margin-top: 10px;
+    font-family: inherit;
+}
+
+.continue-btn:hover {
+    background: #7c3aed;
+    transform: translateY(-1px);
+}
+
+.continue-btn:active {
+    transform: translateY(0);
+}
+
+.remote-url-section {
+    max-width: 400px;
+    width: 100%;
+    margin-bottom: 10px;
+}
+
+.remote-url-label {
+    font-size: 10px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: #000000;
+}
+
+.remote-url-input {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    font-size: 10px;
+    font-family: inherit;
+    background: #ffffff;
+    color: #000000;
+    transition: border-color 0.3s ease;
+}
+
+.remote-url-input:focus {
+    outline: none;
+    border-color: #8b5cf6;
+}
+
+.password-label {
+    font-size: 10px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    margin-top: 12px;
+    color: #000000;
+}
+
+.password-input {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    font-size: 10px;
+    font-family: inherit;
+    background: #ffffff;
+    color: #000000;
+    transition: border-color 0.3s ease;
+}
+
+.password-input:focus {
+    outline: none;
+    border-color: #8b5cf6;
+}
+
+.error-toast {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: #dc2626;
+    color: #ffffff;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-size: 10px;
+    font-weight: 600;
+    box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
+    z-index: 3000;
+    opacity: 0;
+    transform: translateX(100%);
+    transition: all 0.3s ease;
+}
+
+.error-toast.show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.progress-container {
+    max-width: 400px;
+    width: 100%;
+    margin: 20px 0;
+    display: none;
+}
+
+.progress-container.show {
+    display: block;
+}
+
+.progress-label {
+    font-size: 10px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: #000000;
+    text-align: center;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 8px;
+    background: #e0e0e0;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+
+.progress-fill {
+    height: 100%;
+    background: #8b5cf6;
+    border-radius: 4px;
+    transition: width 0.3s ease;
+    width: 0%;
+}
+
+.progress-text {
+    font-size: 8px;
+    color: #6b7280;
+    text-align: center;
+}
+
+.success-toast {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: #10b981;
+    color: #ffffff;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-size: 10px;
+    font-weight: 600;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+    z-index: 3000;
+    opacity: 0;
+    transform: translateX(100%);
+    transition: all 0.3s ease;
+}
+
+.success-toast.show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.update-dialog {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+}
+
+.update-dialog.show {
+    display: flex;
+}
+
+.update-dialog-content {
+    background: #ffffff;
+    border-radius: 12px;
+    padding: 24px;
+    max-width: 400px;
+    width: 90%;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+}
+
+.update-dialog-title {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: #000000;
+}
+
+.update-dialog-message {
+    font-size: 10px;
+    line-height: 1.5;
+    color: #6b7280;
+    margin-bottom: 20px;
+}
+
+.update-dialog-buttons {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+}
+
+.update-dialog-btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 6px;
+    font-size: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-family: inherit;
+}
+
+.update-dialog-btn.cancel {
+    background: #f3f4f6;
+    color: #374151;
+}
+
+.update-dialog-btn.cancel:hover {
+    background: #e5e7eb;
+}
+
+.update-dialog-btn.update {
+    background: #8b5cf6;
+    color: #ffffff;
+}
+
+.update-dialog-btn.update:hover {
+    background: #7c3aed;
+}
+
+.password-dialog {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+}
+
+.password-dialog.show {
+    display: flex;
+}
+
+.password-dialog-content {
+    background: #ffffff;
+    border-radius: 12px;
+    padding: 24px;
+    max-width: 400px;
+    width: 90%;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+}
+
+.password-dialog-title {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: #000000;
+}
+
+.password-dialog-message {
+    font-size: 10px;
+    line-height: 1.5;
+    color: #6b7280;
+    margin-bottom: 20px;
+}
+
+.password-input-group {
+    margin-bottom: 16px;
+}
+
+.password-input-label {
+    font-size: 10px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: #000000;
+    display: block;
+}
+
+.password-input-field {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    font-size: 10px;
+    font-family: inherit;
+    background: #ffffff;
+    color: #000000;
+    transition: border-color 0.3s ease;
+    box-sizing: border-box;
+}
+
+.password-input-field:focus {
+    outline: none;
+    border-color: #8b5cf6;
+}
+
+.password-dialog-buttons {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+}
+
+.password-dialog-btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 6px;
+    font-size: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-family: inherit;
+}
+
+.password-dialog-btn.cancel {
+    background: #f3f4f6;
+    color: #374151;
+}
+
+.password-dialog-btn.cancel:hover {
+    background: #e5e7eb;
+}
+
+.password-dialog-btn.save {
+    background: #8b5cf6;
+    color: #ffffff;
+}
+
+.password-dialog-btn.save:hover {
+    background: #7c3aed;
+}
+
+.password-dialog-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+@media (max-width: 518px) {
+    .cards-container {
+        flex-direction: column;
+    }
+
+    .main-title {
+        font-size: 18px;
+    }
+
+    .subtitle {
+        font-size: 9px;
+    }
+}
