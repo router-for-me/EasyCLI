@@ -93,12 +93,32 @@ jobs:
               run: |
                   npx electron-forge make --platform=${{ matrix.platform }} --arch=${{ matrix.arch }} $TARGETS_ARG
 
+            - name: Rename artifacts with platform info
+              shell: bash
+              run: |
+                  # Create platform-specific directory
+                  mkdir -p "out/platform-builds/${{ matrix.platform }}-${{ matrix.arch }}"
+                  
+                  # Find and rename files based on platform
+                  find out/make -type f \( -name "*.exe" -o -name "*.msi" -o -name "*.deb" -o -name "*.rpm" -o -name "*.zip" -o -name "*.dmg" -o -name "*.AppImage" \) -exec bash -c '
+                      file="$1"
+                      filename=$(basename "$file")
+                      extension="${filename##*.}"
+                      basename="${filename%.*}"
+                      
+                      # Create new filename with platform info
+                      new_filename="${basename}-${{ matrix.platform }}-${{ matrix.arch }}.${extension}"
+                      
+                      # Copy to platform-specific directory with new name
+                      cp "$file" "out/platform-builds/${{ matrix.platform }}-${{ matrix.arch }}/$new_filename"
+                  ' _ {} \;
+
             - name: Upload to GitHub Release
               uses: softprops/action-gh-release@v2
               with:
                   tag_name: ${{ github.ref_name }}
                   files: |
-                      out/make/**/*
+                      out/platform-builds/${{ matrix.platform }}-${{ matrix.arch }}/*
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
