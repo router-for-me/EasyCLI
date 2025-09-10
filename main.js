@@ -2,11 +2,15 @@ const { app, BrowserWindow, Menu, ipcMain, Tray, nativeImage } = require('electr
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
+const http = require('http');
 const tar = require('tar');
 const os = require('os');
 const AdmZip = require('adm-zip');
 const { spawn } = require('child_process');
 const yaml = require('js-yaml');
+const { HttpsProxyAgent } = require('https-proxy-agent');
+const { HttpProxyAgent } = require('http-proxy-agent');
+const { SocksProxyAgent } = require('socks-proxy-agent');
 
 // Parse path, support ~ symbol (user home directory)
 function resolvePath(inputPath, basePath = null) {
@@ -46,8 +50,60 @@ let processMonitorInterval = null;
 let tray = null;
 let isQuitting = false;
 
+// Parse proxy URL and return configuration object
+function parseProxyUrl(proxyUrl) {
+    if (!proxyUrl || proxyUrl.trim() === '') {
+        return null;
+    }
+
+    try {
+        const url = new URL(proxyUrl);
+        const config = {
+            protocol: url.protocol.replace(':', ''),
+            host: url.hostname,
+            port: parseInt(url.port),
+            username: url.username || null,
+            password: url.password || null
+        };
+
+        // Validate protocol
+        if (!['http', 'https', 'socks5'].includes(config.protocol)) {
+            throw new Error(`Unsupported proxy protocol: ${config.protocol}`);
+        }
+
+        // Validate port
+        if (isNaN(config.port) || config.port <= 0 || config.port > 65535) {
+            throw new Error(`Invalid proxy port: ${url.port}`);
+        }
+
+        return config;
+    } catch (error) {
+        throw new Error(`Invalid proxy URL: ${error.message}`);
+    }
+}
+
+// Create proxy agent based on configuration
+function createProxyAgent(proxyConfig) {
+    if (!proxyConfig) {
+        return null;
+    }
+
+    const proxyUrl = `${proxyConfig.protocol}://${proxyConfig.host}:${proxyConfig.port}`;
+
+    switch (proxyConfig.protocol) {
+        case 'http':
+            return new HttpProxyAgent(proxyUrl);
+        case 'https':
+            return new HttpsProxyAgent(proxyUrl);
+        case 'socks5':
+            return new SocksProxyAgent(proxyUrl);
+        default:
+            throw new Error(`Unsupported proxy protocol: ${proxyConfig.protocol}`);
+    }
+}
+
 // Function to get latest version information
-async function getLatestReleaseInfo() {
+async function getLatestReleaseInfo(proxyUrl) {
     return new Promise((resolve, reject) => {
         const options = {
             hostname: 'api.github.com',
@@ -58,6 +114,18 @@ async function getLatestReleaseInfo() {
                 'Accept': 'application/vnd.github.v3+json'
             }
         };
+
+        // Add proxy configuration if provided
+        if (proxyUrl) {
+            try {
+                const proxyConfig = parseProxyUrl(proxyUrl);
+                if (proxyConfig) {
+                    options.agent = createProxyAgent(proxyConfig);
+                }
+            } catch (error) {
+                console.warn('Failed to configure proxy:', error.message);
+            }
+        }
 
         https.get(options, (response) => {
             let data = '';
@@ -588,8 +656,51 @@ function updateSecretKey(newSecretKey) {
     }
 }
 
+// Update proxy-url in config.yaml
+async function updateConfigProxyUrl(proxyUrl) {
+    const downloadDir = path.join(os.homedir(), 'cliproxyapi');
+    const configPath = path.join(downloadDir, 'config.yaml');
+
+    try {
+        if (!fs.existsSync(configPath)) {
+            console.warn('Configuration file does not exist, skipping proxy URL update');
+            return { success: false, error: 'Configuration file does not exist' };
+        }
+
+        // Read current configuration
+        const configContent = fs.readFileSync(configPath, 'utf8');
+        const config = yaml.load(configContent);
+
+        if (!config) {
+            return { success: false, error: 'Failed to parse configuration file' };
+        }
+
+        // Update proxy-url
+        if (proxyUrl && proxyUrl.trim() !== '') {
+            config['proxy-url'] = proxyUrl.trim();
+        } else {
+            // Remove proxy-url if empty
+            delete config['proxy-url'];
+        }
+
+        // Write updated configuration back to file
+        const updatedConfigContent = yaml.dump(config, {
+            indent: 2,
+            lineWidth: -1,
+            noRefs: true
+        });
+        fs.writeFileSync(configPath, updatedConfigContent, 'utf8');
+
+        console.log('Proxy URL updated successfully:', proxyUrl || 'removed');
+        return { success: true };
+    } catch (error) {
+        console.error('Error updating proxy URL:', error);
+        return { success: false, error: error.message };
+    }
+}
+
 // Check version and decide whether update is needed
-async function checkVersionAndUpdate() {
+async function checkVersionAndUpdate(proxyUrl) {
     const downloadDir = path.join(os.homedir(), 'cliproxyapi');
 
     try {
@@ -603,14 +714,14 @@ async function checkVersionAndUpdate() {
 
         // Get latest version information
         console.log('Getting latest version information...');
-        const releaseInfo = await getLatestReleaseInfo();
+        const releaseInfo = await getLatestReleaseInfo(proxyUrl);
         const latestVersion = releaseInfo.tag_name.replace(/^v/, ''); // Remove v prefix from version number
         console.log(`Latest version: ${latestVersion}`);
 
         // If no local files, download directly
         if (!localInfo.exists) {
             console.log('CLIProxyAPI not found locally, starting download...');
-            return await downloadAndExtractCLIProxyAPI(latestVersion, releaseInfo);
+            return await downloadAndExtractCLIProxyAPI(latestVersion, releaseInfo, proxyUrl);
         }
 
         // Compare versions
@@ -652,7 +763,7 @@ async function checkVersionAndUpdate() {
 }
 
 // Function to download and extract CLIProxyAPI
-async function downloadAndExtractCLIProxyAPI(version, releaseInfo) {
+async function downloadAndExtractCLIProxyAPI(version, releaseInfo, proxyUrl) {
     const downloadDir = path.join(os.homedir(), 'cliproxyapi');
     const extractPath = path.join(downloadDir, version);
 
@@ -706,7 +817,7 @@ async function downloadAndExtractCLIProxyAPI(version, releaseInfo) {
             if (mainWindow) {
                 mainWindow.webContents.send('download-progress', progressData);
             }
-        });
+        }, proxyUrl);
         console.log('Download completed, starting extraction...');
 
         // Choose extraction method based on file extension
@@ -754,12 +865,28 @@ async function downloadAndExtractCLIProxyAPI(version, releaseInfo) {
 }
 
 // Function to download files, supports following redirects and progress updates
-function downloadFile(url, filePath, progressCallback) {
+function downloadFile(url, filePath, progressCallback, proxyUrl) {
     return new Promise((resolve, reject) => {
         const download = (downloadUrl) => {
             const file = fs.createWriteStream(filePath);
 
-            https.get(downloadUrl, (response) => {
+            const options = {
+                agent: null
+            };
+
+            // Add proxy configuration if provided
+            if (proxyUrl) {
+                try {
+                    const proxyConfig = parseProxyUrl(proxyUrl);
+                    if (proxyConfig) {
+                        options.agent = createProxyAgent(proxyConfig);
+                    }
+                } catch (error) {
+                    console.warn('Failed to configure proxy for download:', error.message);
+                }
+            }
+
+            https.get(downloadUrl, options, (response) => {
                 // Handle redirects
                 if (response.statusCode === 301 || response.statusCode === 302) {
                     const redirectUrl = response.headers.location;
@@ -890,7 +1017,21 @@ ipcMain.on('open-settings', () => {
         // Since we can't directly access localStorage from main process, we'll send a message to get the connection type
         mainWindow.webContents.executeJavaScript(`
             localStorage.getItem('type') || 'local'
-        `).then((connectionType) => {
+        `).then(async (connectionType) => {
+            // If local mode, save proxy configuration to CLIProxyAPI config file
+            if (connectionType === 'local') {
+                try {
+                    const proxyUrl = await mainWindow.webContents.executeJavaScript(`
+                        localStorage.getItem('proxy-url') || ''
+                    `);
+
+                    if (proxyUrl) {
+                        await updateConfigProxyUrl(proxyUrl);
+                    }
+                } catch (error) {
+                    console.warn('Failed to save proxy configuration:', error.message);
+                }
+            }
             if (connectionType === 'remote') {
                 // Remote mode - no need to start CLIProxyAPI process
                 console.log('Remote mode detected, skipping CLIProxyAPI process startup');
@@ -1139,14 +1280,14 @@ ipcMain.on('restart-cliproxyapi', () => {
 });
 
 // Handle checking version and downloading CLIProxyAPI
-ipcMain.handle('check-version-and-download', async () => {
+ipcMain.handle('check-version-and-download', async (event, proxyUrl) => {
     try {
         // Send start check status
         if (mainWindow) {
             mainWindow.webContents.send('download-status', { status: 'checking' });
         }
 
-        const result = await checkVersionAndUpdate();
+        const result = await checkVersionAndUpdate(proxyUrl);
 
         // Send check completion status
         if (mainWindow) {
@@ -1192,7 +1333,7 @@ ipcMain.handle('check-version-and-download', async () => {
 });
 
 // Handle downloading CLIProxyAPI (for update confirmation)
-ipcMain.handle('download-cliproxyapi', async () => {
+ipcMain.handle('download-cliproxyapi', async (event, proxyUrl) => {
     try {
         // Send start download status
         if (mainWindow) {
@@ -1200,10 +1341,10 @@ ipcMain.handle('download-cliproxyapi', async () => {
         }
 
         // Get latest version information
-        const releaseInfo = await getLatestReleaseInfo();
+        const releaseInfo = await getLatestReleaseInfo(proxyUrl);
         const version = releaseInfo.tag_name.replace(/^v/, '');
 
-        const result = await downloadAndExtractCLIProxyAPI(version, releaseInfo);
+        const result = await downloadAndExtractCLIProxyAPI(version, releaseInfo, proxyUrl);
 
         // Send completion status
         if (mainWindow) {

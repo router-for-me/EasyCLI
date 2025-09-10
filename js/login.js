@@ -16,13 +16,16 @@ remoteCard.addEventListener('click', () => {
 
 function updateInputForm(mode) {
     const remoteUrlSection = document.getElementById('remote-url-section');
+    const proxySection = document.getElementById('proxy-section');
 
     if (mode === 'local') {
-        // Local card selected - hide both sections
+        // Local card selected - hide remote URL section, show proxy section
         remoteUrlSection.style.display = 'none';
+        proxySection.style.display = 'block';
     } else {
-        // Remote card selected - show remote URL section, hide great-for
+        // Remote card selected - show remote URL section, hide proxy section
         remoteUrlSection.style.display = 'block';
+        proxySection.style.display = 'none';
     }
 }
 
@@ -30,6 +33,7 @@ function updateInputForm(mode) {
 const continueBtn = document.getElementById('continue-btn');
 const remoteUrlInput = document.getElementById('remote-url-input');
 const passwordInput = document.getElementById('password-input');
+const proxyInput = document.getElementById('proxy-input');
 const errorToast = document.getElementById('error-toast');
 const successToast = document.getElementById('success-toast');
 const progressContainer = document.getElementById('progress-container');
@@ -48,6 +52,29 @@ const passwordSaveBtn = document.getElementById('password-save-btn');
 
 // Initialize the display state
 initializeFromLocalStorage();
+
+// Proxy server validation function
+function validateProxyUrl(proxyUrl) {
+    if (!proxyUrl || proxyUrl.trim() === '') {
+        return { valid: true, error: null }; // Empty proxy is valid (optional)
+    }
+
+    const trimmedUrl = proxyUrl.trim();
+
+    // Check for supported proxy types
+    const httpProxyRegex = /^https?:\/\/[^:\s]+:\d+$/;
+    const socks5ProxyRegex = /^socks5:\/\/[^:\s]+:\d+$/;
+    const socks5WithAuthRegex = /^socks5:\/\/[^:\s]+:[^:\s]+@[^:\s]+:\d+$/;
+
+    if (httpProxyRegex.test(trimmedUrl) || socks5ProxyRegex.test(trimmedUrl) || socks5WithAuthRegex.test(trimmedUrl)) {
+        return { valid: true, error: null };
+    }
+
+    return {
+        valid: false,
+        error: 'Invalid proxy format. Supported formats: http://ip:port, https://ip:port, socks5://ip:port, socks5://user:pass@ip:port'
+    };
+}
 
 // Update dialog event listeners
 updateCancelBtn.addEventListener('click', () => {
@@ -70,7 +97,8 @@ updateConfirmBtn.addEventListener('click', async () => {
 
         if (typeof require !== 'undefined') {
             const { ipcRenderer } = require('electron');
-            const result = await ipcRenderer.invoke('download-cliproxyapi');
+            const proxyUrl = proxyInput.value.trim();
+            const result = await ipcRenderer.invoke('download-cliproxyapi', proxyUrl);
 
             if (result.success) {
                 console.log('CLIProxyAPI updated successfully:', result.path);
@@ -211,6 +239,7 @@ function initializeFromLocalStorage() {
     const type = localStorage.getItem('type');
     const baseUrl = localStorage.getItem('base-url');
     const password = localStorage.getItem('password');
+    const proxyUrl = localStorage.getItem('proxy-url');
 
     if (type === 'remote' && baseUrl) {
         // Select remote card
@@ -228,6 +257,11 @@ function initializeFromLocalStorage() {
     } else {
         // Default to local
         updateInputForm('local');
+
+        // Fill in proxy field if exists
+        if (proxyUrl) {
+            proxyInput.value = proxyUrl;
+        }
     }
 }
 
@@ -238,15 +272,32 @@ continueBtn.addEventListener('click', async () => {
         // Handle local connection logic here
         console.log('Local connection selected');
 
+        // Validate proxy server URL if provided
+        const proxyUrl = proxyInput.value.trim();
+        if (proxyUrl) {
+            const validation = validateProxyUrl(proxyUrl);
+            if (!validation.valid) {
+                showError(validation.error);
+                return;
+            }
+        }
+
         try {
             // Disable button during check
             continueBtn.disabled = true;
             continueBtn.textContent = 'Checking...';
 
+            // Save proxy URL to localStorage
+            if (proxyUrl) {
+                localStorage.setItem('proxy-url', proxyUrl);
+            } else {
+                localStorage.removeItem('proxy-url');
+            }
+
             // Check version and download if needed
             if (typeof require !== 'undefined') {
                 const { ipcRenderer } = require('electron');
-                const result = await ipcRenderer.invoke('check-version-and-download');
+                const result = await ipcRenderer.invoke('check-version-and-download', proxyUrl);
 
                 if (result.success) {
                     if (result.needsUpdate) {
