@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, Tray, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
@@ -43,6 +43,8 @@ function resolvePath(inputPath, basePath = null) {
 let mainWindow;
 let cliProxyApiProcess = null;
 let processMonitorInterval = null;
+let tray = null;
+let isQuitting = false;
 
 // Function to get latest version information
 async function getLatestReleaseInfo() {
@@ -319,6 +321,148 @@ function stopProcessMonitor() {
         clearInterval(processMonitorInterval);
         processMonitorInterval = null;
     }
+}
+
+// Create system tray
+function createTray() {
+    try {
+        const iconPath = path.join(__dirname, 'images/icon.png');
+        console.log('Creating tray with icon path:', iconPath);
+
+        // Check if icon file exists
+        if (!fs.existsSync(iconPath)) {
+            console.error('Tray icon file does not exist:', iconPath);
+            return;
+        }
+
+        const trayIcon = nativeImage.createFromPath(iconPath);
+
+        // For macOS, use template image and proper size
+        const platform = os.platform();
+        if (platform === 'darwin') {
+            // macOS requires 16x16 or 22x22 for retina displays
+            // Don't set template image for now, as it might make the icon invisible
+            tray = new Tray(trayIcon.resize({ width: 16, height: 16 }));
+        } else {
+            // Other platforms
+            tray = new Tray(trayIcon.resize({ width: 16, height: 16 }));
+        }
+
+        const contextMenu = Menu.buildFromTemplate([
+            {
+                label: 'Show CLIProxyAPI',
+                click: () => {
+                    console.log('Show CLIProxyAPI clicked');
+                    if (mainWindow) {
+                        // Show Dock icon on macOS when restoring window
+                        if (os.platform() === 'darwin') {
+                            console.log('Showing Dock icon');
+                            app.dock.show();
+                        }
+                        mainWindow.show();
+                        mainWindow.focus();
+                    }
+                }
+            },
+            {
+                type: 'separator'
+            },
+            {
+                label: 'Quit',
+                click: () => {
+                    console.log('Quit from tray clicked');
+                    isQuitting = true;
+                    app.quit();
+                }
+            }
+        ]);
+
+        tray.setContextMenu(contextMenu);
+        tray.setToolTip('CLIProxyAPI Control Panel');
+
+        // Double click to show window
+        tray.on('double-click', () => {
+            console.log('Tray double-clicked');
+            if (mainWindow) {
+                // Show Dock icon on macOS when restoring window
+                if (os.platform() === 'darwin') {
+                    console.log('Showing Dock icon');
+                    app.dock.show();
+                }
+                mainWindow.show();
+                mainWindow.focus();
+            }
+        });
+
+        console.log('System tray created successfully');
+    } catch (error) {
+        console.error('Failed to create system tray:', error);
+    }
+}
+
+// Destroy system tray
+function destroyTray() {
+    if (tray) {
+        tray.destroy();
+        tray = null;
+    }
+}
+
+// Set up window close event handler
+function setupWindowCloseHandler(window) {
+    window.on('close', (event) => {
+        // Check if we're currently on login page or settings page
+        const currentUrl = window.webContents.getURL();
+        const isLoginPage = currentUrl.includes('login.html');
+        const isSettingsPage = currentUrl.includes('settings.html');
+
+        console.log('Window close event triggered, current URL:', currentUrl);
+        console.log('Is login page:', isLoginPage);
+        console.log('Is settings page:', isSettingsPage);
+        console.log('Tray exists:', !!tray);
+        console.log('isQuitting flag:', isQuitting);
+
+        if (isLoginPage) {
+            // Login page - allow normal close (exit application)
+            console.log('Login page closed, exiting application');
+            return; // Allow default close behavior
+        } else if (isSettingsPage) {
+            // Settings page - check if we have tray (local mode) or not (remote mode)
+            if (tray) {
+                // Local mode with tray - hide to tray instead of closing
+                console.log('Local mode: Settings page closed, hiding to tray');
+                event.preventDefault();
+                window.hide();
+
+                // Hide Dock icon on macOS when hiding to tray
+                if (os.platform() === 'darwin') {
+                    console.log('Hiding Dock icon');
+                    app.dock.hide();
+                }
+
+                // Show notification that app is running in tray
+                console.log('Showing tray notification');
+                try {
+                    tray.displayBalloon({
+                        title: 'CLIProxyAPI',
+                        content: 'Application is running in system tray',
+                        icon: nativeImage.createFromPath(path.join(__dirname, 'images/icon.png'))
+                    });
+                } catch (error) {
+                    console.error('Failed to show tray notification:', error);
+                }
+            } else {
+                // Remote mode without tray - allow normal close (exit application)
+                console.log('Remote mode: Settings page closed, exiting application');
+                return; // Allow default close behavior
+            }
+        } else {
+            // Fallback - allow normal close
+            console.log('Fallback: allowing normal close behavior');
+            isQuitting = true;
+            return; // Allow default close behavior
+        }
+    });
 }
 
 // Restart CLIProxyAPI process
@@ -729,6 +873,9 @@ const createWindow = () => {
     // Menu.setApplicationMenu(menu);
 
     mainWindow.loadFile('login.html');
+
+    // Set up window close event handler
+    setupWindowCloseHandler(mainWindow);
 }
 
 // Handle opening settings page
@@ -767,6 +914,9 @@ ipcMain.on('open-settings', () => {
 
                 // Update mainWindow reference to the new window
                 mainWindow = settingsWindow;
+
+                // Set up close event handler for the new window
+                setupWindowCloseHandler(settingsWindow);
             } else {
                 // Local mode - start CLIProxyAPI process
                 console.log('Local mode detected, starting CLIProxyAPI process');
@@ -813,6 +963,12 @@ ipcMain.on('open-settings', () => {
 
                         // Update mainWindow reference to the new window
                         mainWindow = settingsWindow;
+
+                        // Set up close event handler for the new window
+                        setupWindowCloseHandler(settingsWindow);
+
+                        // Create system tray for local mode
+                        createTray();
                     } else {
                         console.error('CLIProxyAPI process start failed:', startResult.error);
                         // Send error message to frontend, do not navigate to settings page
@@ -877,6 +1033,12 @@ ipcMain.on('open-settings', () => {
 
                     // Update mainWindow reference to the new window
                     mainWindow = settingsWindow;
+
+                    // Set up close event handler for the new window
+                    setupWindowCloseHandler(settingsWindow);
+
+                    // Create system tray for local mode
+                    createTray();
                 } else {
                     console.error('CLIProxyAPI process start failed:', startResult.error);
                     // Send error message to frontend, do not navigate to settings page
@@ -914,6 +1076,9 @@ ipcMain.on('return-to-login', () => {
                 console.log('Remote mode detected, no local process to stop');
             }
 
+            // Destroy system tray when returning to login
+            destroyTray();
+
             // Close current window
             mainWindow.close();
 
@@ -925,6 +1090,9 @@ ipcMain.on('return-to-login', () => {
             console.log('Fallback to local mode behavior - stopping process');
             stopProcessMonitor();
             stopCLIProxyAPI();
+
+            // Destroy system tray when returning to login
+            destroyTray();
 
             // Close current window
             mainWindow.close();
@@ -1443,11 +1611,16 @@ app.on('before-quit', () => {
     console.log('Application is about to exit, cleaning up CLIProxyAPI process...');
     stopProcessMonitor();
     stopCLIProxyAPI();
+    destroyTray();
 });
 
 app.on('window-all-closed', () => {
     console.log('All windows closed, cleaning up CLIProxyAPI process...');
     stopProcessMonitor();
     stopCLIProxyAPI();
+    destroyTray();
+
+    // Always quit when all windows are closed
+    console.log('All windows closed, quitting application...');
     app.quit();
 });
