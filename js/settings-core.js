@@ -17,6 +17,9 @@ const switchPreviewModelSwitch = document.getElementById('switch-preview-model-s
 const applyBtn = document.getElementById('apply-btn');
 const resetBtn = document.getElementById('reset-btn');
 
+// Server status display
+const serverStatusText = document.getElementById('server-status-text');
+
 // Store original config for comparison
 let originalConfig = null;
 
@@ -80,6 +83,25 @@ function toggleLocalOnlyFields() {
     } else {
         localOnlyFields.forEach(field => field.classList.remove('show'));
         remoteOnlyFields.forEach(field => field.classList.add('show'));
+    }
+
+    // Update server status when connection type changes
+    updateServerStatus();
+}
+
+// Update server status display
+function updateServerStatus() {
+    const connectionType = localStorage.getItem('type') || 'local';
+
+    if (connectionType === 'local') {
+        serverStatusText.innerHTML = '<span style="color: #10b981;">●</span> Local';
+    } else {
+        const baseUrl = localStorage.getItem('base-url');
+        if (baseUrl) {
+            serverStatusText.innerHTML = `Remote:<br><span style="color: #10b981;">●</span> ${baseUrl}`;
+        } else {
+            serverStatusText.innerHTML = 'Remote:<br><span style="color: #10b981;">●</span> Unknown';
+        }
     }
 }
 

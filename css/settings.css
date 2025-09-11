@@ -16,7 +16,7 @@ body {
     width: 280px;
     background: #f9f9f9;
     border-right: 1px solid #e0e0e0;
-    padding: 20px 0;
+    padding: 20px 0 0 0;
     display: flex;
     flex-direction: column;
     position: fixed;
@@ -40,6 +40,36 @@ body {
 .tabs-container {
     flex: 1;
     padding: 0 20px;
+}
+
+/* Server Status Display */
+.server-status-container {
+    border-top: 1px solid #e0e0e0;
+    padding: 8px 20px;
+    background: #f9f9f9;
+    margin-top: auto;
+    display: flex;
+    align-items: center;
+    height: 55px;
+}
+
+.server-status-content {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    width: 100%;
+    height: 100%;
+}
+
+.server-status-text {
+    font-size: 12px;
+    font-weight: 500;
+    color: #6b7280;
+    font-family: inherit;
+    word-break: break-word;
+    line-height: 1.4;
+    display: block;
+    white-space: pre-line;
 }
 
 .tab {

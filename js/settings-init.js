@@ -10,6 +10,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         await initializeRemoteManagement();
         await initializeAdditionalSettings();
         toggleLocalOnlyFields();
+        updateServerStatus();
         updateActionButtons();
 
         const currentTabEl = document.querySelector('.tab.active');

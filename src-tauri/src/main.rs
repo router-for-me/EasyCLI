@@ -811,6 +811,13 @@ fn open_settings_window(app: tauri::AppHandle) -> Result<(), String> {
     if let Some(win) = app.get_webview_window("settings") {
         let _ = win.show();
         let _ = win.set_focus();
+        // Ensure Dock icon is visible while settings is open (macOS only)
+        #[cfg(target_os = "macos")]
+        {
+            let _ = app.show();
+            let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
+            let _ = app.set_dock_visibility(true);
+        }
         // Also close login window shortly after
         let app_cloned = app.clone();
         tauri::async_runtime::spawn(async move {
@@ -832,6 +839,13 @@ fn open_settings_window(app: tauri::AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     let _ = win.show();
     let _ = win.set_focus();
+    // Ensure Dock icon is visible while settings is open (macOS only)
+    #[cfg(target_os = "macos")]
+    {
+        let _ = app.show();
+        let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
+        let _ = app.set_dock_visibility(true);
+    }
     // Close the main (login) window shortly after to avoid hanging the invoke
     let app_cloned = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -891,6 +905,16 @@ fn main() {
                 if running {
                     api.prevent_close();
                     let _ = window.hide();
+                    // Hide Dock icon when settings window is closed in Local mode (macOS only)
+                    if window.label() == "settings" {
+                        #[cfg(target_os = "macos")]
+                        {
+                            let _ = window
+                                .app_handle()
+                                .set_activation_policy(tauri::ActivationPolicy::Accessory);
+                            let _ = window.app_handle().set_dock_visibility(false);
+                        }
+                    }
                 }
             }
         })

@@ -10,7 +10,7 @@
         content="default-src 'self'; script-src 'self' 'unsafe-inline' tauri:; style-src 'self' 'unsafe-inline'; connect-src 'self' http: https: tauri: ipc:" />
     <title>CLIProxyAPI Control Panel</title>
     <link rel="stylesheet" href="css/settings.css">
-    
+
     <script src="js/config-manager.js"></script>
     <script src="js/utils-zip.js"></script>
     <script>
@@ -35,6 +35,13 @@
             <button class="tab" data-tab="auth">Authentication Files</button>
             <button class="tab" data-tab="api">Third Party API Keys</button>
             <button class="tab" data-tab="openai">OpenAI Compatibility</button>
+        </div>
+
+        <!-- Server Status Display -->
+        <div class="server-status-container">
+            <div class="server-status-content">
+                <span class="server-status-text" id="server-status-text">Local</span>
+            </div>
         </div>
     </div>
 
