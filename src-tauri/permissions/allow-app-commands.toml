@@ -17,5 +17,6 @@ allow = [
   "open_settings_window",
   "open_login_window",
   "start_callback_server",
-  "stop_callback_server"
+  "stop_callback_server",
+  "save_files_to_directory"
 ]

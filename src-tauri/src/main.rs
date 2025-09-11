@@ -23,6 +23,7 @@ use std::io::Cursor;
 use tauri::tray::TrayIcon;
 use thiserror::Error;
 use tauri::WindowEvent;
+use rfd::FileDialog;
 
 static PROCESS: Lazy<Arc<Mutex<Option<Child>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
 static TRAY_ICON: Lazy<Arc<Mutex<Option<TrayIcon>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
@@ -911,7 +912,42 @@ fn main() {
             open_login_window
             ,start_callback_server
             ,stop_callback_server
+            ,save_files_to_directory
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[derive(Deserialize)]
+struct SaveFile { name: String, content: String }
+
+#[tauri::command]
+fn save_files_to_directory(files: Vec<SaveFile>) -> Result<serde_json::Value, String> {
+    if files.is_empty() {
+        return Ok(json!({"success": false, "error": "No files to save"}));
+    }
+    // Show a system directory picker to choose the destination folder
+    let folder = FileDialog::new()
+        .set_title("Choose save directory")
+        .pick_folder()
+        .ok_or_else(|| "User cancelled directory selection".to_string())?;
+
+    // Write each file into the chosen directory
+    let mut success: usize = 0;
+    let mut error_count: usize = 0;
+    let mut errors: Vec<String> = Vec::new();
+    for f in files {
+        let path = folder.join(&f.name);
+        match fs::write(&path, f.content.as_bytes()) {
+            Ok(_) => success += 1,
+            Err(e) => { error_count += 1; errors.push(format!("{}: {}", f.name, e)); }
+        }
+    }
+
+    Ok(json!({
+        "success": success > 0,
+        "successCount": success,
+        "errorCount": error_count,
+        "errors": if errors.is_empty() { serde_json::Value::Null } else { json!(errors) }
+    }))
 }

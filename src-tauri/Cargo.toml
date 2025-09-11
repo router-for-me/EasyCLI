@@ -25,3 +25,4 @@ once_cell = "1.18"
 image = { version = "0.24", default-features = false, features = ["png"] }
 ico = "0.3"
 icns = "0.3"
+rfd = "0.14"

@@ -10,6 +10,57 @@ class ConfigManager {
     }
 
     /**
+     * Save multiple files as a ZIP with a Save As dialog when possible
+     * @param {Array<{name:string, content:string|Uint8Array|ArrayBuffer}>} files
+     * @param {string} suggestedName
+     * @returns {Promise<Object>} result
+     */
+    async saveFilesAsZip(files, suggestedName = 'auth-files.zip') {
+        try {
+            if (!Array.isArray(files) || files.length === 0) {
+                return { success: false, error: 'No files to save' };
+            }
+            if (typeof window.__zipFiles !== 'function') {
+                // Missing ZIP util
+                return { success: false, error: 'ZIP utility not loaded' };
+            }
+            const blob = window.__zipFiles(files);
+            if (typeof window.showSaveFilePicker === 'function') {
+                try {
+                    const handle = await window.showSaveFilePicker({
+                        suggestedName,
+                        types: [{ description: 'ZIP archive', accept: { 'application/zip': ['.zip'] } }]
+                    });
+                    const writable = await handle.createWritable();
+                    await writable.write(blob);
+                    await writable.close();
+                } catch (e) {
+                    if (e && e.name === 'AbortError') {
+                        return { success: false, error: 'User cancelled save dialog' };
+                    }
+                    // Fallback to anchor download
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url; a.download = suggestedName;
+                    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                }
+            } else {
+                // Fallback: anchor download (default Downloads folder or per-browser settings)
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = suggestedName;
+                document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }
+            return { success: true, successCount: files.length, errorCount: 0 };
+        } catch (error) {
+            console.error('saveFilesAsZip error:', error);
+            return { success: false, error: error?.message || String(error) };
+        }
+    }
+
+    /**
      * Get current configuration
      * @returns {Promise<Object>} Configuration object
      */
@@ -314,6 +365,20 @@ class ConfigManager {
                 const result = await window.__TAURI__.core.invoke('download_local_auth_files', filenameArray);
 
                 if (result && result.success && result.files) {
+                    // Prefer Tauri native directory picker + save
+                    if (window.__TAURI__?.core?.invoke) {
+                        try {
+                            const saveRes = await window.__TAURI__.core.invoke('save_files_to_directory', { files: result.files });
+                            return saveRes;
+                        } catch (error) {
+                            if (String(error).includes('User cancelled directory selection')) {
+                                return { success: false, error: 'User cancelled directory selection' };
+                            }
+                            console.error('Tauri save_files_to_directory failed, falling back:', error);
+                            // Fall through to browser methods
+                        }
+                    }
+
                     // If File System Access API is available, use directory picker
                     if (typeof window.showDirectoryPicker === 'function') {
                         try {
@@ -359,30 +424,9 @@ class ConfigManager {
                         }
                     }
 
-                    // Fallback: trigger browser downloads for each file
-                    let successCount = 0;
-                    for (const file of result.files) {
-                        try {
-                            const blob = new Blob([file.content]);
-                            const url = URL.createObjectURL(blob);
-                            const a = document.createElement('a');
-                            a.href = url;
-                            a.download = file.name;
-                            document.body.appendChild(a);
-                            a.click();
-                            document.body.removeChild(a);
-                            URL.revokeObjectURL(url);
-                            successCount++;
-                        } catch (error) {
-                            console.error(`Error downloading ${file.name}:`, error);
-                        }
-                    }
-
-                    return {
-                        success: successCount > 0,
-                        successCount,
-                        errorCount: result.files.length - successCount
-                    };
+                    // Fallback: bundle into a ZIP so user can choose save location
+                    const zipName = `auth-files-${new Date().toISOString().replace(/[:T]/g, '-').split('.')[0]}.zip`;
+                    return await this.saveFilesAsZip(result.files, zipName);
                 } else {
                     return result;
                 }
@@ -757,6 +801,36 @@ class ConfigManager {
             let errorCount = 0;
             let usedDirectoryPicker = false;
 
+            // Prefer Tauri native directory picker + save (best UX across browsers)
+            if (window.__TAURI__?.core?.invoke) {
+                try {
+                    // Fetch all files as text, then ask Tauri to save to a chosen directory
+                    const files = [];
+                    for (const filename of filenameArray) {
+                        const apiUrl = this.baseUrl.endsWith('/')
+                            ? `${this.baseUrl}v0/management/auth-files/download?name=${encodeURIComponent(filename)}`
+                            : `${this.baseUrl}/v0/management/auth-files/download?name=${encodeURIComponent(filename)}`;
+                        const response = await fetch(apiUrl, {
+                            method: 'GET',
+                            headers: { 'Authorization': `Bearer ${this.password}` }
+                        });
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                        }
+                        const content = await response.text();
+                        files.push({ name: filename, content });
+                    }
+                    const saveRes = await window.__TAURI__.core.invoke('save_files_to_directory', { files });
+                    return saveRes;
+                } catch (error) {
+                    if (String(error).includes('User cancelled directory selection')) {
+                        return { success: false, error: 'User cancelled directory selection' };
+                    }
+                    console.error('Tauri save_files_to_directory fallback failed; trying browser options:', error);
+                    // Fall through to browser fallbacks below
+                }
+            }
+
             // Prefer File System Access API when available
             if (typeof window.showDirectoryPicker === 'function') {
                 try {
@@ -801,45 +875,34 @@ class ConfigManager {
                 }
             }
 
-            // Fallback: download each file via browser (to default downloads folder)
+            // Fallback: fetch all files and save as a ZIP via Save As dialog if available
+            const files = [];
             for (const filename of filenameArray) {
                 try {
                     const apiUrl = this.baseUrl.endsWith('/')
                         ? `${this.baseUrl}v0/management/auth-files/download?name=${encodeURIComponent(filename)}`
                         : `${this.baseUrl}/v0/management/auth-files/download?name=${encodeURIComponent(filename)}`;
-
                     const response = await fetch(apiUrl, {
                         method: 'GET',
-                        headers: {
-                            'Authorization': `Bearer ${this.password}`
-                        }
+                        headers: { 'Authorization': `Bearer ${this.password}` }
                     });
-
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                    }
-
-                    const blob = await response.blob();
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = filename;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
-                    successCount++;
-                } catch (error) {
-                    console.error(`Error downloading ${filename}:`, error);
+                    if (!response.ok) { throw new Error(`HTTP ${response.status}: ${response.statusText}`); }
+                    const content = await response.text();
+                    files.push({ name: filename, content });
+                } catch (e) {
+                    console.error(`Error downloading ${filename}:`, e);
                     errorCount++;
                 }
             }
-
-            return {
-                success: successCount > 0,
-                successCount,
-                errorCount
-            };
+            if (files.length > 0) {
+                const zipName = `auth-files-${new Date().toISOString().replace(/[:T]/g, '-').split('.')[0]}.zip`;
+                const res = await this.saveFilesAsZip(files, zipName);
+                if (res.success) {
+                    return { success: true, successCount: files.length, errorCount };
+                }
+                return { success: false, error: res.error || 'Failed to save ZIP', errorCount };
+            }
+            return { success: false, error: 'No file downloaded', errorCount };
         } catch (error) {
             if (error && error.name === 'AbortError') {
                 return {
