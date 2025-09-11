@@ -7,12 +7,15 @@
     "beforeBuildCommand": "node src-tauri/prepare-web.js",
     "beforeDevCommand": "node src-tauri/watch-web.js",
     "frontendDist": "../dist-web",
-    "devUrl": null
+    "devUrl": null,
+    "removeUnusedCommands": true
   },
   "app": {
     "withGlobalTauri": true,
     "security": {
-      "capabilities": ["main"]
+      "capabilities": [
+        "main"
+      ]
     },
     "windows": [
       {
@@ -39,7 +42,12 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["dmg", "app", "nsis", "deb"],
+    "targets": [
+      "dmg",
+      "app",
+      "nsis",
+      "deb"
+    ],
     "icon": [
       "icons/icon.png",
       "../images/icon.icns",

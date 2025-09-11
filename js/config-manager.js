@@ -314,47 +314,75 @@ class ConfigManager {
                 const result = await window.__TAURI__.core.invoke('download_local_auth_files', filenameArray);
 
                 if (result && result.success && result.files) {
-                    // Use File System Access API to download files
-                    try {
-                        const directoryHandle = await window.showDirectoryPicker({
-                            mode: 'readwrite'
-                        });
+                    // If File System Access API is available, use directory picker
+                    if (typeof window.showDirectoryPicker === 'function') {
+                        try {
+                            const directoryHandle = await window.showDirectoryPicker({
+                                mode: 'readwrite'
+                            });
 
-                        if (!directoryHandle) {
+                            if (!directoryHandle) {
+                                return {
+                                    success: false,
+                                    error: 'User cancelled directory selection'
+                                };
+                            }
+
+                            let successCount = 0;
+                            for (const file of result.files) {
+                                try {
+                                    const fileHandle = await directoryHandle.getFileHandle(file.name, { create: true });
+                                    const writable = await fileHandle.createWritable();
+                                    await writable.write(file.content);
+                                    await writable.close();
+                                    successCount++;
+                                } catch (error) {
+                                    console.error(`Error downloading ${file.name}:`, error);
+                                }
+                            }
+
                             return {
-                                success: false,
-                                error: 'User cancelled directory selection'
+                                success: successCount > 0,
+                                successCount,
+                                errorCount: result.files.length - successCount
                             };
-                        }
-
-                        let successCount = 0;
-                        for (const file of result.files) {
-                            try {
-                                const fileHandle = await directoryHandle.getFileHandle(file.name, { create: true });
-                                const writable = await fileHandle.createWritable();
-                                await writable.write(file.content);
-                                await writable.close();
-                                successCount++;
-                            } catch (error) {
-                                console.error(`Error downloading ${file.name}:`, error);
+                        } catch (error) {
+                            if (error.name === 'AbortError') {
+                                return {
+                                    success: false,
+                                    error: 'User cancelled directory selection'
+                                };
+                            } else {
+                                console.error('Directory picker error, falling back to browser downloads:', error);
+                                // Fall through to browser-download fallback below
                             }
                         }
+                    }
 
-                        return {
-                            success: successCount > 0,
-                            successCount,
-                            errorCount: result.files.length - successCount
-                        };
-                    } catch (error) {
-                        if (error.name === 'AbortError') {
-                            return {
-                                success: false,
-                                error: 'User cancelled directory selection'
-                            };
-                        } else {
-                            throw error;
+                    // Fallback: trigger browser downloads for each file
+                    let successCount = 0;
+                    for (const file of result.files) {
+                        try {
+                            const blob = new Blob([file.content]);
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = file.name;
+                            document.body.appendChild(a);
+                            a.click();
+                            document.body.removeChild(a);
+                            URL.revokeObjectURL(url);
+                            successCount++;
+                        } catch (error) {
+                            console.error(`Error downloading ${file.name}:`, error);
                         }
                     }
+
+                    return {
+                        success: successCount > 0,
+                        successCount,
+                        errorCount: result.files.length - successCount
+                    };
                 } else {
                     return result;
                 }
@@ -727,23 +755,79 @@ class ConfigManager {
             const filenameArray = Array.isArray(filenames) ? filenames : [filenames];
             let successCount = 0;
             let errorCount = 0;
+            let usedDirectoryPicker = false;
 
-            // Open directory picker
-            const directoryHandle = await window.showDirectoryPicker({
-                mode: 'readwrite'
-            });
+            // Prefer File System Access API when available
+            if (typeof window.showDirectoryPicker === 'function') {
+                try {
+                    const directoryHandle = await window.showDirectoryPicker({
+                        mode: 'readwrite'
+                    });
 
-            if (!directoryHandle) {
-                return {
-                    success: false,
-                    error: 'User cancelled directory selection'
-                };
+                    if (!directoryHandle) {
+                        return {
+                            success: false,
+                            error: 'User cancelled directory selection'
+                        };
+                    }
+
+                    usedDirectoryPicker = true;
+
+                    // Download each file into selected directory
+                    for (const filename of filenameArray) {
+                        try {
+                            await this.downloadSingleFile(filename, directoryHandle);
+                            successCount++;
+                        } catch (error) {
+                            console.error(`Error downloading ${filename}:`, error);
+                            errorCount++;
+                        }
+                    }
+
+                    return {
+                        success: successCount > 0,
+                        successCount,
+                        errorCount
+                    };
+                } catch (error) {
+                    if (error.name === 'AbortError') {
+                        return {
+                            success: false,
+                            error: 'User cancelled directory selection'
+                        };
+                    }
+                    console.error('Directory picker unavailable or failed; falling back:', error);
+                    // Fall through to browser-download fallback below
+                }
             }
 
-            // Download each file
+            // Fallback: download each file via browser (to default downloads folder)
             for (const filename of filenameArray) {
                 try {
-                    await this.downloadSingleFile(filename, directoryHandle);
+                    const apiUrl = this.baseUrl.endsWith('/')
+                        ? `${this.baseUrl}v0/management/auth-files/download?name=${encodeURIComponent(filename)}`
+                        : `${this.baseUrl}/v0/management/auth-files/download?name=${encodeURIComponent(filename)}`;
+
+                    const response = await fetch(apiUrl, {
+                        method: 'GET',
+                        headers: {
+                            'Authorization': `Bearer ${this.password}`
+                        }
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+
+                    const blob = await response.blob();
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
                     successCount++;
                 } catch (error) {
                     console.error(`Error downloading ${filename}:`, error);
@@ -757,18 +841,17 @@ class ConfigManager {
                 errorCount
             };
         } catch (error) {
-            if (error.name === 'AbortError') {
+            if (error && error.name === 'AbortError') {
                 return {
                     success: false,
                     error: 'User cancelled directory selection'
                 };
-            } else {
-                console.error('Error downloading remote auth files:', error);
-                return {
-                    success: false,
-                    error: error.message
-                };
             }
+            console.error('Error downloading remote auth files:', error);
+            return {
+                success: false,
+                error: error?.message || String(error)
+            };
         }
     }
 
