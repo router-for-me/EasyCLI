@@ -2,34 +2,17 @@
   "name": "cli-proxy-api-electron",
   "version": "1.0.0",
   "description": "CLI Proxy API's Electron GUI",
-  "main": "main.js",
   "scripts": {
-    "start": "electron-forge start",
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "package": "electron-forge package",
-    "make": "electron-forge make"
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "tauri": "tauri",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "Jane Doe",
   "license": "MIT",
-  "dependencies": {
-    "adm-zip": "^0.5.10",
-    "axios": "^1.6.0",
-    "electron-squirrel-startup": "^1.0.1",
-    "https-proxy-agent": "^7.0.2",
-    "http-proxy-agent": "^7.0.0",
-    "socks-proxy-agent": "^8.0.2",
-    "js-yaml": "^4.1.0",
-    "tar": "^6.2.0"
-  },
+  "dependencies": {},
   "devDependencies": {
-    "@electron-forge/cli": "^7.8.3",
-    "@electron-forge/maker-deb": "^7.8.3",
-    "@electron-forge/maker-rpm": "^7.8.3",
-    "@electron-forge/maker-squirrel": "^7.8.3",
-    "@electron-forge/maker-zip": "^7.8.3",
-    "@electron-forge/plugin-auto-unpack-natives": "^7.8.3",
-    "@electron-forge/plugin-fuses": "^7.8.3",
-    "@electron/fuses": "^1.8.0",
-    "electron": "^38.0.0"
+    "@tauri-apps/cli": "^2.0.0",
+    "chokidar": "^3.6.0"
   }
 }

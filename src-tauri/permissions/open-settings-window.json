@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/permission.json",
+  "identifier": "open-settings-window",
+  "description": "Allow invoking the open_settings_window app command",
+  "allow": ["open_settings_window"]
+}
+

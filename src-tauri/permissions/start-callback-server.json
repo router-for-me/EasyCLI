@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/permission.json",
+  "identifier": "start-callback-server",
+  "description": "Allow invoking the start_callback_server app command",
+  "allow": ["start_callback_server"]
+}
+

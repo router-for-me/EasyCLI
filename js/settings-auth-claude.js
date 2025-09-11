@@ -19,7 +19,8 @@ async function startClaudeAuthFlow() {
         showClaudeAuthDialog();
     } catch (error) {
         console.error('Error starting Claude auth flow:', error);
-        showError('Failed to start Claude Code authentication flow: ' + error.message);
+        const msg = (error && (error.message || String(error))) || 'Unknown error';
+        showError('Failed to start Claude Code authentication flow: ' + msg);
         if (claudeLocalServer) {
             await stopClaudeLocalServer();
         }
@@ -27,21 +28,24 @@ async function startClaudeAuthFlow() {
 }
 
 async function startClaudeLocalServer() {
-    return new Promise((resolve, reject) => {
-        try {
-            if (typeof require !== 'undefined') {
-                const http = require('http');
-                claudeLocalServer = http.createServer((req, res) => { handleClaudeCallback(req, res); });
-                claudeLocalServer.listen(54545, 'localhost', () => { console.log('Local server started on port 54545'); resolve(); });
-                claudeLocalServer.on('error', (error) => {
-                    if (error.code === 'EADDRINUSE') reject(new Error('Port 54545 is already in use, please try again later'));
-                    else reject(new Error('Failed to start local server: ' + error.message));
-                });
-            } else {
-                reject(new Error('Claude Code authentication requires running in Electron environment'));
-            }
-        } catch (error) { reject(error); }
-    });
+    try {
+        const currentMode = localStorage.getItem('type') || 'local';
+        let localPort = null, baseUrl = null;
+        if (currentMode === 'local') {
+            const config = await configManager.getConfig();
+            localPort = config.port || 8317;
+        } else {
+            baseUrl = localStorage.getItem('base-url');
+            if (!baseUrl) throw new Error('Missing base-url configuration');
+        }
+        await window.__TAURI__.core.invoke('start_callback_server', {
+            provider: 'anthropic',
+            listenPort: 54545,
+            mode: currentMode,
+            baseUrl: baseUrl,
+            localPort: localPort
+        });
+    } catch (error) { throw error; }
 }
 
 async function handleClaudeCallback(req, res) {
@@ -78,13 +82,7 @@ async function handleClaudeCallback(req, res) {
     }
 }
 
-async function stopClaudeLocalServer() {
-    return new Promise((resolve) => {
-        if (claudeLocalServer) {
-            claudeLocalServer.close(() => { console.log('Claude local server stopped'); claudeLocalServer = null; resolve(); });
-        } else { resolve(); }
-    });
-}
+async function stopClaudeLocalServer() { try { await window.__TAURI__.core.invoke('stop_callback_server', { listenPort: 54545 }); } catch (_) {} }
 
 async function getClaudeAuthUrl() {
     try {
@@ -150,7 +148,7 @@ function showClaudeAuthDialog() {
     document.getElementById('copy-claude-url-btn').addEventListener('click', copyClaudeUrl);
     document.getElementById('open-claude-url-btn').addEventListener('click', openClaudeUrl);
     document.getElementById('cancel-claude-btn').addEventListener('click', cancelClaudeAuth);
-    modal.addEventListener('click', (e) => { if (e.target === modal) cancelClaudeAuth(); });
+    // Disable backdrop click-to-close to avoid accidental dismiss
     document.addEventListener('keydown', handleClaudeEscapeKey);
 
     // Start polling authentication status
@@ -164,7 +162,7 @@ async function copyClaudeUrl() {
 
 function openClaudeUrl() {
     try {
-        if (typeof require !== 'undefined') { const { shell } = require('electron'); shell.openExternal(claudeAuthUrl); }
+        if (window.__TAURI__?.shell?.open) { window.__TAURI__.shell.open(claudeAuthUrl); }
         else { window.open(claudeAuthUrl, '_blank'); }
         showSuccessMessage('Authentication link opened in browser');
 
@@ -224,7 +222,8 @@ async function cancelClaudeAuth() {
         document.removeEventListener('keydown', handleClaudeEscapeKey);
         const modal = document.getElementById('claude-auth-modal');
         if (modal) modal.remove();
-        if (claudeLocalServer) await stopClaudeLocalServer();
+        // Always stop local callback server to free the port
+        await stopClaudeLocalServer();
 
         // Cancel ongoing requests
         if (claudeAbortController) {
@@ -355,4 +354,3 @@ async function pollClaudeAuthStatus(authType, state, onSuccess, onError) {
         }, 300000);
     });
 }
-

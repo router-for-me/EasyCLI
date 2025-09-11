@@ -1,38 +1,33 @@
-// IPC event listeners for Electron environment and process state handling
+// Process state handling via Tauri events
 
 function showProcessClosedError(message) {
     showError(message);
     setTimeout(() => {
-        if (typeof require !== 'undefined') {
-            const { ipcRenderer } = require('electron');
-            ipcRenderer.send('return-to-login');
-        } else {
-            window.location.href = 'login.html';
+        // Prefer Tauri backend command to open a proper login window
+        if (typeof window !== 'undefined' && window.__TAURI__ && window.__TAURI__.core) {
+            try { window.__TAURI__.core.invoke('open_login_window'); return; } catch (_) {}
         }
+        // Fallback only if Tauri unavailable
+        window.location.href = 'login.html';
     }, 3000);
 }
 
-if (typeof require !== 'undefined') {
-    const { ipcRenderer } = require('electron');
-
-    ipcRenderer.on('process-closed', (event, data) => {
+if (window.__TAURI__?.event?.listen) {
+    window.__TAURI__.event.listen('process-closed', (event) => {
+        const data = event?.payload || {};
         console.log('CLIProxyAPI process closed:', data);
-        showProcessClosedError(data.message);
+        showProcessClosedError(data.message || 'CLIProxyAPI process has closed');
     });
 
-    ipcRenderer.on('process-exit-error', (event, errorData) => {
+    window.__TAURI__.event.listen('process-exit-error', (event) => {
+        const errorData = event?.payload || {};
         console.error('CLIProxyAPI process exited abnormally:', errorData);
         showProcessClosedError(`CLIProxyAPI process exited abnormally, exit code: ${errorData.code}`);
     });
 
-    ipcRenderer.on('cliproxyapi-restarted', (event, data) => {
+    window.__TAURI__.event.listen('cliproxyapi-restarted', (event) => {
+        const data = event?.payload || {};
         console.log('CLIProxyAPI process restarted successfully:', data);
         showSuccessMessage('CLIProxyAPI process restarted successfully!');
     });
-
-    ipcRenderer.on('cliproxyapi-restart-failed', (event, errorData) => {
-        console.error('CLIProxyAPI process restart failed:', errorData);
-        showError(`CLIProxyAPI process restart failed: ${errorData.error}`);
-    });
 }
-

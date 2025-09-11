@@ -99,7 +99,7 @@ async function copyQwenUrl() {
 
 function openQwenUrl() {
     try {
-        if (typeof require !== 'undefined') { const { shell } = require('electron'); shell.openExternal(qwenAuthUrl); }
+        if (window.__TAURI__?.shell?.open) { window.__TAURI__.shell.open(qwenAuthUrl); }
         else { window.open(qwenAuthUrl, '_blank'); }
         showSuccessMessage('Authentication link opened in browser');
 
@@ -284,4 +284,3 @@ async function pollQwenAuthStatus(authType, state, onSuccess, onError) {
         }, 300000);
     });
 }
-

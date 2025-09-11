@@ -1,0 +1,49 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "CLIProxyAPIGUI",
+  "version": "1.0.0",
+  "identifier": "com.example.cliproxyapi.gui",
+  "build": {
+    "beforeBuildCommand": "node src-tauri/prepare-web.js",
+    "beforeDevCommand": "node src-tauri/watch-web.js",
+    "frontendDist": "../dist-web",
+    "devUrl": null
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "security": {
+      "capabilities": ["main"]
+    },
+    "windows": [
+      {
+        "label": "main",
+        "title": "CLIProxyAPI",
+        "width": 530,
+        "height": 380,
+        "resizable": false,
+        "dragDropEnabled": true,
+        "visible": true,
+        "url": "login.html"
+      },
+      {
+        "label": "settings",
+        "title": "CLIProxyAPI Control Panel",
+        "width": 930,
+        "height": 600,
+        "resizable": false,
+        "dragDropEnabled": true,
+        "visible": false,
+        "url": "settings.html"
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["dmg", "app", "nsis", "deb"],
+    "icon": [
+      "icons/icon.png",
+      "../images/icon.icns",
+      "../images/icon.ico"
+    ]
+  }
+}

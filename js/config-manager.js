@@ -122,16 +122,12 @@ class ConfigManager {
      */
     async getLocalConfig() {
         try {
-            // Read config.yaml file through IPC call to main process
-            if (typeof require !== 'undefined') {
-                const { ipcRenderer } = require('electron');
-                const config = await ipcRenderer.invoke('read-config-yaml');
+            if (window.__TAURI__?.core?.invoke) {
+                const config = await window.__TAURI__.core.invoke('read_config_yaml');
                 return config || {};
-            } else {
-                // Fallback to localStorage (for testing environment)
-                const configStr = localStorage.getItem('config');
-                return configStr ? JSON.parse(configStr) : {};
             }
+            const configStr = localStorage.getItem('config');
+            return configStr ? JSON.parse(configStr) : {};
         } catch (error) {
             console.error('Error reading local config:', error);
             return {};
@@ -147,61 +143,21 @@ class ConfigManager {
      */
     async updateLocalSetting(endpoint, value, isDelete = false) {
         try {
-            // Update config.yaml file through IPC call to main process
-            if (typeof require !== 'undefined') {
-                const { ipcRenderer } = require('electron');
-                const result = await ipcRenderer.invoke('update-config-yaml', {
+            if (window.__TAURI__?.core?.invoke) {
+                const result = await window.__TAURI__.core.invoke('update_config_yaml', {
                     endpoint,
                     value,
-                    isDelete
+                    is_delete: isDelete
                 });
-                return result.success;
-            } else {
-                // Fallback to localStorage (for testing environment)
-                const configStr = localStorage.getItem('config');
-                const config = configStr ? JSON.parse(configStr) : {};
-
-                if (isDelete) {
-                    // Delete configuration item
-                    if (endpoint.includes('quota-exceeded')) {
-                        const setting = endpoint.split('/').pop();
-                        if (config['quota-exceeded'] && config['quota-exceeded'][setting] !== undefined) {
-                            delete config['quota-exceeded'][setting];
-                        }
-                    } else if (endpoint.includes('remote-management')) {
-                        const setting = endpoint.split('.').pop();
-                        if (config['remote-management'] && config['remote-management'][setting] !== undefined) {
-                            delete config['remote-management'][setting];
-                        }
-                    } else {
-                        const key = endpoint.split('/').pop();
-                        if (config[key] !== undefined) {
-                            delete config[key];
-                        }
-                    }
-                } else {
-                    // Update configuration item
-                    if (endpoint.includes('quota-exceeded')) {
-                        const setting = endpoint.split('/').pop();
-                        if (!config['quota-exceeded']) {
-                            config['quota-exceeded'] = {};
-                        }
-                        config['quota-exceeded'][setting] = value;
-                    } else if (endpoint.includes('remote-management')) {
-                        const setting = endpoint.split('.').pop();
-                        if (!config['remote-management']) {
-                            config['remote-management'] = {};
-                        }
-                        config['remote-management'][setting] = value;
-                    } else {
-                        const key = endpoint.split('/').pop();
-                        config[key] = value;
-                    }
-                }
-
-                localStorage.setItem('config', JSON.stringify(config));
-                return true;
+                return !!(result && result.success);
             }
+            // Fallback to localStorage (testing only)
+            const configStr = localStorage.getItem('config');
+            const config = configStr ? JSON.parse(configStr) : {};
+            const key = endpoint.split('/').pop();
+            if (isDelete) { delete config[key]; } else { config[key] = value; }
+            localStorage.setItem('config', JSON.stringify(config));
+            return true;
         } catch (error) {
             console.error('Error updating local setting:', error);
             return false;
@@ -272,15 +228,11 @@ class ConfigManager {
      */
     async getLocalAuthFiles() {
         try {
-            // Read local authentication files through IPC call to main process
-            if (typeof require !== 'undefined') {
-                const { ipcRenderer } = require('electron');
-                const files = await ipcRenderer.invoke('read-local-auth-files');
+            if (window.__TAURI__?.core?.invoke) {
+                const files = await window.__TAURI__.core.invoke('read_local_auth_files');
                 return files || [];
-            } else {
-                // Fallback to empty array (for testing environment)
-                return [];
             }
+            return [];
         } catch (error) {
             console.error('Error reading local auth files:', error);
             return [];
@@ -294,29 +246,17 @@ class ConfigManager {
      */
     async uploadLocalAuthFiles(files) {
         try {
-            if (typeof require !== 'undefined') {
-                const { ipcRenderer } = require('electron');
-
-                // Convert File objects to transferable format
+            if (window.__TAURI__?.core?.invoke) {
                 const fileArray = Array.isArray(files) ? files : [files];
                 const fileData = [];
-
                 for (const file of fileArray) {
                     const content = await this.readFileAsText(file);
-                    fileData.push({
-                        name: file.name,
-                        content: content
-                    });
+                    fileData.push({ name: file.name, content });
                 }
-
-                const result = await ipcRenderer.invoke('upload-local-auth-files', fileData);
+                const result = await window.__TAURI__.core.invoke('upload_local_auth_files', fileData);
                 return result;
-            } else {
-                return {
-                    success: false,
-                    error: 'Local mode file upload functionality requires running in Electron environment'
-                };
             }
+            return { success: false, error: 'Tauri environment required' };
         } catch (error) {
             console.error('Error uploading local auth files:', error);
             return {
@@ -347,17 +287,12 @@ class ConfigManager {
      */
     async deleteLocalAuthFiles(filenames) {
         try {
-            if (typeof require !== 'undefined') {
-                const { ipcRenderer } = require('electron');
+            if (window.__TAURI__?.core?.invoke) {
                 const filenameArray = Array.isArray(filenames) ? filenames : [filenames];
-                const result = await ipcRenderer.invoke('delete-local-auth-files', filenameArray);
+                const result = await window.__TAURI__.core.invoke('delete_local_auth_files', filenameArray);
                 return result;
-            } else {
-                return {
-                    success: false,
-                    error: 'Local mode file deletion functionality requires running in Electron environment'
-                };
             }
+            return { success: false, error: 'Tauri environment required' };
         } catch (error) {
             console.error('Error deleting local auth files:', error);
             return {
@@ -374,12 +309,11 @@ class ConfigManager {
      */
     async downloadLocalAuthFiles(filenames) {
         try {
-            if (typeof require !== 'undefined') {
-                const { ipcRenderer } = require('electron');
+            if (window.__TAURI__?.core?.invoke) {
                 const filenameArray = Array.isArray(filenames) ? filenames : [filenames];
-                const result = await ipcRenderer.invoke('download-local-auth-files', filenameArray);
+                const result = await window.__TAURI__.core.invoke('download_local_auth_files', filenameArray);
 
-                if (result.success && result.files) {
+                if (result && result.success && result.files) {
                     // Use File System Access API to download files
                     try {
                         const directoryHandle = await window.showDirectoryPicker({
@@ -424,12 +358,8 @@ class ConfigManager {
                 } else {
                     return result;
                 }
-            } else {
-                return {
-                    success: false,
-                    error: 'Local mode file download functionality requires running in Electron environment'
-                };
             }
+            return { success: false, error: 'Tauri environment required' };
         } catch (error) {
             console.error('Error downloading local auth files:', error);
             return {

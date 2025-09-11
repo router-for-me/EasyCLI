@@ -77,15 +77,36 @@ function validateProxyUrl(proxyUrl) {
 }
 
 // Update dialog event listeners
-updateCancelBtn.addEventListener('click', () => {
-    updateDialog.classList.remove('show');
-    // User chose not to update, go directly to settings page
-    // Ensure type is set to local in localStorage
-    localStorage.setItem('type', "local");
-    if (typeof require !== 'undefined') {
-        const { ipcRenderer } = require('electron');
-        ipcRenderer.send('open-settings');
+async function openSettingsWindowPreferNew() {
+    try {
+        if (window.__TAURI__?.core?.invoke) {
+            await window.__TAURI__.core.invoke('open_settings_window');
+            try { const cur = window.__TAURI__.window.getCurrent?.(); await cur?.close?.(); } catch (_) {}
+            return;
+        }
+    } catch (e) {
+        console.error('open_settings_window failed:', e);
     }
+    // Fallback only if Tauri unavailable
+    window.location.href = 'settings.html';
+}
+updateCancelBtn.addEventListener('click', async () => {
+    updateDialog.classList.remove('show');
+    // User chose not to update, still run local
+    localStorage.setItem('type', "local");
+        if (window.__TAURI__?.core?.invoke) {
+            try {
+                const startRes = await window.__TAURI__.core.invoke('start_cliproxyapi');
+                if (!startRes || !startRes.success) {
+                    showError('CLIProxyAPI process start failed');
+                    return;
+                }
+            } catch (e) {
+                showError('CLIProxyAPI process start error');
+                return;
+            }
+            await openSettingsWindowPreferNew();
+        }
 });
 
 updateConfirmBtn.addEventListener('click', async () => {
@@ -95,10 +116,9 @@ updateConfirmBtn.addEventListener('click', async () => {
         continueBtn.disabled = true;
         continueBtn.textContent = 'Updating...';
 
-        if (typeof require !== 'undefined') {
-            const { ipcRenderer } = require('electron');
+        if (window.__TAURI__?.core?.invoke) {
             const proxyUrl = proxyInput.value.trim();
-            const result = await ipcRenderer.invoke('download-cliproxyapi', proxyUrl);
+            const result = await window.__TAURI__.core.invoke('download_cliproxyapi', proxyUrl);
 
             if (result.success) {
                 console.log('CLIProxyAPI updated successfully:', result.path);
@@ -112,15 +132,23 @@ updateConfirmBtn.addEventListener('click', async () => {
                 localStorage.removeItem('password');
 
                 // Check if password needs to be set
-                const secretKeyResult = await ipcRenderer.invoke('check-secret-key');
+                const secretKeyResult = await window.__TAURI__.core.invoke('check_secret_key');
                 if (secretKeyResult.needsPassword) {
                     console.log('Password needs to be set:', secretKeyResult.reason);
                     passwordDialog.classList.add('show');
                 } else {
-                    // Password is set, delay redirect to settings page
-                    setTimeout(() => {
-                        ipcRenderer.send('open-settings');
-                    }, 2000);
+                    // Password is set: start process then go to settings
+                    try {
+                        const startRes = await window.__TAURI__.core.invoke('start_cliproxyapi');
+                        if (!startRes || !startRes.success) {
+                            showError('CLIProxyAPI process start failed');
+                            return;
+                        }
+                    } catch (e) {
+                        showError('CLIProxyAPI process start error');
+                        return;
+                    }
+                    setTimeout(async () => { await openSettingsWindowPreferNew(); }, 800);
                 }
             } else {
                 showError('Failed to update CLIProxyAPI: ' + result.error);
@@ -175,9 +203,8 @@ passwordSaveBtn.addEventListener('click', async () => {
         passwordSaveBtn.disabled = true;
         passwordSaveBtn.textContent = 'Saving...';
 
-        if (typeof require !== 'undefined') {
-            const { ipcRenderer } = require('electron');
-            const result = await ipcRenderer.invoke('update-secret-key', password1);
+        if (window.__TAURI__?.core?.invoke) {
+            const result = await window.__TAURI__.core.invoke('update_secret_key', password1);
 
             if (result.success) {
                 showSuccess('Password set successfully!');
@@ -189,10 +216,18 @@ passwordSaveBtn.addEventListener('click', async () => {
                 // Ensure type is set to local in localStorage
                 localStorage.setItem('type', "local");
 
-                // Delay redirect to settings page
-                setTimeout(() => {
-                    ipcRenderer.send('open-settings');
-                }, 1000);
+                // Start process then go to settings
+                try {
+                    const startRes = await window.__TAURI__.core.invoke('start_cliproxyapi');
+                    if (!startRes || !startRes.success) {
+                        showError('CLIProxyAPI process start failed');
+                        return;
+                    }
+                } catch (e) {
+                    showError('CLIProxyAPI process start error');
+                    return;
+                }
+                setTimeout(async () => { await openSettingsWindowPreferNew(); }, 600);
             } else {
                 showError('Failed to set password: ' + result.error);
             }
@@ -208,32 +243,21 @@ passwordSaveBtn.addEventListener('click', async () => {
 });
 
 // Listen for download progress updates
-if (typeof require !== 'undefined') {
-    const { ipcRenderer } = require('electron');
-
-    ipcRenderer.on('download-progress', (event, progressData) => {
-        updateProgress(progressData);
-    });
-
-    ipcRenderer.on('download-status', (event, statusData) => {
-        handleDownloadStatus(statusData);
-    });
-
-    // Listen for process start errors
-    ipcRenderer.on('process-start-error', (event, errorData) => {
-        console.error('CLIProxyAPI process start failed:', errorData);
-        showError(`Connection error: ${errorData.error}`);
-        if (errorData.reason) {
-            showError(`Reason: ${errorData.reason}`);
-        }
-    });
-
-    // Listen for process abnormal exit
-    ipcRenderer.on('process-exit-error', (event, errorData) => {
-        console.error('CLIProxyAPI process exited abnormally:', errorData);
-        showError(`CLIProxyAPI process exited abnormally, exit code: ${errorData.code}`);
-    });
-}
+    if (window.__TAURI__?.event?.listen) {
+        window.__TAURI__.event.listen('download-progress', (event) => { updateProgress(event?.payload || {}); });
+        window.__TAURI__.event.listen('download-status', (event) => { handleDownloadStatus(event?.payload || {}); });
+        window.__TAURI__.event.listen('process-start-error', (event) => {
+            const errorData = event?.payload || {};
+            console.error('CLIProxyAPI process start failed:', errorData);
+            showError(`Connection error: ${errorData.error}`);
+            if (errorData.reason) showError(`Reason: ${errorData.reason}`);
+        });
+        window.__TAURI__.event.listen('process-exit-error', (event) => {
+            const errorData = event?.payload || {};
+            console.error('CLIProxyAPI process exited abnormally:', errorData);
+            showError(`CLIProxyAPI process exited abnormally, exit code: ${errorData.code}`);
+        });
+    }
 
 function initializeFromLocalStorage() {
     const type = localStorage.getItem('type');
@@ -265,7 +289,8 @@ function initializeFromLocalStorage() {
     }
 }
 
-continueBtn.addEventListener('click', async () => {
+async function handleConnectClick() {
+    try { showSuccess('Connecting...'); } catch (_) {}
     const localSelected = localCard.classList.contains('selected');
 
     if (localSelected) {
@@ -295,9 +320,8 @@ continueBtn.addEventListener('click', async () => {
             }
 
             // Check version and download if needed
-            if (typeof require !== 'undefined') {
-                const { ipcRenderer } = require('electron');
-                const result = await ipcRenderer.invoke('check-version-and-download', proxyUrl);
+            if (window.__TAURI__?.core?.invoke) {
+                const result = await window.__TAURI__.core.invoke('check_version_and_download', proxyUrl);
 
                 if (result.success) {
                     if (result.needsUpdate) {
@@ -324,21 +348,31 @@ continueBtn.addEventListener('click', async () => {
                         localStorage.removeItem('password');
 
                         // Check if password needs to be set
-                        const secretKeyResult = await ipcRenderer.invoke('check-secret-key');
+                        const secretKeyResult = await window.__TAURI__.core.invoke('check_secret_key');
                         if (secretKeyResult.needsPassword) {
                             console.log('Password needs to be set:', secretKeyResult.reason);
                             passwordDialog.classList.add('show');
                         } else {
-                            // Password is set, go directly to settings page
-                            ipcRenderer.send('open-settings');
+                            // Password is set: start process then open settings page
+                            try {
+                                const startRes = await window.__TAURI__.core.invoke('start_cliproxyapi');
+                                if (!startRes || !startRes.success) {
+                                    showError('CLIProxyAPI process start failed');
+                                    return;
+                                }
+                            } catch (e) {
+                                showError('CLIProxyAPI process start error');
+                                return;
+                            }
+                            await openSettingsWindowPreferNew();
                         }
                     }
                 } else {
                     showError('Failed to check version: ' + result.error);
                 }
             } else {
-                // Fallback for web environment
-                showError('This feature requires running in Electron environment');
+                // Fallback for non-Tauri environment
+                showError('This feature requires Tauri environment');
             }
         } catch (error) {
             console.error('Error checking version:', error);
@@ -394,13 +428,7 @@ continueBtn.addEventListener('click', async () => {
         console.log('Connection successful, data saved to localStorage');
 
         // Close current window and open settings page
-        if (typeof require !== 'undefined') {
-            const { ipcRenderer } = require('electron');
-            ipcRenderer.send('open-settings');
-        } else {
-            // Fallback for web environment
-            window.location.href = 'settings.html';
-        }
+        await openSettingsWindowPreferNew();
 
     } catch (error) {
         console.error('Connection error:', error);
@@ -409,6 +437,21 @@ continueBtn.addEventListener('click', async () => {
         // Re-enable button
         continueBtn.disabled = false;
         continueBtn.textContent = 'Connect';
+    }
+}
+
+// Attach click handler safely and expose a fallback hook
+if (continueBtn) {
+    continueBtn.addEventListener('click', handleConnectClick);
+}
+// Provide a global fallback for inline onclick
+window.__onConnect = handleConnectClick;
+
+// Event delegation fallback in case of dynamic DOM
+document.addEventListener('click', (e) => {
+    const t = e.target;
+    if (t && t.id === 'continue-btn') {
+        handleConnectClick();
     }
 });
 

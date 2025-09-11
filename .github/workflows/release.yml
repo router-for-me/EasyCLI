@@ -12,6 +12,7 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - name: Create release for tag
+              id: gh-release
               uses: softprops/action-gh-release@v2
               with:
                   name: Release ${{ github.ref_name }}
@@ -19,44 +20,45 @@ jobs:
                   generate_release_notes: true
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        outputs:
+            release_id: ${{ steps.gh-release.outputs.id }}
 
     build:
-        name: Build (${{ matrix.platform }}-${{ matrix.arch }}) on ${{ matrix.os }}
+        name: Tauri Build (${{ matrix.os }} - ${{ matrix.arch_label }})
         needs: create_release
         runs-on: ${{ matrix.os }}
         strategy:
             fail-fast: false
             matrix:
                 include:
-                    # Linux x64 and arm64
+                    # Linux (amd64 only for now)
                     - os: ubuntu-latest
-                      platform: linux
-                      arch: x64
-                      targets: default
-                    - os: ubuntu-latest
-                      platform: linux
-                      arch: arm64
-                      targets: default
-
-                    # Windows x64 using Squirrel, arm64 use ZIP
+                      os_name: linux
+                      arch_label: amd64
+                      target: x86_64-unknown-linux-gnu
+                      bundles: deb
+                    # Windows
                     - os: windows-latest
-                      platform: win32
-                      arch: x64
-                      targets: '@electron-forge/maker-squirrel'
+                      os_name: windows
+                      arch_label: x64
+                      target: x86_64-pc-windows-msvc
+                      bundles: nsis
                     - os: windows-latest
-                      platform: win32
-                      arch: arm64
-                      targets: '@electron-forge/maker-zip'
-
-                    # macOS Intel (x64) and Apple Silicon (arm64), ZIP output
+                      os_name: windows
+                      arch_label: aarch64
+                      target: aarch64-pc-windows-msvc
+                      bundles: nsis
+                    # macOS
                     - os: macos-13
-                      platform: darwin
-                      arch: x64
-                      targets: '@electron-forge/maker-zip'
+                      os_name: darwin
+                      arch_label: x64
+                      target: x86_64-apple-darwin
+                      bundles: dmg
                     - os: macos-14
-                      platform: darwin
-                      arch: arm64
-                      targets: '@electron-forge/maker-zip'
+                      os_name: darwin
+                      arch_label: aarch64
+                      target: aarch64-apple-darwin
+                      bundles: dmg
 
         steps:
             - name: Checkout
@@ -70,55 +72,106 @@ jobs:
                   node-version: 20
                   cache: 'npm'
 
-            - name: Install Linux packaging deps (rpm)
-              if: runner.os == 'Linux'
-              run: |
-                  sudo apt-get update
-                  sudo apt-get install -y rpm
+            - name: Install Rust toolchain
+              uses: dtolnay/rust-toolchain@stable
+              with:
+                  targets: ${{ matrix.target }}
 
-            - name: Install dependencies
+            - name: Install Linux dependencies
+              if: runner.os == 'Linux'
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  sudo apt-get update
+                  # Detect available webkit2gtk dev package by version
+                  PKG_WEBKIT="libwebkit2gtk-4.1-dev"
+                  if ! apt-cache show "$PKG_WEBKIT" >/dev/null 2>&1; then
+                    PKG_WEBKIT="libwebkit2gtk-4.0-dev"
+                  fi
+                  sudo apt-get install -y \
+                    libgtk-3-dev \
+                    "$PKG_WEBKIT" \
+                    libayatana-appindicator3-dev \
+                    librsvg2-dev \
+                    patchelf
+
+            - name: Install frontend deps
               run: npm ci
 
-            - name: Prepare targets argument
-              id: prep
+            - name: Install create-dmg (macOS)
+              if: runner.os == 'macOS'
+              run: |
+                  brew update
+                  brew install create-dmg || true
+
+            - name: Build with Tauri Action
+              uses: tauri-apps/tauri-action@v0
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+                  APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+                  APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+                  APPLE_ID: ${{ secrets.APPLE_ID }}
+                  APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+                  APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+              with:
+                  includeDebug: false
+                  args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+
+            - name: Setup artifact folder
               shell: bash
               run: |
-                  if [ "${{ matrix.targets }}" = "default" ]; then
-                      echo "TARGETS_ARG=" >> $GITHUB_ENV
-                  else
-                      echo "TARGETS_ARG=--targets=${{ matrix.targets }}" >> $GITHUB_ENV
-                  fi
+                  mkdir -p release-out
 
-            - name: Build artifacts
-              run: |
-                  npx electron-forge make --platform=${{ matrix.platform }} --arch=${{ matrix.arch }} $TARGETS_ARG
-
-            - name: Rename artifacts with platform info
+            - name: Collect and rename artifacts (macOS)
+              if: runner.os == 'macOS'
               shell: bash
               run: |
-                  # Create platform-specific directory
-                  mkdir -p "out/platform-builds/${{ matrix.platform }}-${{ matrix.arch }}"
-                  
-                  # Find and rename files based on platform
-                  find out/make -type f \( -name "*.exe" -o -name "*.msi" -o -name "*.deb" -o -name "*.rpm" -o -name "*.zip" -o -name "*.dmg" -o -name "*.AppImage" \) -exec bash -c '
-                      file="$1"
-                      filename=$(basename "$file")
-                      extension="${filename##*.}"
-                      basename="${filename%.*}"
-                      
-                      # Create new filename with platform info
-                      new_filename="${basename}-${{ matrix.platform }}-${{ matrix.arch }}.${extension}"
-                      
-                      # Copy to platform-specific directory with new name
-                      cp "$file" "out/platform-builds/${{ matrix.platform }}-${{ matrix.arch }}/$new_filename"
-                  ' _ {} \;
+                  set -euo pipefail
+                  TAG=${{ github.ref_name }}
+                  shopt -s nullglob
+                  for f in src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg; do
+                    base="CLIProxyAPIGUI-${TAG}-${{ matrix.os_name }}-${{ matrix.arch_label }}.dmg"
+                    cp "$f" "release-out/$base"
+                    echo "Packaged $f -> release-out/$base"
+                  done
+
+            - name: Collect and rename artifacts (Windows)
+              if: runner.os == 'Windows'
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  TAG=${{ github.ref_name }}
+                  shopt -s nullglob
+                  for f in src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*.exe; do
+                    base="CLIProxyAPIGUI-${TAG}-${{ matrix.os_name }}-${{ matrix.arch_label }}-setup.exe"
+                    cp "$f" "release-out/$base"
+                    echo "Packaged $f -> release-out/$base"
+                  done
+                  for f in src-tauri/target/${{ matrix.target }}/release/bundle/msi/*.msi; do
+                    base="CLIProxyAPIGUI-${TAG}-${{ matrix.os_name }}-${{ matrix.arch_label }}.msi"
+                    cp "$f" "release-out/$base"
+                    echo "Packaged $f -> release-out/$base"
+                  done
+
+            - name: Collect and rename artifacts (Linux)
+              if: runner.os == 'Linux'
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  TAG=${{ github.ref_name }}
+                  shopt -s nullglob
+                  for f in src-tauri/target/${{ matrix.target }}/release/bundle/deb/*.deb; do
+                    base="CLIProxyAPIGUI-${TAG}-${{ matrix.os_name }}-${{ matrix.arch_label }}.deb"
+                    cp "$f" "release-out/$base"
+                    echo "Packaged $f -> release-out/$base"
+                  done
 
             - name: Upload to GitHub Release
               uses: softprops/action-gh-release@v2
               with:
                   tag_name: ${{ github.ref_name }}
                   files: |
-                      out/platform-builds/${{ matrix.platform }}-${{ matrix.arch }}/*
+                      release-out/*
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-

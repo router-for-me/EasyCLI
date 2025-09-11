@@ -1,0 +1,27 @@
+[package]
+name = "cliproxyapi-gui"
+version = "0.1.0"
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2.0.0", features = [] }
+
+[dependencies]
+tauri = { version = "2.0.0", features = ["tray-icon"] }
+tauri-plugin-shell = "2.0.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+reqwest = { version = "0.12", features = ["json", "stream", "gzip", "brotli", "zstd", "socks"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "process", "fs"] }
+futures-util = "0.3"
+home = "0.5"
+zip = { version = "0.6", default-features = false, features = ["deflate"] }
+flate2 = "1.0"
+tar = "0.4"
+thiserror = "1.0"
+parking_lot = "0.12"
+once_cell = "1.18"
+image = { version = "0.24", default-features = false, features = ["png"] }
+ico = "0.3"
+icns = "0.3"

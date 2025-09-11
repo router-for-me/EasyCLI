@@ -1,111 +1,105 @@
-# CLIProxyAPI Electron GUI
+# CLIProxyAPI GUI (Tauri)
 
 [中文文档 | Chinese Version](README_CN.md)
 
-An Electron-based desktop GUI for managing and operating CLIProxyAPI in either Local or Remote mode. It helps you:
-- Download, install, and run the latest CLIProxyAPI locally
-- Configure server settings through a friendly UI
-- Manage access tokens, third-party API keys, and OpenAI-compatible providers
-- Browse, upload, download, and delete authentication JSON files
-- Connect to a remote CLIProxyAPI instance and manage it over HTTP
+A Tauri v2-based desktop GUI for managing and operating CLIProxyAPI in Local or Remote mode. Recent updates migrate the app from Electron to Tauri, add a system tray with hide-to-tray behavior, and introduce proxy support during the local download/update flow.
 
-> Upstream project: https://github.com/luispater/CLIProxyAPI
-
-## macOS Notes
-On first run, you may need to run the following command in Terminal:
-```bash
-xattr -cr cli-proxy-api-electron.app
-```
+Upstream project: https://github.com/luispater/CLIProxyAPI
 
 ## Features
-- Local and Remote modes with one-click switching
-- Auto-detect, download, and extract the latest CLIProxyAPI release for macOS, Linux, and Windows
-- Per-OS asset selection and version tracking under `~/cliproxyapi`
-- Config file bootstrap (copy `config.example.yaml` to `config.yaml` if missing)
-- Secure remote management via password (secret key)
-- Process lifecycle management in Local mode (start, monitor, auto-restart on critical changes)
+- Local and Remote modes with quick switching.
+- Auto-detect, download, and extract the latest CLIProxyAPI release per OS/arch.
+- Version tracking under `~/cliproxyapi` and automatic config bootstrap.
+- Secure remote management via password (secret key).
+- System tray: Open Settings and Quit; closing the window hides to tray when the local process is running.
 - Settings UI:
-  - Basic: debug, port (Local), proxy URL, request logs, request retry, allow localhost unauthenticated, remote management options
-  - Access Token: manage general API access tokens
-  - Authentication Files: list/upload/download/delete JSON auth files (honors `auth-dir` path with `~` and relative paths)
-  - Third Party API Keys: Gemini, Codex, Claude Code
-  - OpenAI Compatibility: providers list with base URLs, API keys, and optional model aliases
+  - Basic: debug, port (Local), proxy URL, request logs, request retry, allow localhost unauthenticated, remote management options.
+  - Access Token: manage general API access tokens.
+  - Authentication Files: list/upload/download/delete JSON auth files (honors `auth-dir` with `~` and relative paths).
+  - Third Party API Keys: Gemini, Codex, Claude Code.
+  - OpenAI Compatibility: providers with base URLs, API keys, and optional model aliases.
+- Built-in local callback server for provider auth flows (Gemini, Claude, Codex) with automatic redirection for Local/Remote modes.
 
-## How It Works
-- Electron main process (`main.js`) creates windows and handles privileged tasks:
-  - Checks GitHub releases for CLIProxyAPI (`/repos/luispater/CLIProxyAPI/releases/latest`)
-  - Downloads and extracts platform-specific assets to `~/cliproxyapi/<version>` and writes `~/cliproxyapi/version.txt`
-  - Ensures `~/cliproxyapi/config.yaml` exists
-  - Starts/stops/monitors the local CLIProxyAPI process with `-config` when using Local mode
-  - Reads/updates `config.yaml` (YAML) and manages local auth files via IPC
-- Renderer (login/settings pages) provides the UI; a `ConfigManager` abstraction unifies Local vs Remote operations.
-  - Remote mode calls HTTP endpoints on your server (e.g., `GET /v0/management/config`, `PUT/DELETE /v0/management/...` with `Authorization: Bearer <secret>`)
+## Architecture
+- Frontend: static HTML/CSS + vanilla JS in `login.html`, `settings.html`, and `js/*`.
+- Backend: Rust (Tauri v2) in `src-tauri/src/main.rs` exposing commands to the frontend via Tauri `invoke`.
+- Packaging: Tauri bundler per `src-tauri/tauri.conf.json` (targets: dmg/app, nsis, deb).
+- Data directory: `~/cliproxyapi` holds the installed CLI and configuration.
+
+### Release Download Logic
+- Checks GitHub API: `/repos/luispater/CLIProxyAPI/releases/latest`.
+- Selects by OS/arch with file names:
+  - macOS arm64: `CLIProxyAPI_<ver>_darwin_arm64.tar.gz`
+  - macOS amd64: `CLIProxyAPI_<ver>_darwin_amd64.tar.gz`
+  - Linux amd64: `CLIProxyAPI_<ver>_linux_amd64.tar.gz`
+  - Windows amd64: `CLIProxyAPI_<ver>_windows_amd64.zip`
+  - Windows arm64: `CLIProxyAPI_<ver>_windows_arm64.zip`
+- Extracts to `~/cliproxyapi/<version>/`, writes `~/cliproxyapi/version.txt`, and ensures `config.yaml` (copied from `config.example.yaml` if present).
+- Optional proxy for GitHub downloads: supports `http://`, `https://`, `socks5://` (with or without auth).
+
+### System Tray & Window Behavior
+- Tray menu: Open Settings, Quit.
+- Close button hides the window to tray if the local process is running; use tray Quit to exit and stop the process.
 
 ## Requirements
-- Node.js 18+ (LTS recommended)
-- npm 9+
-- Internet access to reach GitHub Releases (for Local mode downloads)
+- Node.js 18+ and npm 9+.
+- Rust toolchain (via `rustup`) for Tauri v2.
+- macOS: Xcode Command Line Tools; Windows: MSVC Build Tools; Linux: standard Tauri dependencies.
 
-## Quick Start (Development)
+## Development
 1. Install dependencies:
    ```bash
    npm install
    ```
-2. Start the app in development mode:
+2. Run in dev mode (watches and serves web assets, runs Tauri dev):
    ```bash
-   npm start
+   npm run dev
    ```
-3. The app opens the Login window:
-   - Local: the app checks your local CLIProxyAPI, prompts to update if outdated/missing, and then guides you to set a remote management password (secret key).
-   - Remote: enter your server Base URL (e.g., `http://server:8080`) and the management password.
+   - `src-tauri/watch-web.js` mirrors `login.html`, `settings.html`, `css/`, `js/`, `images/` to `dist-web/`.
+   - Tauri opens the Login window.
 
-## Build Packages
-Electron Forge makers are already configured.
-- Package for your current OS:
-  ```bash
-  npm run make
-  ```
-- Generated artifacts are placed under `out/` (e.g., Squirrel installer on Windows, zip on macOS, deb/rpm on Linux).
-
-## Data & Paths
-- Install root: `~/cliproxyapi`
-  - `version.txt`: current installed CLIProxyAPI version
-  - `<version>/`: extracted executable (e.g., `cli-proxy-api` or `cli-proxy-api.exe`)
-  - `config.yaml`: active configuration file
-- Auth files directory: set by `auth-dir` inside `config.yaml`
-  - Supports `~`, absolute paths, and relative paths (relative to the directory containing `config.yaml`).
+## Build
+Use Tauri’s bundler via the npm script:
+```bash
+npm run build
+```
+Artifacts are placed under `src-tauri/target/release/bundle/` (e.g., `.dmg`/`.app` on macOS, `.nsis` on Windows, `.deb` on Linux).
 
 ## Using The App
 - Local Mode
-  - Click Connect. If needed, confirm update to latest CLIProxyAPI.
-  - When prompted, set the remote management password (secret key) to enable management endpoints.
-  - The app starts the local server on the configured `port` and monitors the process. Certain changes (e.g., port) trigger an automatic restart.
+  - Optionally set a proxy in the login screen to download via HTTP/HTTPS/SOCKS5.
+  - If the CLI is missing/outdated, confirm update; progress is shown.
+  - When prompted, set `remote-management.secret-key` for management endpoints.
+  - The app starts and monitors the local process; tray remains available.
 - Remote Mode
-  - Provide Base URL and the server’s management password.
-  - The GUI reads current config and applies changes via `/v0/management/...` endpoints.
+  - Enter Base URL (e.g., `http://server:8317`) and management password.
+  - The GUI reads and updates config via `/v0/management/...` endpoints.
+
+## Data & Paths
+- Root: `~/cliproxyapi`
+  - `version.txt`: current version.
+  - `<version>/`: extracted CLI build (`cli-proxy-api` or `cli-proxy-api.exe`).
+  - `config.yaml`: active configuration; created from `config.example.yaml` if available.
+- Auth files dir: from `config.yaml` key `auth-dir`; supports `~`, absolute, and relative paths (relative to `config.yaml`).
 
 ## Troubleshooting
-- Cannot fetch latest release
-  - Check network and GitHub availability; corporate proxies may need `Proxy URL` configured.
-- “Executable file does not exist” after download
-  - Ensure your OS/arch matches the provided assets and that the release includes the expected filenames.
-- “Version file does not exist” or config errors
-  - The app expects `~/cliproxyapi/version.txt` and `~/cliproxyapi/config.yaml`. Use Local mode once to bootstrap.
-- Password/secret issues
-  - Local mode requires setting `remote-management.secret-key`. Remote mode requires the same key when connecting.
-- File operations fail in Local mode
-  - Verify `auth-dir` path exists or is creatable. Paths like `~/...` and relative paths are supported.
+- Cannot fetch latest release: set a proxy in Login (supports HTTP/HTTPS/SOCKS5) and retry.
+- Asset not found: ensure your OS/arch matches the expected filenames listed above.
+- Callback server port in use: Gemini(8085)/Claude(54545)/Codex(1455) must be free; close conflicting apps or retry.
+- Hidden to tray: use the tray menu to re-open Settings or Quit.
+- Config errors: ensure `version.txt` and `config.yaml` exist under `~/cliproxyapi` (Local mode bootstraps them).
 
-## Project Structure (overview)
-- `main.js`: Electron main process, downloads/installs CLIProxyAPI, manages processes, IPC, YAML I/O
-- `login.html` + `js/login.js`: mode selection and update/install flow
-- `settings.html` + `js/settings-*.js`: settings UI (basic, tokens, API keys, OpenAI providers, auth files)
-- `css/`: UI styles; `images/`: icons
-- `forge.config.js`: Electron Forge packaging config
+## Project Layout (overview)
+- `src-tauri/src/main.rs`: Tauri backend (downloads, config/auth-file ops, process + tray, callback helper).
+- `src-tauri/tauri.conf.json`: Tauri configuration and bundler targets.
+- `src-tauri/prepare-web.js` / `src-tauri/watch-web.js`: copy/watch static web assets to `dist-web/`.
+- `login.html` + `js/login.js`: mode selection, proxy + update/install flow.
+- `settings.html` + `js/settings-*.js`: settings UI (basic, tokens, API keys, OpenAI providers, auth files).
+- `css/` and `images/`: UI styles and icons.
 
 ## Security Notes
-- The management password (secret key) is sensitive; keep it private.
-- Remote mode stores connection info in `localStorage` for convenience. Clear it if using shared machines.
+- Treat the management password (secret key) as sensitive.
+- Remote connection info is stored in `localStorage`; clear it on shared machines.
 
 ## License
-This project is released under the MIT License. See `LICENSE` for details.
+MIT License. See `LICENSE`.

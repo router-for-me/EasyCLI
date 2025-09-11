@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/permission.json",
+  "identifier": "start-cliproxyapi",
+  "description": "Allow invoking the start_cliproxyapi app command",
+  "allow": ["start_cliproxyapi"]
+}
+

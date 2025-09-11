@@ -1,0 +1,21 @@
+"$schema" = "../gen/schemas/permission.json"
+identifier = "allow-app-commands"
+description = "Allow invoking application commands from the frontend"
+allow = [
+  "check_version_and_download",
+  "download_cliproxyapi",
+  "check_secret_key",
+  "update_secret_key",
+  "read_config_yaml",
+  "update_config_yaml",
+  "read_local_auth_files",
+  "upload_local_auth_files",
+  "delete_local_auth_files",
+  "download_local_auth_files",
+  "restart_cliproxyapi",
+  "start_cliproxyapi",
+  "open_settings_window",
+  "open_login_window",
+  "start_callback_server",
+  "stop_callback_server"
+]

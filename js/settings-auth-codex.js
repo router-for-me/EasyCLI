@@ -17,7 +17,8 @@ async function startCodexAuthFlow() {
         showCodexAuthDialog();
     } catch (error) {
         console.error('Error starting Codex auth flow:', error);
-        showError('Failed to start Codex authentication flow: ' + error.message);
+        const msg = (error && (error.message || String(error))) || 'Unknown error';
+        showError('Failed to start Codex authentication flow: ' + msg);
         if (codexLocalServer) {
             await stopCodexLocalServer();
         }
@@ -25,21 +26,24 @@ async function startCodexAuthFlow() {
 }
 
 async function startCodexLocalServer() {
-    return new Promise((resolve, reject) => {
-        try {
-            if (typeof require !== 'undefined') {
-                const http = require('http');
-                codexLocalServer = http.createServer((req, res) => { handleCodexCallback(req, res); });
-                codexLocalServer.listen(1455, 'localhost', () => { console.log('Local server started on port 1455'); resolve(); });
-                codexLocalServer.on('error', (error) => {
-                    if (error.code === 'EADDRINUSE') { reject(new Error('Port 1455 is already in use, please try again later')); }
-                    else { reject(new Error('Failed to start local server: ' + error.message)); }
-                });
-            } else {
-                reject(new Error('Codex authentication requires running in Electron environment'));
-            }
-        } catch (error) { reject(error); }
-    });
+    try {
+        const currentMode = localStorage.getItem('type') || 'local';
+        let localPort = null, baseUrl = null;
+        if (currentMode === 'local') {
+            const config = await configManager.getConfig();
+            localPort = config.port || 8317;
+        } else {
+            baseUrl = localStorage.getItem('base-url');
+            if (!baseUrl) throw new Error('Missing base-url configuration');
+        }
+        await window.__TAURI__.core.invoke('start_callback_server', {
+            provider: 'codex',
+            listenPort: 1455,
+            mode: currentMode,
+            baseUrl: baseUrl,
+            localPort: localPort
+        });
+    } catch (error) { throw error; }
 }
 
 async function handleCodexCallback(req, res) {
@@ -76,13 +80,7 @@ async function handleCodexCallback(req, res) {
     }
 }
 
-async function stopCodexLocalServer() {
-    return new Promise((resolve) => {
-        if (codexLocalServer) {
-            codexLocalServer.close(() => { console.log('Local server stopped'); codexLocalServer = null; resolve(); });
-        } else { resolve(); }
-    });
-}
+async function stopCodexLocalServer() { try { await window.__TAURI__.core.invoke('stop_callback_server', { listenPort: 1455 }); } catch (_) {} }
 
 async function getCodexAuthUrl() {
     try {
@@ -148,7 +146,7 @@ function showCodexAuthDialog() {
     document.getElementById('codex-copy-btn').addEventListener('click', copyCodexUrl);
     document.getElementById('codex-open-btn').addEventListener('click', openCodexUrl);
     document.getElementById('codex-cancel-btn').addEventListener('click', cancelCodexAuth);
-    modal.addEventListener('click', (e) => { if (e.target === modal) cancelCodexAuth(); });
+    // Disable backdrop click-to-close to avoid accidental dismiss
     document.addEventListener('keydown', handleCodexEscapeKey);
     const input = document.getElementById('codex-auth-url-input');
     input.focus(); input.select();
@@ -164,7 +162,7 @@ async function copyCodexUrl() {
 
 function openCodexUrl() {
     try {
-        if (typeof require !== 'undefined') { const { shell } = require('electron'); shell.openExternal(codexAuthUrl); }
+        if (window.__TAURI__?.shell?.open) { window.__TAURI__.shell.open(codexAuthUrl); }
         else { window.open(codexAuthUrl, '_blank'); }
         showSuccessMessage('Authentication link opened in browser');
 
@@ -217,7 +215,8 @@ async function cancelCodexAuth() {
         document.removeEventListener('keydown', handleCodexEscapeKey);
         const modal = document.getElementById('codex-auth-modal');
         if (modal) modal.remove();
-        if (codexLocalServer) await stopCodexLocalServer();
+        // Always stop local callback server to free the port
+        await stopCodexLocalServer();
 
         // Cancel ongoing requests
         if (codexAbortController) {
@@ -339,4 +338,3 @@ async function pollCodexAuthStatus(authType, state, onSuccess, onError) {
         }, 300000);
     });
 }
-

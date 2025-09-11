@@ -44,8 +44,8 @@ function formatFileSize(bytes) {
 }
 
 // Format date string for display
-function formatDate(dateString) {
-    const date = new Date(dateString);
-    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+function formatDate(value) {
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return '-';
+    return d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
 }
-

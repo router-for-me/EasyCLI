@@ -5,12 +5,22 @@
     <meta charset="UTF-8" />
     <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP -->
     <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' http: https:" />
+        content="default-src 'self'; script-src 'self' 'unsafe-inline' tauri:; style-src 'self' 'unsafe-inline'; connect-src 'self' http: https: tauri: ipc:" />
     <meta http-equiv="X-Content-Security-Policy"
-        content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self' http: https:" />
+        content="default-src 'self'; script-src 'self' 'unsafe-inline' tauri:; style-src 'self' 'unsafe-inline'; connect-src 'self' http: https: tauri: ipc:" />
     <title>CLIProxyAPI Control Panel</title>
     <link rel="stylesheet" href="css/settings.css">
+    
     <script src="js/config-manager.js"></script>
+    <script>
+        // Dev convenience: reload on Cmd/Ctrl+R
+        window.addEventListener('keydown', function (e) {
+            if ((e.metaKey || e.ctrlKey) && (e.key === 'r' || e.key === 'R')) {
+                e.preventDefault();
+                location.reload();
+            }
+        });
+    </script>
 </head>
 
 <body>

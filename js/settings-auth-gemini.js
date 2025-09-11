@@ -37,7 +37,7 @@ function showGeminiProjectIdDialog() {
     document.getElementById('gemini-project-modal-close').addEventListener('click', cancelGeminiProjectDialogAndReset);
     document.getElementById('gemini-project-confirm-btn').addEventListener('click', confirmGeminiProjectId);
     document.getElementById('gemini-project-cancel-btn').addEventListener('click', cancelGeminiProjectDialogAndReset);
-    modal.addEventListener('click', (e) => { if (e.target === modal) cancelGeminiProjectDialogAndReset(); });
+    // Disable backdrop click-to-close to avoid accidental dismiss
     document.addEventListener('keydown', handleGeminiProjectEscapeKey);
     document.getElementById('gemini-project-id-input').focus();
 }
@@ -81,25 +81,31 @@ async function startGeminiAuthFlow() {
         showGeminiAuthDialog();
     } catch (error) {
         console.error('Error starting Gemini auth flow:', error);
-        showError('Failed to start Gemini CLI Authentication flow: ' + error.message);
+        const msg = (error && (error.message || String(error))) || 'Unknown error';
+        showError('Failed to start Gemini CLI Authentication flow: ' + msg);
         if (geminiLocalServer) { await stopGeminiLocalServer(); }
     }
 }
 
 async function startGeminiLocalServer() {
-    return new Promise((resolve, reject) => {
-        try {
-            if (typeof require !== 'undefined') {
-                const http = require('http');
-                geminiLocalServer = http.createServer((req, res) => { handleGeminiCallback(req, res); });
-                geminiLocalServer.listen(8085, 'localhost', () => { console.log('Local server started on port 8085'); resolve(); });
-                geminiLocalServer.on('error', (error) => {
-                    if (error.code === 'EADDRINUSE') reject(new Error('Port 8085 is already in use, please try again later'));
-                    else reject(new Error('Failed to start local server: ' + error.message));
-                });
-            } else { reject(new Error('Gemini CLI Authentication requires running in Electron environment')); }
-        } catch (error) { reject(error); }
-    });
+    try {
+        const currentMode = localStorage.getItem('type') || 'local';
+        let localPort = null, baseUrl = null;
+        if (currentMode === 'local') {
+            const config = await configManager.getConfig();
+            localPort = config.port || 8317;
+        } else {
+            baseUrl = localStorage.getItem('base-url');
+            if (!baseUrl) throw new Error('Missing base-url configuration');
+        }
+        await window.__TAURI__.core.invoke('start_callback_server', {
+            provider: 'google',
+            listenPort: 8085,
+            mode: currentMode,
+            baseUrl: baseUrl,
+            localPort: localPort
+        });
+    } catch (error) { throw error; }
 }
 
 async function handleGeminiCallback(req, res) {
@@ -136,12 +142,7 @@ async function handleGeminiCallback(req, res) {
     }
 }
 
-async function stopGeminiLocalServer() {
-    return new Promise((resolve) => {
-        if (geminiLocalServer) { geminiLocalServer.close(() => { console.log('Gemini local server stopped'); geminiLocalServer = null; resolve(); }); }
-        else { resolve(); }
-    });
-}
+async function stopGeminiLocalServer() { try { await window.__TAURI__.core.invoke('stop_callback_server', { listenPort: 8085 }); } catch (_) {} }
 
 async function getGeminiAuthUrl() {
     try {
@@ -215,7 +216,7 @@ function showGeminiAuthDialog() {
     document.getElementById('copy-gemini-url-btn').addEventListener('click', copyGeminiUrl);
     document.getElementById('open-gemini-url-btn').addEventListener('click', openGeminiUrl);
     document.getElementById('cancel-gemini-btn').addEventListener('click', cancelGeminiAuth);
-    modal.addEventListener('click', (e) => { if (e.target === modal) cancelGeminiAuth(); });
+    // Disable backdrop click-to-close to avoid accidental dismiss
     document.addEventListener('keydown', handleGeminiEscapeKey);
     const input = document.getElementById('gemini-auth-url-input');
     input.focus(); input.select();
@@ -231,7 +232,7 @@ async function copyGeminiUrl() {
 
 function openGeminiUrl() {
     try {
-        if (typeof require !== 'undefined') { const { shell } = require('electron'); shell.openExternal(geminiAuthUrl); }
+        if (window.__TAURI__?.shell?.open) { window.__TAURI__.shell.open(geminiAuthUrl); }
         else { window.open(geminiAuthUrl, '_blank'); }
         showSuccessMessage('Authentication link opened in browser');
 
@@ -291,7 +292,8 @@ async function cancelGeminiAuth() {
         document.removeEventListener('keydown', handleGeminiEscapeKey);
         const modal = document.getElementById('gemini-auth-modal');
         if (modal) modal.remove();
-        if (geminiLocalServer) await stopGeminiLocalServer();
+        // Always stop local callback server to free the port
+        await stopGeminiLocalServer();
 
         // Cancel ongoing requests
         if (geminiAbortController) {
@@ -423,4 +425,3 @@ async function pollGeminiAuthStatus(authType, state, onSuccess, onError) {
         }, 300000);
     });
 }
-

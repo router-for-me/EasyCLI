@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/permission.json",
+  "identifier": "open-login-window",
+  "description": "Allow invoking the open_login_window app command",
+  "allow": ["open_login_window"]
+}
+

@@ -268,9 +268,8 @@ async function applyAllSettings() {
             if (portChanged && localStorage.getItem('type') === 'local') {
                 console.log('Port configuration has changed, need to restart CLIProxyAPI process');
                 showSuccessMessage('Port configuration saved, restarting CLIProxyAPI process...');
-                if (typeof require !== 'undefined') {
-                    const { ipcRenderer } = require('electron');
-                    ipcRenderer.send('restart-cliproxyapi');
+                if (window.__TAURI__?.core?.invoke) {
+                    window.__TAURI__.core.invoke('restart_cliproxyapi');
                 }
             }
         } else {
@@ -354,4 +353,3 @@ async function resetAllSettings() {
 // Wire core button events
 applyBtn.addEventListener('click', applyAllSettings);
 resetBtn.addEventListener('click', resetAllSettings);
-
