@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "CLIProxyAPIGUI",
+  "productName": "EasyCLI",
   "version": "1.0.0",
-  "identifier": "com.example.cliproxyapi.gui",
+  "identifier": "com.example.easycli",
   "build": {
     "beforeBuildCommand": "node src-tauri/prepare-web.js",
     "beforeDevCommand": "node src-tauri/watch-web.js",
@@ -20,7 +20,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "CLIProxyAPI",
+        "title": "EasyCLI",
         "width": 530,
         "height": 380,
         "resizable": false,
@@ -30,7 +30,7 @@
       },
       {
         "label": "settings",
-        "title": "CLIProxyAPI Control Panel",
+        "title": "EasyCLI Control Panel",
         "width": 930,
         "height": 600,
         "resizable": false,

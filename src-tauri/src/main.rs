@@ -1,4 +1,4 @@
-// Tauri v2 backend for CLIProxyAPIGUI
+// Tauri v2 backend for EasyCLI
 // Ports core Electron main.js logic to Rust with a simpler API surface (KISS)
 
 #![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
@@ -144,7 +144,7 @@ fn parse_proxy(proxy_url: &str, builder: reqwest::ClientBuilder) -> reqwest::Cli
 
 async fn fetch_latest_release(proxy_url: String) -> Result<VersionInfo, AppError> {
     let client = parse_proxy(&proxy_url, reqwest::Client::builder())
-        .user_agent("CLIProxyAPI-GUI")
+        .user_agent("EasyCLI")
         .build()?;
     let resp = client
         .get("https://api.github.com/repos/luispater/CLIProxyAPI/releases/latest")
@@ -626,7 +626,7 @@ fn create_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
     let mut builder = TrayIconBuilder::new()
         .menu(&menu)
         .show_menu_on_left_click(true)
-        .tooltip("CLIProxyAPI")
+        .tooltip("EasyCLI")
         .on_menu_event(|app, event| match event.id().as_ref() {
             "open_settings" => { let _ = open_settings_window(app.clone()); },
             "quit" => {
@@ -832,7 +832,7 @@ fn open_settings_window(app: tauri::AppHandle) -> Result<(), String> {
     // Otherwise create it and show
     let url = WebviewUrl::App("settings.html".into());
     let win = WebviewWindowBuilder::new(&app, "settings", url)
-        .title("CLIProxyAPI Control Panel")
+        .title("EasyCLI Control Panel")
         .inner_size(930.0, 600.0)
         .resizable(false)
         .build()
@@ -877,7 +877,7 @@ fn open_login_window(app: tauri::AppHandle) -> Result<(), String> {
     // Otherwise create the login window and close settings
     let url = WebviewUrl::App("login.html".into());
     let win = WebviewWindowBuilder::new(&app, "main", url)
-        .title("CLIProxyAPI")
+        .title("EasyCLI")
         .inner_size(530.0, 380.0)
         .resizable(false)
         .build()

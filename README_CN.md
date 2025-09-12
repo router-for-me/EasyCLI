@@ -1,8 +1,8 @@
-# CLIProxyAPI 图形界面（Tauri）
+# EasyCLI（CLIProxyAPI 的 Tauri 图形界面）
 
 [English Version | 英文文档](README.md)
 
-一个基于 Tauri v2 的桌面图形界面，用于在本地或远程模式下管理和操作 CLIProxyAPI。最近的更新将框架从 Electron 迁移到 Tauri，新增托盘（最小化到托盘）行为，并在登录流程中加入下载更新时的代理支持。
+EasyCLI 是一个基于 Tauri v2 的桌面图形界面，用于在本地或远程模式下管理和操作 CLIProxyAPI。最近的更新将框架从 Electron 迁移到 Tauri，新增托盘（最小化到托盘）行为，并在登录流程中加入下载更新时的代理支持。
 
 上游项目地址：https://github.com/luispater/CLIProxyAPI
 

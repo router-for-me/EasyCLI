@@ -548,32 +548,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cliproxyapi-gui"
-version = "0.1.0"
-dependencies = [
- "flate2",
- "futures-util",
- "home",
- "icns",
- "ico 0.3.0",
- "image",
- "once_cell",
- "parking_lot",
- "reqwest",
- "rfd",
- "serde",
- "serde_json",
- "serde_yaml",
- "tar",
- "tauri",
- "tauri-build",
- "tauri-plugin-shell",
- "thiserror 1.0.69",
- "tokio",
- "zip",
-]
-
-[[package]]
 name = "color_quant"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -959,6 +933,32 @@ name = "dyn-clone"
 version = "1.0.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
+
+[[package]]
+name = "easycli"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "futures-util",
+ "home",
+ "icns",
+ "ico 0.3.0",
+ "image",
+ "once_cell",
+ "parking_lot",
+ "reqwest",
+ "rfd",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tar",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-shell",
+ "thiserror 1.0.69",
+ "tokio",
+ "zip",
+]
 
 [[package]]
 name = "embed-resource"

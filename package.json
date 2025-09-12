@@ -1,5 +1,5 @@
 {
-  "name": "cli-proxy-api-electron",
+  "name": "easycli",
   "version": "1.0.0",
   "description": "CLI Proxy API's Electron GUI",
   "scripts": {

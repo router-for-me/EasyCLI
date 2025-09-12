@@ -1,8 +1,8 @@
-# CLIProxyAPI GUI (Tauri)
+# EasyCLI (Tauri GUI for CLIProxyAPI)
 
 [中文文档 | Chinese Version](README_CN.md)
 
-A Tauri v2-based desktop GUI for managing and operating CLIProxyAPI in Local or Remote mode. Recent updates migrate the app from Electron to Tauri, add a system tray with hide-to-tray behavior, and introduce proxy support during the local download/update flow.
+EasyCLI is a Tauri v2-based desktop GUI for managing and operating CLIProxyAPI in Local or Remote mode. Recent updates migrate the app from Electron to Tauri, add a system tray with hide-to-tray behavior, and introduce proxy support during the local download/update flow.
 
 Upstream project: https://github.com/luispater/CLIProxyAPI
 
