@@ -114,11 +114,7 @@ jobs:
                   if ! command -v SetFile >/dev/null 2>&1; then
                     echo "Creating SetFile stub to avoid DMG bundling failure"
                     mkdir -p "$HOME/bin"
-                    cat > "$HOME/bin/SetFile" << 'EOF'
-#!/usr/bin/env bash
-# No-op SetFile stub for CI runners missing Developer Tools' SetFile.
-exit 0
-EOF
+                    printf '%s\n' '#!/usr/bin/env bash' '# No-op SetFile stub for CI runners missing Developer Tools\' SetFile.' 'exit 0' > "$HOME/bin/SetFile"
                     chmod +x "$HOME/bin/SetFile"
                     echo "$HOME/bin" >> "$GITHUB_PATH"
                   else
