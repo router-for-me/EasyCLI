@@ -28,6 +28,8 @@ use rfd::FileDialog;
 static PROCESS: Lazy<Arc<Mutex<Option<Child>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
 static TRAY_ICON: Lazy<Arc<Mutex<Option<TrayIcon>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
 static CALLBACK_SERVERS: Lazy<Arc<Mutex<HashMap<u16, (Arc<AtomicBool>, thread::JoinHandle<()>)>>>> = Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
+// Flag to allow programmatic login window close without exiting the app
+static SKIP_EXIT_ON_MAIN_CLOSE: AtomicBool = AtomicBool::new(false);
 
 #[derive(Error, Debug)]
 enum AppError {
@@ -818,10 +820,11 @@ fn open_settings_window(app: tauri::AppHandle) -> Result<(), String> {
             let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
             let _ = app.set_dock_visibility(true);
         }
-        // Also close login window shortly after
+        // Also close login window shortly after (do not exit app)
         let app_cloned = app.clone();
         tauri::async_runtime::spawn(async move {
             sleep(Duration::from_millis(50)).await;
+            SKIP_EXIT_ON_MAIN_CLOSE.store(true, Ordering::SeqCst);
             if let Some(main) = app_cloned.get_webview_window("main") {
                 let _ = main.close();
             }
@@ -846,10 +849,11 @@ fn open_settings_window(app: tauri::AppHandle) -> Result<(), String> {
         let _ = app.set_activation_policy(tauri::ActivationPolicy::Regular);
         let _ = app.set_dock_visibility(true);
     }
-    // Close the main (login) window shortly after to avoid hanging the invoke
+    // Close the main (login) window shortly after to avoid hanging the invoke (do not exit app)
     let app_cloned = app.clone();
     tauri::async_runtime::spawn(async move {
         sleep(Duration::from_millis(50)).await;
+        SKIP_EXIT_ON_MAIN_CLOSE.store(true, Ordering::SeqCst);
         if let Some(main) = app_cloned.get_webview_window("main") {
             let _ = main.close();
         }
@@ -900,6 +904,19 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
+                // If user closes the login window, exit the entire app.
+                if window.label() == "main" {
+                    // If closing programmatically during navigation to settings, skip exiting once.
+                    if SKIP_EXIT_ON_MAIN_CLOSE.swap(false, Ordering::SeqCst) {
+                        return; // Allow close without quitting
+                    }
+                    // Stop backend process if running then quit.
+                    stop_process_internal();
+                    let _ = TRAY_ICON.lock().take();
+                    let _ = window.app_handle().exit(0);
+                    return;
+                }
+
                 // Keep running in background (tray) if local process is active
                 let running = PROCESS.lock().is_some();
                 if running {
