@@ -104,6 +104,27 @@ jobs:
                   brew update
                   brew install create-dmg || true
 
+            - name: Work around missing SetFile (macOS)
+              if: runner.os == 'macOS'
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  # Some macOS runners (notably macos-13) lack /usr/bin/SetFile which create-dmg expects.
+                  # Provide a harmless no-op stub earlier in PATH to keep DMG bundling from failing.
+                  if ! command -v SetFile >/dev/null 2>&1; then
+                    echo "Creating SetFile stub to avoid DMG bundling failure"
+                    mkdir -p "$HOME/bin"
+                    cat > "$HOME/bin/SetFile" << 'EOF'
+#!/usr/bin/env bash
+# No-op SetFile stub for CI runners missing Developer Tools' SetFile.
+exit 0
+EOF
+                    chmod +x "$HOME/bin/SetFile"
+                    echo "$HOME/bin" >> "$GITHUB_PATH"
+                  else
+                    echo "Found SetFile at: $(command -v SetFile)"
+                  fi
+
             - name: Build with Tauri Action
               uses: tauri-apps/tauri-action@v0
               env:
