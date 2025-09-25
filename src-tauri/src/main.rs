@@ -33,6 +33,12 @@ static PROCESS: Lazy<Arc<Mutex<Option<Child>>>> = Lazy::new(|| Arc::new(Mutex::n
 static TRAY_ICON: Lazy<Arc<Mutex<Option<TrayIcon>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
 static CALLBACK_SERVERS: Lazy<Arc<Mutex<HashMap<u16, (Arc<AtomicBool>, thread::JoinHandle<()>)>>>> =
     Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
+// Keep-alive mechanism for Local mode
+static KEEP_ALIVE_HANDLE: Lazy<Arc<Mutex<Option<(Arc<AtomicBool>, thread::JoinHandle<()>)>>>> =
+    Lazy::new(|| Arc::new(Mutex::new(None)));
+// Store the password used to start CLIProxyAPI for keep-alive authentication
+static CLI_PROXY_PASSWORD: Lazy<Arc<Mutex<Option<String>>>> =
+    Lazy::new(|| Arc::new(Mutex::new(None)));
 // Flag to allow programmatic login window close without exiting the app
 static SKIP_EXIT_ON_MAIN_CLOSE: AtomicBool = AtomicBool::new(false);
 
@@ -711,6 +717,8 @@ fn start_monitor(app: tauri::AppHandle) {
             if remove {
                 // Clear stored process
                 *proc_ref.lock() = None;
+                // Stop keep-alive mechanism when process exits
+                stop_keep_alive_internal();
                 // Emit event
                 if let Some(code) = exit_code {
                     println!("[CLIProxyAPI][EXIT] process exited with code {}", code);
@@ -790,6 +798,9 @@ fn start_cliproxyapi(app: tauri::AppHandle) -> Result<serde_json::Value, String>
     // Generate random password for local mode
     let password = generate_random_password();
 
+    // Store the password for keep-alive authentication
+    *CLI_PROXY_PASSWORD.lock() = Some(password.clone());
+
     // Update config.yaml with the generated password
     let content = fs::read_to_string(&config).map_err(|e| e.to_string())?;
     let mut conf: serde_yaml::Value = serde_yaml::from_str(&content).map_err(|e| e.to_string())?;
@@ -849,6 +860,12 @@ fn start_cliproxyapi(app: tauri::AppHandle) -> Result<serde_json::Value, String>
     start_monitor(app.clone());
     // Create tray icon when local process starts
     let _ = create_tray(&app);
+
+    // Start keep-alive mechanism for Local mode
+    let config = read_config_yaml().unwrap_or(json!({}));
+    let port = config.get("port").and_then(|v| v.as_u64()).unwrap_or(8317) as u16;
+    let _ = start_keep_alive(port);
+
     Ok(json!({"success": true, "password": password}))
 }
 
@@ -869,6 +886,9 @@ fn restart_cliproxyapi(app: tauri::AppHandle) -> Result<(), String> {
 
     // Generate random password for local mode
     let password = generate_random_password();
+
+    // Store the password for keep-alive authentication
+    *CLI_PROXY_PASSWORD.lock() = Some(password.clone());
 
     // Update config.yaml with the generated password
     let content = fs::read_to_string(&config).map_err(|e| e.to_string())?;
@@ -926,6 +946,12 @@ fn restart_cliproxyapi(app: tauri::AppHandle) -> Result<(), String> {
     pipe_child_output(&mut child);
     *PROCESS.lock() = Some(child);
     start_monitor(app.clone());
+
+    // Start keep-alive mechanism for Local mode
+    let config = read_config_yaml().unwrap_or(json!({}));
+    let port = config.get("port").and_then(|v| v.as_u64()).unwrap_or(8317) as u16;
+    let _ = start_keep_alive(port);
+
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.emit("cliproxyapi-restarted", json!({"version": ver}));
     }
@@ -936,6 +962,10 @@ fn stop_process_internal() {
     if let Some(mut child) = PROCESS.lock().take() {
         let _ = child.kill();
     }
+    // Stop keep-alive mechanism when process stops
+    stop_keep_alive_internal();
+    // Clear stored password when process stops
+    *CLI_PROXY_PASSWORD.lock() = None;
 }
 
 fn create_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
@@ -1058,19 +1088,18 @@ fn build_redirect_url(
     query: &str,
 ) -> String {
     let cb = callback_path_for(provider);
-    let mut base = String::new();
-    if mode == "local" {
+    let base = if mode == "local" {
         let port = local_port.unwrap_or(8317);
-        base = format!("http://127.0.0.1:{}{}", port, cb);
+        format!("http://127.0.0.1:{}{}", port, cb)
     } else {
         let bu = base_url.unwrap_or_else(|| "http://127.0.0.1:8317".to_string());
         // ensure single slash
         if bu.ends_with('/') {
-            base = format!("{}{}", bu, cb.trim_start_matches('/'));
+            format!("{}{}", bu, cb.trim_start_matches('/'))
         } else {
-            base = format!("{}/{}", bu, cb.trim_start_matches('/'));
+            format!("{}/{}", bu, cb.trim_start_matches('/'))
         }
-    }
+    };
     if query.is_empty() {
         base
     } else {
@@ -1323,7 +1352,9 @@ fn main() {
             open_login_window,
             start_callback_server,
             stop_callback_server,
-            save_files_to_directory
+            save_files_to_directory,
+            start_keep_alive,
+            stop_keep_alive
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -1367,4 +1398,106 @@ fn save_files_to_directory(files: Vec<SaveFile>) -> Result<serde_json::Value, St
         "errorCount": error_count,
         "errors": if errors.is_empty() { serde_json::Value::Null } else { json!(errors) }
     }))
+}
+
+// Keep-alive mechanism functions
+
+fn run_keep_alive_loop(stop: Arc<AtomicBool>, port: u16, password: String) {
+    thread::spawn(move || {
+        println!("[KEEP-ALIVE] Starting keep-alive loop for port {}", port);
+
+        // Create a tokio runtime for async operations
+        let rt = match tokio::runtime::Runtime::new() {
+            Ok(rt) => rt,
+            Err(e) => {
+                println!("[KEEP-ALIVE] Failed to create tokio runtime: {}", e);
+                return;
+            }
+        };
+
+        while !stop.load(Ordering::SeqCst) {
+            // Send keep-alive request
+            let keep_alive_url = format!("http://127.0.0.1:{}/keep-alive", port);
+            let password_clone = password.clone();
+
+            let result = rt.block_on(async {
+                println!("[KEEP-ALIVE] Sending request to: {}", keep_alive_url);
+                println!(
+                    "[KEEP-ALIVE] Using password: {}...",
+                    &password_clone[..8.min(password_clone.len())]
+                );
+                reqwest::Client::new()
+                    .get(&keep_alive_url)
+                    .header("Authorization", format!("Bearer {}", &password_clone))
+                    .header("Content-Type", "application/json")
+                    .send()
+                    .await
+            });
+
+            match result {
+                Ok(response) => {
+                    if response.status().is_success() {
+                        println!("[KEEP-ALIVE] Request successful");
+                    } else {
+                        println!("[KEEP-ALIVE] Request failed: {}", response.status());
+                    }
+                }
+                Err(e) => {
+                    println!("[KEEP-ALIVE] Request error: {}", e);
+                }
+            }
+
+            // Wait 5 seconds before next request
+            for _ in 0..50 {
+                if stop.load(Ordering::SeqCst) {
+                    break;
+                }
+                thread::sleep(Duration::from_millis(100));
+            }
+        }
+
+        println!("[KEEP-ALIVE] Keep-alive loop stopped");
+    });
+}
+
+#[tauri::command]
+fn start_keep_alive(port: u16) -> Result<serde_json::Value, String> {
+    // Stop existing keep-alive if running
+    stop_keep_alive_internal();
+
+    // Get the stored password
+    let password = CLI_PROXY_PASSWORD
+        .lock()
+        .clone()
+        .ok_or("No CLIProxyAPI password available")?;
+
+    let stop = Arc::new(AtomicBool::new(false));
+    let stop_clone = stop.clone();
+
+    let handle = thread::spawn(move || {
+        run_keep_alive_loop(stop_clone, port, password);
+    });
+
+    *KEEP_ALIVE_HANDLE.lock() = Some((stop, handle));
+
+    println!("[KEEP-ALIVE] Started keep-alive for port {}", port);
+    Ok(json!({"success": true}))
+}
+
+#[tauri::command]
+fn stop_keep_alive() -> Result<serde_json::Value, String> {
+    stop_keep_alive_internal();
+    Ok(json!({"success": true}))
+}
+
+fn stop_keep_alive_internal() {
+    if let Some((stop, handle)) = KEEP_ALIVE_HANDLE.lock().take() {
+        println!("[KEEP-ALIVE] Stopping keep-alive mechanism");
+        stop.store(true, Ordering::SeqCst);
+
+        // Detach the handle to avoid blocking
+        std::thread::spawn(move || {
+            let _ = handle.join();
+        });
+    }
 }

@@ -101,6 +101,17 @@ updateCancelBtn.addEventListener('click', async () => {
                 showError('CLIProxyAPI process start failed');
                 return;
             }
+            // Save the generated password for local mode HTTP requests
+            if (startRes.password) {
+                localStorage.setItem('local-management-key', startRes.password);
+                console.log('Saved local management key:', startRes.password);
+            }
+            // Start keep-alive mechanism for Local mode
+            if (window.configManager) {
+                window.configManager.startKeepAlive().catch(error => {
+                    console.error('Error starting keep-alive:', error);
+                });
+            }
         } catch (e) {
             showError('CLIProxyAPI process start error');
             return;
@@ -148,6 +159,12 @@ updateConfirmBtn.addEventListener('click', async () => {
                         if (startRes.password) {
                             localStorage.setItem('local-management-key', startRes.password);
                             console.log('Saved local management key:', startRes.password);
+                        }
+                        // Start keep-alive mechanism for Local mode
+                        if (window.configManager) {
+                            window.configManager.startKeepAlive().catch(error => {
+                                console.error('Error starting keep-alive:', error);
+                            });
                         }
                     } catch (e) {
                         showError('CLIProxyAPI process start error');

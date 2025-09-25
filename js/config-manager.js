@@ -7,6 +7,8 @@ class ConfigManager {
         this.type = localStorage.getItem('type') || 'local';
         this.baseUrl = localStorage.getItem('base-url');
         this.password = localStorage.getItem('password');
+        this.keepAliveInterval = null;
+        this.keepAliveEnabled = false;
     }
 
     /**
@@ -1096,10 +1098,72 @@ class ConfigManager {
     }
 
     /**
+     * Start keep-alive mechanism for Local mode (backend implementation)
+     */
+    async startKeepAlive() {
+        if (this.type !== 'local' || this.keepAliveEnabled) {
+            return;
+        }
+
+        try {
+            // Get current configuration to determine port
+            const config = await this.getLocalConfig();
+            const port = config.port || 8317;
+
+            if (window.__TAURI__?.core?.invoke) {
+                console.log('Starting keep-alive mechanism for Local mode via backend');
+                const result = await window.__TAURI__.core.invoke('start_keep_alive', {
+                    port: port
+                });
+
+                if (result && result.success) {
+                    this.keepAliveEnabled = true;
+                    console.log('Keep-alive mechanism started successfully');
+                } else {
+                    console.error('Failed to start keep-alive mechanism');
+                }
+            } else {
+                console.warn('Tauri environment not available for keep-alive');
+            }
+        } catch (error) {
+            console.error('Error starting keep-alive mechanism:', error);
+        }
+    }
+
+    /**
+     * Stop keep-alive mechanism (backend implementation)
+     */
+    async stopKeepAlive() {
+        if (!this.keepAliveEnabled) {
+            return;
+        }
+
+        try {
+            if (window.__TAURI__?.core?.invoke) {
+                console.log('Stopping keep-alive mechanism via backend');
+                const result = await window.__TAURI__.core.invoke('stop_keep_alive');
+
+                if (result && result.success) {
+                    this.keepAliveEnabled = false;
+                    console.log('Keep-alive mechanism stopped successfully');
+                } else {
+                    console.error('Failed to stop keep-alive mechanism');
+                }
+            } else {
+                console.warn('Tauri environment not available for keep-alive');
+            }
+        } catch (error) {
+            console.error('Error stopping keep-alive mechanism:', error);
+        }
+    }
+
+    /**
      * Refresh connection information
      */
     refreshConnection() {
         const oldBaseUrl = this.baseUrl;
+        const oldType = this.type;
+
         this.type = localStorage.getItem('type') || 'local';
         this.baseUrl = localStorage.getItem('base-url');
         this.password = localStorage.getItem('password');
@@ -1107,7 +1171,22 @@ class ConfigManager {
         console.log('=== DEBUG: refreshConnection ===');
         console.log('Old baseUrl:', oldBaseUrl);
         console.log('New baseUrl:', this.baseUrl);
-        console.log('Type:', this.type);
+        console.log('Old type:', oldType);
+        console.log('New type:', this.type);
+
+        // Handle keep-alive based on type change
+        if (oldType !== this.type) {
+            if (oldType === 'local') {
+                this.stopKeepAlive().catch(error => {
+                    console.error('Error stopping keep-alive during type change:', error);
+                });
+            }
+            if (this.type === 'local') {
+                this.startKeepAlive().catch(error => {
+                    console.error('Error starting keep-alive during type change:', error);
+                });
+            }
+        }
 
         // Clear any cached config to ensure fresh connection
         localStorage.removeItem('config');

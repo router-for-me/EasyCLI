@@ -22,9 +22,26 @@ document.addEventListener('DOMContentLoaded', async () => {
         } else if (currentTab === 'openai') {
             await loadOpenaiProviders();
         }
+
+        // Start keep-alive mechanism if in Local mode
+        const currentType = localStorage.getItem('type') || 'local';
+        if (currentType === 'local' && window.configManager) {
+            window.configManager.startKeepAlive().catch(error => {
+                console.error('Error starting keep-alive on settings init:', error);
+            });
+        }
     } catch (error) {
         console.error('Error initializing settings:', error);
         showError('Failed to load settings');
+    }
+});
+
+// Stop keep-alive mechanism when page is unloaded
+window.addEventListener('beforeunload', () => {
+    if (window.configManager) {
+        window.configManager.stopKeepAlive().catch(error => {
+            console.error('Error stopping keep-alive on page unload:', error);
+        });
     }
 });
 
