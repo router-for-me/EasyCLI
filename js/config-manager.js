@@ -172,15 +172,16 @@ class ConfigManager {
      * Save Gemini Web tokens
      * @param {string} secure1psid - Secure-1PSID cookie value
      * @param {string} secure1psidts - Secure-1PSIDTS cookie value
+     * @param {string} email - Email address (used as label)
      * @returns {Promise<Object>} Save result
      */
-    async saveGeminiWebTokens(secure1psid, secure1psidts) {
+    async saveGeminiWebTokens(secure1psid, secure1psidts, email) {
         console.log('=== DEBUG: saveGeminiWebTokens ===');
         console.log('this.type:', this.type);
         if (this.type === 'local') {
-            return this.saveLocalGeminiWebTokens(secure1psid, secure1psidts);
+            return this.saveLocalGeminiWebTokens(secure1psid, secure1psidts, email);
         } else {
-            return this.saveRemoteGeminiWebTokens(secure1psid, secure1psidts);
+            return this.saveRemoteGeminiWebTokens(secure1psid, secure1psidts, email);
         }
     }
 
@@ -376,9 +377,10 @@ class ConfigManager {
      * Save local Gemini Web tokens
      * @param {string} secure1psid - Secure-1PSID cookie value
      * @param {string} secure1psidts - Secure-1PSIDTS cookie value
+     * @param {string} email - Email address (used as label)
      * @returns {Promise<Object>} Save result
      */
-    async saveLocalGeminiWebTokens(secure1psid, secure1psidts) {
+    async saveLocalGeminiWebTokens(secure1psid, secure1psidts, email) {
         try {
             // Read configuration to get port
             const config = await this.getConfig();
@@ -387,14 +389,6 @@ class ConfigManager {
 
             // In local mode, use the random password from localStorage (set during CLIProxyAPI startup)
             const password = localStorage.getItem('local-management-key') || '';
-
-            console.log('=== DEBUG: saveLocalGeminiWebTokens ===');
-            console.log('config:', config);
-            console.log('port:', port);
-            console.log('baseUrl:', baseUrl);
-            console.log('password from localStorage:', password);
-            console.log('password exists:', !!password);
-            console.log('password length:', password ? password.length : 0);
 
             if (!password) {
                 throw new Error('Missing local management key. Please restart CLIProxyAPI.');
@@ -415,7 +409,8 @@ class ConfigManager {
                 },
                 body: JSON.stringify({
                     secure_1psid: secure1psid,
-                    secure_1psidts: secure1psidts
+                    secure_1psidts: secure1psidts,
+                    label: email
                 })
             });
 
@@ -1020,9 +1015,10 @@ class ConfigManager {
      * Save remote Gemini Web tokens
      * @param {string} secure1psid - Secure-1PSID cookie value
      * @param {string} secure1psidts - Secure-1PSIDTS cookie value
+     * @param {string} email - Email address (used as label)
      * @returns {Promise<Object>} Save result
      */
-    async saveRemoteGeminiWebTokens(secure1psid, secure1psidts) {
+    async saveRemoteGeminiWebTokens(secure1psid, secure1psidts, email) {
         try {
             if (!this.baseUrl || !this.password) {
                 throw new Error('Missing connection information');
@@ -1040,7 +1036,8 @@ class ConfigManager {
                 },
                 body: JSON.stringify({
                     secure_1psid: secure1psid,
-                    secure_1psidts: secure1psidts
+                    secure_1psidts: secure1psidts,
+                    label: email
                 })
             });
 

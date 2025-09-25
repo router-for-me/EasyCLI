@@ -223,6 +223,10 @@ function showGeminiWebDialog() {
                         <label for="gemini-web-secure-1psidts-input">Secure-1PSIDTS:</label>
                         <input type="text" id="gemini-web-secure-1psidts-input" class="form-input" placeholder="Enter Secure-1PSIDTS">
                     </div>
+                    <div class="form-group">
+                        <label for="gemini-web-email-input" style="text-align: left;">Email:</label>
+                        <input type="email" id="gemini-web-email-input" class="form-input" placeholder="Enter your email address">
+                    </div>
                     <div class="auth-actions">
                         <button type="button" id="gemini-web-confirm-btn" class="btn-primary">Confirm</button>
                         <button type="button" id="gemini-web-cancel-btn" class="btn-cancel">Cancel</button>
@@ -255,21 +259,23 @@ function cancelGeminiWebDialog() {
 // Confirm Gemini Web tokens
 async function confirmGeminiWebTokens() {
     try {
+        const emailInput = document.getElementById('gemini-web-email-input');
         const secure1psidInput = document.getElementById('gemini-web-secure-1psid-input');
         const secure1psidtsInput = document.getElementById('gemini-web-secure-1psidts-input');
 
+        const email = emailInput.value.trim();
         const secure1psid = secure1psidInput.value.trim();
         const secure1psidts = secure1psidtsInput.value.trim();
 
-        if (!secure1psid || !secure1psidts) {
-            showError('Please enter both Secure-1PSID and Secure-1PSIDTS');
+        if (!email || !secure1psid || !secure1psidts) {
+            showError('Please enter email, Secure-1PSID and Secure-1PSIDTS');
             return;
         }
 
         cancelGeminiWebDialog();
 
         // Call Management API to save Gemini Web tokens
-        const result = await configManager.saveGeminiWebTokens(secure1psid, secure1psidts);
+        const result = await configManager.saveGeminiWebTokens(secure1psid, secure1psidts, email);
 
         if (result.success) {
             showSuccessMessage('Gemini Web tokens saved successfully');
