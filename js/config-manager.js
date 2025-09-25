@@ -65,6 +65,9 @@ class ConfigManager {
      * @returns {Promise<Object>} Configuration object
      */
     async getConfig() {
+        // Always refresh connection info before getting config
+        this.refreshConnection();
+
         if (this.type === 'local') {
             return this.getLocalConfig();
         } else {
@@ -162,6 +165,22 @@ class ConfigManager {
             return this.downloadLocalAuthFiles(filenames);
         } else {
             return this.downloadRemoteAuthFiles(filenames);
+        }
+    }
+
+    /**
+     * Save Gemini Web tokens
+     * @param {string} secure1psid - Secure-1PSID cookie value
+     * @param {string} secure1psidts - Secure-1PSIDTS cookie value
+     * @returns {Promise<Object>} Save result
+     */
+    async saveGeminiWebTokens(secure1psid, secure1psidts) {
+        console.log('=== DEBUG: saveGeminiWebTokens ===');
+        console.log('this.type:', this.type);
+        if (this.type === 'local') {
+            return this.saveLocalGeminiWebTokens(secure1psid, secure1psidts);
+        } else {
+            return this.saveRemoteGeminiWebTokens(secure1psid, secure1psidts);
         }
     }
 
@@ -304,7 +323,7 @@ class ConfigManager {
                     const content = await this.readFileAsText(file);
                     fileData.push({ name: file.name, content });
                 }
-                const result = await window.__TAURI__.core.invoke('upload_local_auth_files', fileData);
+                const result = await window.__TAURI__.core.invoke('upload_local_auth_files', { files: fileData });
                 return result;
             }
             return { success: false, error: 'Tauri environment required' };
@@ -340,12 +359,81 @@ class ConfigManager {
         try {
             if (window.__TAURI__?.core?.invoke) {
                 const filenameArray = Array.isArray(filenames) ? filenames : [filenames];
-                const result = await window.__TAURI__.core.invoke('delete_local_auth_files', filenameArray);
+                const result = await window.__TAURI__.core.invoke('delete_local_auth_files', { filenames: filenameArray });
                 return result;
             }
             return { success: false, error: 'Tauri environment required' };
         } catch (error) {
             console.error('Error deleting local auth files:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
+    /**
+     * Save local Gemini Web tokens
+     * @param {string} secure1psid - Secure-1PSID cookie value
+     * @param {string} secure1psidts - Secure-1PSIDTS cookie value
+     * @returns {Promise<Object>} Save result
+     */
+    async saveLocalGeminiWebTokens(secure1psid, secure1psidts) {
+        try {
+            // Read configuration to get port
+            const config = await this.getConfig();
+            const port = config.port || 8317;
+            const baseUrl = `http://127.0.0.1:${port}`;
+
+            // In local mode, use the random password from localStorage (set during CLIProxyAPI startup)
+            const password = localStorage.getItem('local-management-key') || '';
+
+            console.log('=== DEBUG: saveLocalGeminiWebTokens ===');
+            console.log('config:', config);
+            console.log('port:', port);
+            console.log('baseUrl:', baseUrl);
+            console.log('password from localStorage:', password);
+            console.log('password exists:', !!password);
+            console.log('password length:', password ? password.length : 0);
+
+            if (!password) {
+                throw new Error('Missing local management key. Please restart CLIProxyAPI.');
+            }
+
+            const apiUrl = baseUrl.endsWith('/')
+                ? `${baseUrl}v0/management/gemini-web-token`
+                : `${baseUrl}/v0/management/gemini-web-token`;
+
+            console.log('Making request to apiUrl:', apiUrl);
+            console.log('Using MANAGEMENT_KEY header with password');
+
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: {
+                    'X-Management-Key': password,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    secure_1psid: secure1psid,
+                    secure_1psidts: secure1psidts
+                })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                return {
+                    success: true,
+                    file: data.file
+                };
+            } else {
+                const errorData = await response.json().catch(() => ({}));
+                return {
+                    success: false,
+                    error: errorData.error || `HTTP ${response.status}: ${response.statusText}`
+                };
+            }
+        } catch (error) {
+            console.error('Error saving local Gemini Web tokens:', error);
             return {
                 success: false,
                 error: error.message
@@ -362,7 +450,7 @@ class ConfigManager {
         try {
             if (window.__TAURI__?.core?.invoke) {
                 const filenameArray = Array.isArray(filenames) ? filenames : [filenames];
-                const result = await window.__TAURI__.core.invoke('download_local_auth_files', filenameArray);
+                const result = await window.__TAURI__.core.invoke('download_local_auth_files', { filenames: filenameArray });
 
                 if (result && result.success && result.files) {
                     // Prefer Tauri native directory picker + save
@@ -449,6 +537,11 @@ class ConfigManager {
      */
     async getRemoteConfig() {
         try {
+            console.log('=== DEBUG: getRemoteConfig ===');
+            console.log('this.baseUrl:', this.baseUrl);
+            console.log('this.password exists:', !!this.password);
+            console.log('localStorage base-url:', localStorage.getItem('base-url'));
+
             if (!this.baseUrl || !this.password) {
                 throw new Error('Missing connection information');
             }
@@ -457,11 +550,16 @@ class ConfigManager {
                 ? `${this.baseUrl}v0/management/config`
                 : `${this.baseUrl}/v0/management/config`;
 
+            console.log('Making request to configUrl:', configUrl);
+
             const response = await fetch(configUrl, {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${this.password}`,
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache',
+                    'Expires': '0'
                 }
             });
 
@@ -919,6 +1017,56 @@ class ConfigManager {
     }
 
     /**
+     * Save remote Gemini Web tokens
+     * @param {string} secure1psid - Secure-1PSID cookie value
+     * @param {string} secure1psidts - Secure-1PSIDTS cookie value
+     * @returns {Promise<Object>} Save result
+     */
+    async saveRemoteGeminiWebTokens(secure1psid, secure1psidts) {
+        try {
+            if (!this.baseUrl || !this.password) {
+                throw new Error('Missing connection information');
+            }
+
+            const apiUrl = this.baseUrl.endsWith('/')
+                ? `${this.baseUrl}v0/management/gemini-web-token`
+                : `${this.baseUrl}/v0/management/gemini-web-token`;
+
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${this.password}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    secure_1psid: secure1psid,
+                    secure_1psidts: secure1psidts
+                })
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                return {
+                    success: true,
+                    file: data.file
+                };
+            } else {
+                const errorData = await response.json().catch(() => ({}));
+                return {
+                    success: false,
+                    error: errorData.error || `HTTP ${response.status}: ${response.statusText}`
+                };
+            }
+        } catch (error) {
+            console.error('Error saving remote Gemini Web tokens:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
+    /**
      * Download single file to directory
      * @param {string} filename - Filename
      * @param {FileSystemDirectoryHandle} directoryHandle - Directory handle
@@ -954,9 +1102,18 @@ class ConfigManager {
      * Refresh connection information
      */
     refreshConnection() {
+        const oldBaseUrl = this.baseUrl;
         this.type = localStorage.getItem('type') || 'local';
         this.baseUrl = localStorage.getItem('base-url');
         this.password = localStorage.getItem('password');
+
+        console.log('=== DEBUG: refreshConnection ===');
+        console.log('Old baseUrl:', oldBaseUrl);
+        console.log('New baseUrl:', this.baseUrl);
+        console.log('Type:', this.type);
+
+        // Clear any cached config to ensure fresh connection
+        localStorage.removeItem('config');
     }
 }
 

@@ -81,7 +81,7 @@ async function openSettingsWindowPreferNew() {
     try {
         if (window.__TAURI__?.core?.invoke) {
             await window.__TAURI__.core.invoke('open_settings_window');
-            try { const cur = window.__TAURI__.window.getCurrent?.(); await cur?.close?.(); } catch (_) {}
+            try { const cur = window.__TAURI__.window.getCurrent?.(); await cur?.close?.(); } catch (_) { }
             return;
         }
     } catch (e) {
@@ -94,19 +94,19 @@ updateCancelBtn.addEventListener('click', async () => {
     updateDialog.classList.remove('show');
     // User chose not to update, still run local
     localStorage.setItem('type', "local");
-        if (window.__TAURI__?.core?.invoke) {
-            try {
-                const startRes = await window.__TAURI__.core.invoke('start_cliproxyapi');
-                if (!startRes || !startRes.success) {
-                    showError('CLIProxyAPI process start failed');
-                    return;
-                }
-            } catch (e) {
-                showError('CLIProxyAPI process start error');
+    if (window.__TAURI__?.core?.invoke) {
+        try {
+            const startRes = await window.__TAURI__.core.invoke('start_cliproxyapi');
+            if (!startRes || !startRes.success) {
+                showError('CLIProxyAPI process start failed');
                 return;
             }
-            await openSettingsWindowPreferNew();
+        } catch (e) {
+            showError('CLIProxyAPI process start error');
+            return;
         }
+        await openSettingsWindowPreferNew();
+    }
 });
 
 updateConfirmBtn.addEventListener('click', async () => {
@@ -143,6 +143,11 @@ updateConfirmBtn.addEventListener('click', async () => {
                         if (!startRes || !startRes.success) {
                             showError('CLIProxyAPI process start failed');
                             return;
+                        }
+                        // Save the generated password for local mode HTTP requests
+                        if (startRes.password) {
+                            localStorage.setItem('local-management-key', startRes.password);
+                            console.log('Saved local management key:', startRes.password);
                         }
                     } catch (e) {
                         showError('CLIProxyAPI process start error');
@@ -223,6 +228,11 @@ passwordSaveBtn.addEventListener('click', async () => {
                         showError('CLIProxyAPI process start failed');
                         return;
                     }
+                    // Save the generated password for local mode HTTP requests
+                    if (startRes.password) {
+                        localStorage.setItem('local-management-key', startRes.password);
+                        console.log('Saved local management key:', startRes.password);
+                    }
                 } catch (e) {
                     showError('CLIProxyAPI process start error');
                     return;
@@ -243,21 +253,21 @@ passwordSaveBtn.addEventListener('click', async () => {
 });
 
 // Listen for download progress updates
-    if (window.__TAURI__?.event?.listen) {
-        window.__TAURI__.event.listen('download-progress', (event) => { updateProgress(event?.payload || {}); });
-        window.__TAURI__.event.listen('download-status', (event) => { handleDownloadStatus(event?.payload || {}); });
-        window.__TAURI__.event.listen('process-start-error', (event) => {
-            const errorData = event?.payload || {};
-            console.error('CLIProxyAPI process start failed:', errorData);
-            showError(`Connection error: ${errorData.error}`);
-            if (errorData.reason) showError(`Reason: ${errorData.reason}`);
-        });
-        window.__TAURI__.event.listen('process-exit-error', (event) => {
-            const errorData = event?.payload || {};
-            console.error('CLIProxyAPI process exited abnormally:', errorData);
-            showError(`CLIProxyAPI process exited abnormally, exit code: ${errorData.code}`);
-        });
-    }
+if (window.__TAURI__?.event?.listen) {
+    window.__TAURI__.event.listen('download-progress', (event) => { updateProgress(event?.payload || {}); });
+    window.__TAURI__.event.listen('download-status', (event) => { handleDownloadStatus(event?.payload || {}); });
+    window.__TAURI__.event.listen('process-start-error', (event) => {
+        const errorData = event?.payload || {};
+        console.error('CLIProxyAPI process start failed:', errorData);
+        showError(`Connection error: ${errorData.error}`);
+        if (errorData.reason) showError(`Reason: ${errorData.reason}`);
+    });
+    window.__TAURI__.event.listen('process-exit-error', (event) => {
+        const errorData = event?.payload || {};
+        console.error('CLIProxyAPI process exited abnormally:', errorData);
+        showError(`CLIProxyAPI process exited abnormally, exit code: ${errorData.code}`);
+    });
+}
 
 function initializeFromLocalStorage() {
     const type = localStorage.getItem('type');
@@ -290,7 +300,7 @@ function initializeFromLocalStorage() {
 }
 
 async function handleConnectClick() {
-    try { showSuccess('Connecting...'); } catch (_) {}
+    try { showSuccess('Connecting...'); } catch (_) { }
     const localSelected = localCard.classList.contains('selected');
 
     if (localSelected) {
@@ -360,6 +370,11 @@ async function handleConnectClick() {
                                     showError('CLIProxyAPI process start failed');
                                     return;
                                 }
+                                // Save the generated password for local mode HTTP requests
+                                if (startRes.password) {
+                                    localStorage.setItem('local-management-key', startRes.password);
+                                    console.log('Saved local management key:', startRes.password);
+                                }
                             } catch (e) {
                                 showError('CLIProxyAPI process start error');
                                 return;
@@ -409,12 +424,22 @@ async function handleConnectClick() {
         localStorage.setItem('base-url', remoteUrl);
         localStorage.setItem('password', password);
 
-        // Refresh config manager with new connection info
-        configManager.refreshConnection();
+        console.log('=== DEBUG: Connection attempt ===');
+        console.log('Input remoteUrl:', remoteUrl);
+        console.log('Saved to localStorage base-url:', localStorage.getItem('base-url'));
+        console.log('Saved to localStorage type:', localStorage.getItem('type'));
 
-        // Test connection by getting config
+        // Clear any cached config to ensure fresh connection
+        localStorage.removeItem('config');
+
+        // Create a fresh config manager instance to ensure no caching issues
+        const freshConfigManager = new ConfigManager();
+        console.log('Fresh configManager baseUrl:', freshConfigManager.baseUrl);
+        console.log('Fresh configManager type:', freshConfigManager.type);
+
+        // Test connection by getting config with fresh instance
         try {
-            const config = await configManager.getConfig();
+            const config = await freshConfigManager.getConfig();
             console.log('Connection successful, config loaded');
         } catch (error) {
             if (error.message.includes('401')) {

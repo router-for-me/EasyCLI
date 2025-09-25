@@ -1102,6 +1102,12 @@ body {
     margin-bottom: 8px;
 }
 
+/* Left align specific labels for Secure-1PSID and Secure-1PSIDTS */
+.form-group label[for="gemini-web-secure-1psid-input"],
+.form-group label[for="gemini-web-secure-1psidts-input"] {
+    text-align: left;
+}
+
 .form-input {
     width: 100%;
     padding: 10px 12px;

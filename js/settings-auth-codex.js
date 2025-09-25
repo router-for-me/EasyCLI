@@ -80,7 +80,7 @@ async function handleCodexCallback(req, res) {
     }
 }
 
-async function stopCodexLocalServer() { try { await window.__TAURI__.core.invoke('stop_callback_server', { listenPort: 1455 }); } catch (_) {} }
+async function stopCodexLocalServer() { try { await window.__TAURI__.core.invoke('stop_callback_server', { listenPort: 1455 }); } catch (_) { } }
 
 async function getCodexAuthUrl() {
     try {
@@ -92,7 +92,7 @@ async function getCodexAuthUrl() {
             const config = await configManager.getConfig();
             const port = config.port || 8317; // Default port
             baseUrl = `http://127.0.0.1:${port}`;
-            password = config['remote-management']?.['secret-key'] || '';
+            password = localStorage.getItem('local-management-key') || '';
         } else {
             // Read configuration from localStorage in Remote mode
             baseUrl = localStorage.getItem('base-url');
@@ -101,7 +101,10 @@ async function getCodexAuthUrl() {
         }
 
         const apiUrl = baseUrl.endsWith('/') ? `${baseUrl}v0/management/codex-auth-url` : `${baseUrl}/v0/management/codex-auth-url`;
-        const response = await fetch(apiUrl, { method: 'GET', headers: { 'Authorization': `Bearer ${password}`, 'Content-Type': 'application/json' } });
+        const headers = currentMode === 'local'
+            ? { 'X-Management-Key': password, 'Content-Type': 'application/json' }
+            : { 'Authorization': `Bearer ${password}`, 'Content-Type': 'application/json' };
+        const response = await fetch(apiUrl, { method: 'GET', headers: headers });
         if (!response.ok) throw new Error(`Failed to get Codex authentication URL: ${response.status}`);
         const data = await response.json();
         codexAuthUrl = data.url;
@@ -263,7 +266,7 @@ async function pollCodexAuthStatus(authType, state, onSuccess, onError) {
                     const config = await configManager.getConfig();
                     const port = config.port || 8317;
                     baseUrl = `http://127.0.0.1:${port}`;
-                    password = config['remote-management']?.['secret-key'] || '';
+                    password = localStorage.getItem('local-management-key') || '';
                 } else {
                     baseUrl = localStorage.getItem('base-url');
                     password = localStorage.getItem('password');
@@ -274,12 +277,12 @@ async function pollCodexAuthStatus(authType, state, onSuccess, onError) {
                     ? `${baseUrl}v0/management/get-auth-status?state=${encodeURIComponent(state)}`
                     : `${baseUrl}/v0/management/get-auth-status?state=${encodeURIComponent(state)}`;
 
+                const headers = currentMode === 'local'
+                    ? { 'X-Management-Key': password, 'Content-Type': 'application/json' }
+                    : { 'Authorization': `Bearer ${password}`, 'Content-Type': 'application/json' };
                 const response = await fetch(apiUrl, {
                     method: 'GET',
-                    headers: {
-                        'Authorization': `Bearer ${password}`,
-                        'Content-Type': 'application/json'
-                    },
+                    headers: headers,
                     signal: codexAbortController.signal
                 });
 

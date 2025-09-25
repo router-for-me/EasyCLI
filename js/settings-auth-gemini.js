@@ -95,7 +95,8 @@ async function startGeminiLocalServer() {
             const config = await configManager.getConfig();
             localPort = config.port || 8317;
         } else {
-            baseUrl = localStorage.getItem('base-url');
+            configManager.refreshConnection();
+            baseUrl = configManager.baseUrl;
             if (!baseUrl) throw new Error('Missing base-url configuration');
         }
         await window.__TAURI__.core.invoke('start_callback_server', {
@@ -122,7 +123,8 @@ async function handleGeminiCallback(req, res) {
             redirectUrl = `http://127.0.0.1:${port}/google/callback${url.search}`;
         } else {
             // Remote mode: redirect to base-url/google/callback
-            const baseUrl = localStorage.getItem('base-url');
+            configManager.refreshConnection();
+            const baseUrl = configManager.baseUrl;
             if (!baseUrl) {
                 res.writeHead(400, { 'Content-Type': 'text/plain' });
                 res.end('Missing base-url configuration');
@@ -142,7 +144,7 @@ async function handleGeminiCallback(req, res) {
     }
 }
 
-async function stopGeminiLocalServer() { try { await window.__TAURI__.core.invoke('stop_callback_server', { listenPort: 8085 }); } catch (_) {} }
+async function stopGeminiLocalServer() { try { await window.__TAURI__.core.invoke('stop_callback_server', { listenPort: 8085 }); } catch (_) { } }
 
 async function getGeminiAuthUrl() {
     try {
@@ -154,7 +156,7 @@ async function getGeminiAuthUrl() {
             const config = await configManager.getConfig();
             const port = config.port || 8317; // Default port
             baseUrl = `http://127.0.0.1:${port}`;
-            password = config['remote-management']?.['secret-key'] || '';
+            password = localStorage.getItem('local-management-key') || '';
         } else {
             // Read configuration from localStorage in Remote mode
             baseUrl = localStorage.getItem('base-url');
@@ -170,7 +172,9 @@ async function getGeminiAuthUrl() {
             apiUrl += `${separator}project_id=${encodeURIComponent(geminiProjectId)}`;
         }
 
-        const headers = { 'Authorization': `Bearer ${password}`, 'Content-Type': 'application/json' };
+        const headers = currentMode === 'local'
+            ? { 'X-Management-Key': password, 'Content-Type': 'application/json' }
+            : { 'Authorization': `Bearer ${password}`, 'Content-Type': 'application/json' };
         const response = await fetch(apiUrl, { method: 'GET', headers });
         if (!response.ok) throw new Error(`Failed to get Gemini authentication URL: ${response.status}`);
         const data = await response.json();
@@ -344,10 +348,11 @@ async function pollGeminiAuthStatus(authType, state, onSuccess, onError) {
                     const config = await configManager.getConfig();
                     const port = config.port || 8317;
                     baseUrl = `http://127.0.0.1:${port}`;
-                    password = config['remote-management']?.['secret-key'] || '';
+                    password = localStorage.getItem('local-management-key') || '';
                 } else {
-                    baseUrl = localStorage.getItem('base-url');
-                    password = localStorage.getItem('password');
+                    configManager.refreshConnection();
+                    baseUrl = configManager.baseUrl;
+                    password = configManager.password;
                     if (!baseUrl || !password) throw new Error('Missing connection information');
                 }
 
@@ -355,12 +360,12 @@ async function pollGeminiAuthStatus(authType, state, onSuccess, onError) {
                     ? `${baseUrl}v0/management/get-auth-status?state=${encodeURIComponent(state)}`
                     : `${baseUrl}/v0/management/get-auth-status?state=${encodeURIComponent(state)}`;
 
+                const headers = currentMode === 'local'
+                    ? { 'X-Management-Key': password, 'Content-Type': 'application/json' }
+                    : { 'Authorization': `Bearer ${password}`, 'Content-Type': 'application/json' };
                 const response = await fetch(apiUrl, {
                     method: 'GET',
-                    headers: {
-                        'Authorization': `Bearer ${password}`,
-                        'Content-Type': 'application/json'
-                    },
+                    headers: headers,
                     signal: geminiAbortController.signal
                 });
 

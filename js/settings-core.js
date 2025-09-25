@@ -7,7 +7,6 @@ const proxyUrlInput = document.getElementById('proxy-url-input');
 const portInput = document.getElementById('port-input');
 const requestLogSwitch = document.getElementById('request-log-switch');
 const requestRetryInput = document.getElementById('request-retry-input');
-const allowLocalhostSwitch = document.getElementById('allow-localhost-switch');
 const allowRemoteSwitch = document.getElementById('allow-remote-switch');
 const secretKeyInput = document.getElementById('secret-key-input');
 const switchProjectSwitch = document.getElementById('switch-project-switch');
@@ -96,7 +95,9 @@ function updateServerStatus() {
     if (connectionType === 'local') {
         serverStatusText.innerHTML = '<span style="color: #10b981;">●</span> Local';
     } else {
-        const baseUrl = localStorage.getItem('base-url');
+        // Use configManager to get current connection info
+        configManager.refreshConnection();
+        const baseUrl = configManager.baseUrl;
         if (baseUrl) {
             serverStatusText.innerHTML = `Remote:<br><span style="color: #10b981;">●</span> ${baseUrl}`;
         } else {
@@ -111,7 +112,6 @@ async function initializeAdditionalSettings() {
         const config = await configManager.getConfig();
         requestLogSwitch.checked = config['request-log'] || false;
         requestRetryInput.value = config['request-retry'] || 3;
-        allowLocalhostSwitch.checked = config['allow-localhost-unauthenticated'] || false;
 
         if (config['quota-exceeded']) {
             switchProjectSwitch.checked = config['quota-exceeded']['switch-project'] || false;
@@ -124,7 +124,6 @@ async function initializeAdditionalSettings() {
         console.error('Error loading config:', error);
         requestLogSwitch.checked = false;
         requestRetryInput.value = 3;
-        allowLocalhostSwitch.checked = false;
         switchProjectSwitch.checked = false;
         switchPreviewModelSwitch.checked = false;
     }
@@ -192,9 +191,6 @@ async function applyAllSettings() {
                 changes.push({ endpoint: 'request-retry', value: parseInt(requestRetryInput.value) });
             }
 
-            if (allowLocalhostSwitch.checked !== (serverConfig['allow-localhost-unauthenticated'] || false)) {
-                changes.push({ endpoint: 'allow-localhost-unauthenticated', value: allowLocalhostSwitch.checked });
-            }
 
             if (connectionType === 'local') {
                 const serverRemoteManagement = serverConfig['remote-management'] || {};
@@ -317,7 +313,6 @@ async function resetAllSettings() {
             proxyUrlInput.value = serverConfig['proxy-url'] || '';
             requestLogSwitch.checked = serverConfig['request-log'] || false;
             requestRetryInput.value = serverConfig['request-retry'] || 3;
-            allowLocalhostSwitch.checked = serverConfig['allow-localhost-unauthenticated'] || false;
 
             const connectionType = localStorage.getItem('type') || 'local';
             if (connectionType === 'local') {

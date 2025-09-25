@@ -176,6 +176,7 @@ function closeDropdown() {
 function createNewAuthFile(type) {
     const typeNames = {
         'gemini': 'Gemini CLI',
+        'gemini-web': 'Gemini WEB',
         'claude': 'Claude Code',
         'codex': 'Codex',
         'qwen': 'Qwen Code',
@@ -190,11 +191,96 @@ function createNewAuthFile(type) {
         startClaudeAuthFlow();
     } else if (type === 'gemini') {
         showGeminiProjectIdDialog();
+    } else if (type === 'gemini-web') {
+        showGeminiWebDialog();
     } else if (type === 'qwen') {
         startQwenAuthFlow();
     } else {
         console.log(`Creating new ${typeNames[type]} auth file`);
         showSuccessMessage(`Creating new ${typeNames[type]} auth file...`);
+    }
+}
+
+// Show Gemini Web dialog
+function showGeminiWebDialog() {
+    const modal = document.createElement('div');
+    modal.className = 'modal show';
+    modal.id = 'gemini-web-modal';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Gemini WEB Authentication</h3>
+                <button class="modal-close" id="gemini-web-modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="codex-auth-content">
+                    <p>Please enter your Gemini Web cookies:</p>
+                    <div class="form-group">
+                        <label for="gemini-web-secure-1psid-input">Secure-1PSID:</label>
+                        <input type="text" id="gemini-web-secure-1psid-input" class="form-input" placeholder="Enter Secure-1PSID">
+                    </div>
+                    <div class="form-group">
+                        <label for="gemini-web-secure-1psidts-input">Secure-1PSIDTS:</label>
+                        <input type="text" id="gemini-web-secure-1psidts-input" class="form-input" placeholder="Enter Secure-1PSIDTS">
+                    </div>
+                    <div class="auth-actions">
+                        <button type="button" id="gemini-web-confirm-btn" class="btn-primary">Confirm</button>
+                        <button type="button" id="gemini-web-cancel-btn" class="btn-cancel">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    document.body.appendChild(modal);
+    document.getElementById('gemini-web-modal-close').addEventListener('click', cancelGeminiWebDialog);
+    document.getElementById('gemini-web-confirm-btn').addEventListener('click', confirmGeminiWebTokens);
+    document.getElementById('gemini-web-cancel-btn').addEventListener('click', cancelGeminiWebDialog);
+    document.addEventListener('keydown', handleGeminiWebEscapeKey);
+    document.getElementById('gemini-web-secure-1psid-input').focus();
+}
+
+// Handle Gemini Web dialog escape key
+function handleGeminiWebEscapeKey(e) {
+    if (e.key === 'Escape') {
+        cancelGeminiWebDialog();
+    }
+}
+
+// Cancel Gemini Web dialog
+function cancelGeminiWebDialog() {
+    document.removeEventListener('keydown', handleGeminiWebEscapeKey);
+    const modal = document.getElementById('gemini-web-modal');
+    if (modal) modal.remove();
+}
+
+// Confirm Gemini Web tokens
+async function confirmGeminiWebTokens() {
+    try {
+        const secure1psidInput = document.getElementById('gemini-web-secure-1psid-input');
+        const secure1psidtsInput = document.getElementById('gemini-web-secure-1psidts-input');
+
+        const secure1psid = secure1psidInput.value.trim();
+        const secure1psidts = secure1psidtsInput.value.trim();
+
+        if (!secure1psid || !secure1psidts) {
+            showError('Please enter both Secure-1PSID and Secure-1PSIDTS');
+            return;
+        }
+
+        cancelGeminiWebDialog();
+
+        // Call Management API to save Gemini Web tokens
+        const result = await configManager.saveGeminiWebTokens(secure1psid, secure1psidts);
+
+        if (result.success) {
+            showSuccessMessage('Gemini Web tokens saved successfully');
+            // Refresh the auth files list
+            await loadAuthFiles();
+        } else {
+            showError('Failed to save Gemini Web tokens: ' + (result.error || 'Unknown error'));
+        }
+    } catch (error) {
+        console.error('Error saving Gemini Web tokens:', error);
+        showError('Failed to save Gemini Web tokens: ' + error.message);
     }
 }
 

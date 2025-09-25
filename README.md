@@ -13,7 +13,7 @@ Upstream project: https://github.com/luispater/CLIProxyAPI
 - Secure remote management via password (secret key).
 - System tray: Open Settings and Quit; closing the window hides to tray when the local process is running.
 - Settings UI:
-  - Basic: debug, port (Local), proxy URL, request logs, request retry, allow localhost unauthenticated, remote management options.
+  - Basic: debug, port (Local), proxy URL, request logs, request retry, remote management options.
   - Access Token: manage general API access tokens.
   - Authentication Files: list/upload/download/delete JSON auth files (honors `auth-dir` with `~` and relative paths).
   - Third Party API Keys: Gemini, Codex, Claude Code.

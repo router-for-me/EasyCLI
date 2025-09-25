@@ -1,33 +1,38 @@
 // Tauri v2 backend for EasyCLI
 // Ports core Electron main.js logic to Rust with a simpler API surface (KISS)
 
-#![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
+#![cfg_attr(
+    all(not(debug_assertions), target_os = "windows"),
+    windows_subsystem = "windows"
+)]
 
 use futures_util::StreamExt;
 use once_cell::sync::Lazy;
 use parking_lot::Mutex;
+use rand::Rng;
+use rfd::FileDialog;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::fs;
-use std::io::{self, Read, Write, BufRead, BufReader};
 use std::collections::HashMap;
+use std::fs;
+use std::io::Cursor;
+use std::io::{self, BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
-use tokio::time::sleep;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
-use std::io::Cursor;
 use tauri::tray::TrayIcon;
-use thiserror::Error;
 use tauri::WindowEvent;
-use rfd::FileDialog;
+use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use thiserror::Error;
+use tokio::time::sleep;
 
 static PROCESS: Lazy<Arc<Mutex<Option<Child>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
 static TRAY_ICON: Lazy<Arc<Mutex<Option<TrayIcon>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
-static CALLBACK_SERVERS: Lazy<Arc<Mutex<HashMap<u16, (Arc<AtomicBool>, thread::JoinHandle<()>)>>>> = Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
+static CALLBACK_SERVERS: Lazy<Arc<Mutex<HashMap<u16, (Arc<AtomicBool>, thread::JoinHandle<()>)>>>> =
+    Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
 // Flag to allow programmatic login window close without exiting the app
 static SKIP_EXIT_ON_MAIN_CLOSE: AtomicBool = AtomicBool::new(false);
 
@@ -93,12 +98,18 @@ struct Asset {
 #[derive(Serialize)]
 struct OpResult {
     success: bool,
-    #[serde(skip_serializing_if = "Option::is_none")] error: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")] path: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")] version: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")] needsUpdate: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")] isLatest: Option<bool>,
-    #[serde(skip_serializing_if = "Option::is_none")] latestVersion: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    needsUpdate: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    isLatest: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    latestVersion: Option<String>,
 }
 
 fn compare_versions(a: &str, b: &str) -> i32 {
@@ -108,8 +119,12 @@ fn compare_versions(a: &str, b: &str) -> i32 {
     for i in 0..len {
         let va = *pa.get(i).unwrap_or(&0);
         let vb = *pb.get(i).unwrap_or(&0);
-        if va > vb { return 1; }
-        if va < vb { return -1; }
+        if va > vb {
+            return 1;
+        }
+        if va < vb {
+            return -1;
+        }
     }
     0
 }
@@ -117,17 +132,23 @@ fn compare_versions(a: &str, b: &str) -> i32 {
 fn current_local_info() -> Result<Option<(String, PathBuf)>, AppError> {
     let dir = app_dir()?;
     let version_file = dir.join("version.txt");
-    if !version_file.exists() { return Ok(None); }
+    if !version_file.exists() {
+        return Ok(None);
+    }
     let ver = fs::read_to_string(&version_file)?.trim().to_string();
     let path = dir.join(&ver);
-    if !path.exists() { return Ok(None); }
+    if !path.exists() {
+        return Ok(None);
+    }
     Ok(Some((ver, path)))
 }
 
 fn ensure_config(version_path: &Path) -> Result<(), AppError> {
     let dir = app_dir()?;
     let config = dir.join("config.yaml");
-    if config.exists() { return Ok(()); }
+    if config.exists() {
+        return Ok(());
+    }
     let example = version_path.join("config.example.yaml");
     if example.exists() {
         fs::copy(example, &config)?;
@@ -136,7 +157,9 @@ fn ensure_config(version_path: &Path) -> Result<(), AppError> {
 }
 
 fn parse_proxy(proxy_url: &str, builder: reqwest::ClientBuilder) -> reqwest::ClientBuilder {
-    if proxy_url.is_empty() { return builder; }
+    if proxy_url.is_empty() {
+        return builder;
+    }
     // Accept http/https/socks5
     match reqwest::Proxy::all(proxy_url) {
         Ok(p) => builder.proxy(p),
@@ -151,46 +174,95 @@ async fn fetch_latest_release(proxy_url: String) -> Result<VersionInfo, AppError
     let resp = client
         .get("https://api.github.com/repos/luispater/CLIProxyAPI/releases/latest")
         .header("Accept", "application/vnd.github.v3+json")
-        .send().await?
+        .send()
+        .await?
         .error_for_status()?;
     Ok(resp.json::<VersionInfo>().await?)
 }
 
 #[tauri::command]
-async fn check_version_and_download(window: tauri::Window, proxy_url: Option<String>) -> Result<serde_json::Value, String> {
+async fn check_version_and_download(
+    window: tauri::Window,
+    proxy_url: Option<String>,
+) -> Result<serde_json::Value, String> {
     let proxy = proxy_url.unwrap_or_default();
     let dir = app_dir().map_err(|e| e.to_string())?;
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
     let local = current_local_info().map_err(|e| e.to_string())?;
-    window.emit("download-status", json!({"status": "checking"})).ok();
-    let release = fetch_latest_release(proxy.clone()).await.map_err(|e| e.to_string())?;
+    window
+        .emit("download-status", json!({"status": "checking"}))
+        .ok();
+    let release = fetch_latest_release(proxy.clone())
+        .await
+        .map_err(|e| e.to_string())?;
     let latest = release.tag_name.trim_start_matches('v').to_string();
 
     if let Some((ver, path)) = local {
         let cmp = compare_versions(&ver, &latest);
         ensure_config(&path).map_err(|e| e.to_string())?;
         if cmp >= 0 {
-            window.emit("download-status", json!({"status": "latest", "version": ver})).ok();
-            return Ok(json!(OpResult{ success: true, error: None, path: Some(path.to_string_lossy().to_string()), version: Some(ver), needsUpdate: Some(false), isLatest: Some(true), latestVersion: None }));
+            window
+                .emit(
+                    "download-status",
+                    json!({"status": "latest", "version": ver}),
+                )
+                .ok();
+            return Ok(json!(OpResult {
+                success: true,
+                error: None,
+                path: Some(path.to_string_lossy().to_string()),
+                version: Some(ver),
+                needsUpdate: Some(false),
+                isLatest: Some(true),
+                latestVersion: None
+            }));
         } else {
-            window.emit("download-status", json!({"status": "update-available", "version": ver, "latest": latest})).ok();
-            return Ok(json!(OpResult{ success: true, error: None, path: Some(path.to_string_lossy().to_string()), version: Some(ver), needsUpdate: Some(true), isLatest: Some(false), latestVersion: Some(latest) }));
+            window
+                .emit(
+                    "download-status",
+                    json!({"status": "update-available", "version": ver, "latest": latest}),
+                )
+                .ok();
+            return Ok(json!(OpResult {
+                success: true,
+                error: None,
+                path: Some(path.to_string_lossy().to_string()),
+                version: Some(ver),
+                needsUpdate: Some(true),
+                isLatest: Some(false),
+                latestVersion: Some(latest)
+            }));
         }
     }
     // No local found
-    Ok(json!(OpResult{ success: true, error: None, path: None, version: None, needsUpdate: Some(true), isLatest: Some(false), latestVersion: Some(latest) }))
+    Ok(json!(OpResult {
+        success: true,
+        error: None,
+        path: None,
+        version: None,
+        needsUpdate: Some(true),
+        isLatest: Some(false),
+        latestVersion: Some(latest)
+    }))
 }
 
 #[derive(Deserialize)]
-struct DownloadArgs { proxy_url: Option<String> }
+struct DownloadArgs {
+    proxy_url: Option<String>,
+}
 
 #[tauri::command]
-async fn download_cliproxyapi(window: tauri::Window, proxy_url: Option<String>) -> Result<serde_json::Value, String> {
+async fn download_cliproxyapi(
+    window: tauri::Window,
+    proxy_url: Option<String>,
+) -> Result<serde_json::Value, String> {
     let proxy = proxy_url.unwrap_or_default();
     let dir = app_dir().map_err(|e| e.to_string())?;
     fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let release = fetch_latest_release(proxy.clone()).await.map_err(|e| e.to_string())?;
+    let release = fetch_latest_release(proxy.clone())
+        .await
+        .map_err(|e| e.to_string())?;
     let latest = release.tag_name.trim_start_matches('v').to_string();
 
     let platform = std::env::consts::OS;
@@ -204,15 +276,26 @@ async fn download_cliproxyapi(window: tauri::Window, proxy_url: Option<String>) 
         ("windows", "aarch64") => format!("CLIProxyAPI_{}_windows_arm64.zip", latest),
         _ => return Err(format!("Unsupported platform: {} {}", platform, arch)),
     };
-    let asset = release.assets.into_iter().find(|a| a.name == filename)
+    let asset = release
+        .assets
+        .into_iter()
+        .find(|a| a.name == filename)
         .ok_or_else(|| format!("No suitable download file found: {}", filename))?;
 
     let download_path = dir.join(&filename);
-    window.emit("download-status", json!({"status": "starting"})).ok();
+    window
+        .emit("download-status", json!({"status": "starting"}))
+        .ok();
 
     // Download with progress
-    let client = parse_proxy(&proxy, reqwest::Client::builder()).build().map_err(|e| e.to_string())?;
-    let resp = client.get(&asset.browser_download_url).send().await.map_err(|e| e.to_string())?;
+    let client = parse_proxy(&proxy, reqwest::Client::builder())
+        .build()
+        .map_err(|e| e.to_string())?;
+    let resp = client
+        .get(&asset.browser_download_url)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
     if !resp.status().is_success() {
         return Err(format!("Download failed, status: {}", resp.status()));
     }
@@ -224,8 +307,17 @@ async fn download_cliproxyapi(window: tauri::Window, proxy_url: Option<String>) 
         let bytes = chunk.map_err(|e| e.to_string())?;
         file.write_all(&bytes).map_err(|e| e.to_string())?;
         downloaded += bytes.len() as u64;
-        let progress = if total > 0 { (downloaded as f64 / total as f64) * 100.0 } else { 0.0 };
-        window.emit("download-progress", json!({"progress": progress, "downloaded": downloaded, "total": total})).ok();
+        let progress = if total > 0 {
+            (downloaded as f64 / total as f64) * 100.0
+        } else {
+            0.0
+        };
+        window
+            .emit(
+                "download-progress",
+                json!({"progress": progress, "downloaded": downloaded, "total": total}),
+            )
+            .ok();
     }
 
     // Extract
@@ -243,8 +335,21 @@ async fn download_cliproxyapi(window: tauri::Window, proxy_url: Option<String>) 
     // Ensure config exists
     ensure_config(&extract_path).map_err(|e| e.to_string())?;
 
-    window.emit("download-status", json!({"status": "completed", "version": latest})).ok();
-    Ok(json!(OpResult{ success: true, error: None, path: Some(extract_path.to_string_lossy().to_string()), version: Some(latest), needsUpdate: None, isLatest: None, latestVersion: None }))
+    window
+        .emit(
+            "download-status",
+            json!({"status": "completed", "version": latest}),
+        )
+        .ok();
+    Ok(json!(OpResult {
+        success: true,
+        error: None,
+        path: Some(extract_path.to_string_lossy().to_string()),
+        version: Some(latest),
+        needsUpdate: None,
+        isLatest: None,
+        latestVersion: None
+    }))
 }
 
 fn extract_zip(zip_path: &Path, dest: &Path) -> Result<(), AppError> {
@@ -257,7 +362,9 @@ fn extract_zip(zip_path: &Path, dest: &Path) -> Result<(), AppError> {
         if f.name().ends_with('/') {
             fs::create_dir_all(&outpath)?;
         } else {
-            if let Some(p) = outpath.parent() { fs::create_dir_all(p)?; }
+            if let Some(p) = outpath.parent() {
+                fs::create_dir_all(p)?;
+            }
             let mut outfile = fs::File::create(&outpath)?;
             io::copy(&mut f, &mut outfile)?;
         }
@@ -283,7 +390,10 @@ fn check_secret_key() -> Result<serde_json::Value, String> {
     }
     let content = fs::read_to_string(&config_path).map_err(|e| e.to_string())?;
     let value: serde_yaml::Value = serde_yaml::from_str(&content).map_err(|e| e.to_string())?;
-    let rm = value.get("remote-management").and_then(|v| v.as_mapping()).cloned();
+    let rm = value
+        .get("remote-management")
+        .and_then(|v| v.as_mapping())
+        .cloned();
     if let Some(map) = rm {
         if let Some(sk) = map.get(&serde_yaml::Value::from("secret-key")) {
             if sk.as_str().map(|s| !s.trim().is_empty()).unwrap_or(false) {
@@ -298,17 +408,28 @@ fn check_secret_key() -> Result<serde_json::Value, String> {
 fn update_secret_key(secret_key: String) -> Result<serde_json::Value, String> {
     let dir = app_dir().map_err(|e| e.to_string())?;
     let p = dir.join("config.yaml");
-    if !p.exists() { return Err("Configuration file does not exist".into()); }
+    if !p.exists() {
+        return Err("Configuration file does not exist".into());
+    }
     let content = fs::read_to_string(&p).map_err(|e| e.to_string())?;
     let mut v: serde_yaml::Value = serde_yaml::from_str(&content).map_err(|e| e.to_string())?;
-    let rm = v.as_mapping_mut().and_then(|m| m.get_mut(&serde_yaml::Value::from("remote-management")));
+    let rm = v
+        .as_mapping_mut()
+        .and_then(|m| m.get_mut(&serde_yaml::Value::from("remote-management")));
     if let Some(rm_val) = rm {
-        if rm_val.is_null() { *rm_val = serde_yaml::Value::Mapping(Default::default()); }
+        if rm_val.is_null() {
+            *rm_val = serde_yaml::Value::Mapping(Default::default());
+        }
     }
     let m = v.as_mapping_mut().unwrap();
-    let entry = m.entry(serde_yaml::Value::from("remote-management")).or_insert_with(|| serde_yaml::Value::Mapping(Default::default()));
+    let entry = m
+        .entry(serde_yaml::Value::from("remote-management"))
+        .or_insert_with(|| serde_yaml::Value::Mapping(Default::default()));
     let map = entry.as_mapping_mut().unwrap();
-    map.insert(serde_yaml::Value::from("secret-key"), serde_yaml::Value::from(secret_key));
+    map.insert(
+        serde_yaml::Value::from("secret-key"),
+        serde_yaml::Value::from(secret_key),
+    );
     let out = serde_yaml::to_string(&v).map_err(|e| e.to_string())?;
     fs::write(&p, out).map_err(|e| e.to_string())?;
     Ok(json!({"success": true}))
@@ -318,7 +439,9 @@ fn update_secret_key(secret_key: String) -> Result<serde_json::Value, String> {
 fn read_config_yaml() -> Result<serde_json::Value, String> {
     let dir = app_dir().map_err(|e| e.to_string())?;
     let p = dir.join("config.yaml");
-    if !p.exists() { return Ok(json!({})); }
+    if !p.exists() {
+        return Ok(json!({}));
+    }
     let content = fs::read_to_string(&p).map_err(|e| e.to_string())?;
     let v: serde_yaml::Value = serde_yaml::from_str(&content).map_err(|e| e.to_string())?;
     let json_v = serde_json::to_value(v).map_err(|e| e.to_string())?;
@@ -326,13 +449,23 @@ fn read_config_yaml() -> Result<serde_json::Value, String> {
 }
 
 #[derive(Deserialize)]
-struct UpdateConfigArgs { endpoint: String, value: serde_json::Value, isDelete: Option<bool> }
+struct UpdateConfigArgs {
+    endpoint: String,
+    value: serde_json::Value,
+    isDelete: Option<bool>,
+}
 
 #[tauri::command]
-fn update_config_yaml(endpoint: String, value: serde_json::Value, is_delete: Option<bool>) -> Result<serde_json::Value, String> {
+fn update_config_yaml(
+    endpoint: String,
+    value: serde_json::Value,
+    is_delete: Option<bool>,
+) -> Result<serde_json::Value, String> {
     let dir = app_dir().map_err(|e| e.to_string())?;
     let p = dir.join("config.yaml");
-    if !p.exists() { return Err("Configuration file does not exist".into()); }
+    if !p.exists() {
+        return Err("Configuration file does not exist".into());
+    }
     let content = fs::read_to_string(&p).map_err(|e| e.to_string())?;
     let mut conf: serde_yaml::Value = serde_yaml::from_str(&content).map_err(|e| e.to_string())?;
     let parts: Vec<&str> = endpoint.split('.').collect();
@@ -344,10 +477,15 @@ fn update_config_yaml(endpoint: String, value: serde_json::Value, is_delete: Opt
             if is_delete.unwrap_or(false) {
                 current.remove(&key);
             } else {
-                current.insert(key, serde_yaml::to_value(&value).map_err(|e| e.to_string())?);
+                current.insert(
+                    key,
+                    serde_yaml::to_value(&value).map_err(|e| e.to_string())?,
+                );
             }
         } else {
-            let entry = current.entry(key).or_insert_with(|| serde_yaml::Value::Mapping(Default::default()));
+            let entry = current
+                .entry(key)
+                .or_insert_with(|| serde_yaml::Value::Mapping(Default::default()));
             if let Some(map) = entry.as_mapping_mut() {
                 current = map;
             } else {
@@ -364,14 +502,20 @@ fn update_config_yaml(endpoint: String, value: serde_json::Value, is_delete: Opt
 fn read_local_auth_files() -> Result<serde_json::Value, String> {
     let dir = app_dir().map_err(|e| e.to_string())?;
     let p = dir.join("config.yaml");
-    if !p.exists() { return Ok(json!([])); }
+    if !p.exists() {
+        return Ok(json!([]));
+    }
     let content = fs::read_to_string(&p).map_err(|e| e.to_string())?;
     let conf: serde_yaml::Value = serde_yaml::from_str(&content).map_err(|e| e.to_string())?;
     let auth_dir = conf.get("auth-dir").and_then(|v| v.as_str()).unwrap_or("");
-    if auth_dir.is_empty() { return Ok(json!([])); }
+    if auth_dir.is_empty() {
+        return Ok(json!([]));
+    }
     let base = p.parent().unwrap();
     let ad = resolve_path(auth_dir, Some(base));
-    if !ad.exists() { return Ok(json!([])); }
+    if !ad.exists() {
+        return Ok(json!([]));
+    }
     let mut result = vec![];
     for entry in fs::read_dir(ad).map_err(|e| e.to_string())? {
         let e = entry.map_err(|e| e.to_string())?;
@@ -385,10 +529,14 @@ fn read_local_auth_files() -> Result<serde_json::Value, String> {
                         let mut s = String::new();
                         let _ = f.read_to_string(&mut s);
                         if let Ok(v) = serde_json::from_str::<serde_json::Value>(&s) {
-                            if let Some(t) = v.get("type").and_then(|x| x.as_str()) { file_type = t.to_string(); }
+                            if let Some(t) = v.get("type").and_then(|x| x.as_str()) {
+                                file_type = t.to_string();
+                            }
                         }
                     }
-                    let mod_ms = meta.modified().ok()
+                    let mod_ms = meta
+                        .modified()
+                        .ok()
                         .and_then(|m| m.duration_since(std::time::UNIX_EPOCH).ok())
                         .map(|d| (d.as_millis() as u64))
                         .unwrap_or(0);
@@ -406,43 +554,75 @@ fn read_local_auth_files() -> Result<serde_json::Value, String> {
 }
 
 #[derive(Deserialize)]
-struct UploadFile { name: String, content: String }
+struct UploadFile {
+    name: String,
+    content: String,
+}
 
 #[tauri::command]
 fn upload_local_auth_files(files: Vec<UploadFile>) -> Result<serde_json::Value, String> {
     let dir = app_dir().map_err(|e| e.to_string())?;
     let p = dir.join("config.yaml");
-    if !p.exists() { return Err("Configuration file does not exist".into()); }
+    if !p.exists() {
+        return Err("Configuration file does not exist".into());
+    }
     let content = fs::read_to_string(&p).map_err(|e| e.to_string())?;
     let conf: serde_yaml::Value = serde_yaml::from_str(&content).map_err(|e| e.to_string())?;
-    let auth_dir = conf.get("auth-dir").and_then(|v| v.as_str()).ok_or("auth-dir not configured in config.yaml")?;
+    let auth_dir = conf
+        .get("auth-dir")
+        .and_then(|v| v.as_str())
+        .ok_or("auth-dir not configured in config.yaml")?;
     let base = p.parent().unwrap();
     let ad = resolve_path(auth_dir, Some(base));
     fs::create_dir_all(&ad).map_err(|e| e.to_string())?;
-    let mut success = 0usize; let mut errors = vec![]; let mut error_count = 0usize;
+    let mut success = 0usize;
+    let mut errors = vec![];
+    let mut error_count = 0usize;
     for f in files {
         let path = ad.join(&f.name);
-        if path.exists() { errors.push(format!("{}: File already exists", f.name)); error_count += 1; continue; }
-        if let Err(e) = fs::write(&path, f.content.as_bytes()) { errors.push(format!("{}: {}", f.name, e)); error_count += 1; } else { success += 1; }
+        if path.exists() {
+            errors.push(format!("{}: File already exists", f.name));
+            error_count += 1;
+            continue;
+        }
+        if let Err(e) = fs::write(&path, f.content.as_bytes()) {
+            errors.push(format!("{}: {}", f.name, e));
+            error_count += 1;
+        } else {
+            success += 1;
+        }
     }
-    Ok(json!({"success": success>0, "successCount": success, "errorCount": error_count, "errors": if errors.is_empty(){serde_json::Value::Null}else{json!(errors)} }))
+    Ok(
+        json!({"success": success>0, "successCount": success, "errorCount": error_count, "errors": if errors.is_empty(){serde_json::Value::Null}else{json!(errors)} }),
+    )
 }
 
 #[tauri::command]
 fn delete_local_auth_files(filenames: Vec<String>) -> Result<serde_json::Value, String> {
     let dir = app_dir().map_err(|e| e.to_string())?;
     let p = dir.join("config.yaml");
-    if !p.exists() { return Err("Configuration file does not exist".into()); }
+    if !p.exists() {
+        return Err("Configuration file does not exist".into());
+    }
     let content = fs::read_to_string(&p).map_err(|e| e.to_string())?;
     let conf: serde_yaml::Value = serde_yaml::from_str(&content).map_err(|e| e.to_string())?;
-    let auth_dir = conf.get("auth-dir").and_then(|v| v.as_str()).ok_or("auth-dir not configured in config.yaml")?;
+    let auth_dir = conf
+        .get("auth-dir")
+        .and_then(|v| v.as_str())
+        .ok_or("auth-dir not configured in config.yaml")?;
     let base = p.parent().unwrap();
     let ad = resolve_path(auth_dir, Some(base));
-    if !ad.exists() { return Err("Authentication file directory does not exist".into()); }
-    let mut success = 0usize; let mut error_count = 0usize;
+    if !ad.exists() {
+        return Err("Authentication file directory does not exist".into());
+    }
+    let mut success = 0usize;
+    let mut error_count = 0usize;
     for name in filenames {
         let path = ad.join(&name);
-        match fs::remove_file(&path) { Ok(_) => success += 1, Err(_) => error_count += 1 }
+        match fs::remove_file(&path) {
+            Ok(_) => success += 1,
+            Err(_) => error_count += 1,
+        }
     }
     Ok(json!({"success": success>0, "successCount": success, "errorCount": error_count}))
 }
@@ -451,26 +631,54 @@ fn delete_local_auth_files(filenames: Vec<String>) -> Result<serde_json::Value, 
 fn download_local_auth_files(filenames: Vec<String>) -> Result<serde_json::Value, String> {
     let dir = app_dir().map_err(|e| e.to_string())?;
     let p = dir.join("config.yaml");
-    if !p.exists() { return Err("Configuration file does not exist".into()); }
+    if !p.exists() {
+        return Err("Configuration file does not exist".into());
+    }
     let content = fs::read_to_string(&p).map_err(|e| e.to_string())?;
     let conf: serde_yaml::Value = serde_yaml::from_str(&content).map_err(|e| e.to_string())?;
-    let auth_dir = conf.get("auth-dir").and_then(|v| v.as_str()).ok_or("auth-dir not configured in config.yaml")?;
+    let auth_dir = conf
+        .get("auth-dir")
+        .and_then(|v| v.as_str())
+        .ok_or("auth-dir not configured in config.yaml")?;
     let base = p.parent().unwrap();
     let ad = resolve_path(auth_dir, Some(base));
-    if !ad.exists() { return Err("Authentication file directory does not exist".into()); }
-    let mut files = vec![]; let mut error_count = 0usize;
+    if !ad.exists() {
+        return Err("Authentication file directory does not exist".into());
+    }
+    let mut files = vec![];
+    let mut error_count = 0usize;
     for name in filenames {
         let path = ad.join(&name);
-        match fs::read_to_string(&path) { Ok(c) => files.push(json!({"name": name, "content": c})), Err(_) => error_count += 1 }
+        match fs::read_to_string(&path) {
+            Ok(c) => files.push(json!({"name": name, "content": c})),
+            Err(_) => error_count += 1,
+        }
     }
     Ok(json!({"success": !files.is_empty(), "files": files, "errorCount": error_count}))
 }
 
 fn find_executable(version_path: &Path) -> Option<PathBuf> {
     let mut exe = PathBuf::from("cli-proxy-api");
-    if cfg!(target_os = "windows") { exe.set_extension("exe"); }
+    if cfg!(target_os = "windows") {
+        exe.set_extension("exe");
+    }
     let path = version_path.join(exe);
-    if path.exists() { Some(path) } else { None }
+    if path.exists() {
+        Some(path)
+    } else {
+        None
+    }
+}
+
+fn generate_random_password() -> String {
+    const CHARSET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    let mut rng = rand::thread_rng();
+    (0..32)
+        .map(|_| {
+            let idx = rng.gen_range(0..CHARSET.len());
+            CHARSET[idx] as char
+        })
+        .collect()
 }
 
 fn start_monitor(app: tauri::AppHandle) {
@@ -509,8 +717,14 @@ fn start_monitor(app: tauri::AppHandle) {
                 } else {
                     println!("[CLIProxyAPI][EXIT] process closed (no exit code)");
                 }
-                if let Some(code) = exit_code { let _ = app.emit("process-exit-error", json!({"code": code})); }
-                else { let _ = app.emit("process-closed", json!({"message": "CLIProxyAPI process has closed"})); }
+                if let Some(code) = exit_code {
+                    let _ = app.emit("process-exit-error", json!({"code": code}));
+                } else {
+                    let _ = app.emit(
+                        "process-closed",
+                        json!({"message": "CLIProxyAPI process has closed"}),
+                    );
+                }
                 // Remove tray icon when process exits
                 let _ = TRAY_ICON.lock().take();
                 break;
@@ -528,7 +742,10 @@ fn pipe_child_output(child: &mut Child) {
             for line in reader.lines() {
                 match line {
                     Ok(l) => println!("[CLIProxyAPI][STDOUT] {}", l),
-                    Err(e) => { eprintln!("[CLIProxyAPI][STDOUT][ERROR] {}", e); break; }
+                    Err(e) => {
+                        eprintln!("[CLIProxyAPI][STDOUT][ERROR] {}", e);
+                        break;
+                    }
                 }
             }
         });
@@ -540,7 +757,10 @@ fn pipe_child_output(child: &mut Child) {
             for line in reader.lines() {
                 match line {
                     Ok(l) => eprintln!("[CLIProxyAPI][STDERR] {}", l),
-                    Err(e) => { eprintln!("[CLIProxyAPI][STDERR][ERROR] {}", e); break; }
+                    Err(e) => {
+                        eprintln!("[CLIProxyAPI][STDERR][ERROR] {}", e);
+                        break;
+                    }
                 }
             }
         });
@@ -563,15 +783,62 @@ fn start_cliproxyapi(app: tauri::AppHandle) -> Result<serde_json::Value, String>
     let (_ver, path) = info.ok_or("Version file does not exist")?;
     let exec = find_executable(&path).ok_or("Executable file does not exist")?;
     let config = app_dir().map_err(|e| e.to_string())?.join("config.yaml");
-    if !config.exists() { return Err("Configuration file does not exist".into()); }
+    if !config.exists() {
+        return Err("Configuration file does not exist".into());
+    }
+
+    // Generate random password for local mode
+    let password = generate_random_password();
+
+    // Update config.yaml with the generated password
+    let content = fs::read_to_string(&config).map_err(|e| e.to_string())?;
+    let mut conf: serde_yaml::Value = serde_yaml::from_str(&content).map_err(|e| e.to_string())?;
+
+    // Ensure remote-management section exists
+    if !conf
+        .as_mapping()
+        .unwrap()
+        .contains_key(&serde_yaml::Value::from("remote-management"))
+    {
+        conf.as_mapping_mut().unwrap().insert(
+            serde_yaml::Value::from("remote-management"),
+            serde_yaml::Value::Mapping(Default::default()),
+        );
+    }
+
+    // Set the secret-key
+    let rm = conf
+        .as_mapping_mut()
+        .unwrap()
+        .get_mut(&serde_yaml::Value::from("remote-management"))
+        .unwrap()
+        .as_mapping_mut()
+        .unwrap();
+    rm.insert(
+        serde_yaml::Value::from("secret-key"),
+        serde_yaml::Value::from(password.as_str()),
+    );
+
+    // Write updated config
+    let updated_content = serde_yaml::to_string(&conf).map_err(|e| e.to_string())?;
+    fs::write(&config, updated_content).map_err(|e| e.to_string())?;
 
     println!("[CLIProxyAPI][START] exec: {}", exec.to_string_lossy());
-    println!("[CLIProxyAPI][START] args: -config {}", config.to_string_lossy());
+    println!(
+        "[CLIProxyAPI][START] args: -config {} --password {}",
+        config.to_string_lossy(),
+        password
+    );
     let mut cmd = std::process::Command::new(&exec);
-    cmd.args(["-config", config.to_string_lossy().as_ref()])
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+    cmd.args([
+        "-config",
+        config.to_string_lossy().as_ref(),
+        "--password",
+        &password,
+    ])
+    .stdin(Stdio::null())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped());
     let mut child = cmd.spawn().map_err(|e| {
         eprintln!("[CLIProxyAPI][ERROR] failed to start process: {}", e);
         e.to_string()
@@ -582,26 +849,76 @@ fn start_cliproxyapi(app: tauri::AppHandle) -> Result<serde_json::Value, String>
     start_monitor(app.clone());
     // Create tray icon when local process starts
     let _ = create_tray(&app);
-    Ok(json!({"success": true}))
+    Ok(json!({"success": true, "password": password}))
 }
 
 #[tauri::command]
 fn restart_cliproxyapi(app: tauri::AppHandle) -> Result<(), String> {
     // Stop existing
-    if let Some(mut child) = PROCESS.lock().take() { let _ = child.kill(); }
+    if let Some(mut child) = PROCESS.lock().take() {
+        let _ = child.kill();
+    }
     // Start new using current version
     let info = current_local_info().map_err(|e| e.to_string())?;
     let (ver, path) = info.ok_or("Version file does not exist")?;
     let exec = find_executable(&path).ok_or("Executable file does not exist")?;
     let config = app_dir().map_err(|e| e.to_string())?.join("config.yaml");
-    if !config.exists() { return Err("Configuration file does not exist".into()); }
+    if !config.exists() {
+        return Err("Configuration file does not exist".into());
+    }
+
+    // Generate random password for local mode
+    let password = generate_random_password();
+
+    // Update config.yaml with the generated password
+    let content = fs::read_to_string(&config).map_err(|e| e.to_string())?;
+    let mut conf: serde_yaml::Value = serde_yaml::from_str(&content).map_err(|e| e.to_string())?;
+
+    // Ensure remote-management section exists
+    if !conf
+        .as_mapping()
+        .unwrap()
+        .contains_key(&serde_yaml::Value::from("remote-management"))
+    {
+        conf.as_mapping_mut().unwrap().insert(
+            serde_yaml::Value::from("remote-management"),
+            serde_yaml::Value::Mapping(Default::default()),
+        );
+    }
+
+    // Set the secret-key
+    let rm = conf
+        .as_mapping_mut()
+        .unwrap()
+        .get_mut(&serde_yaml::Value::from("remote-management"))
+        .unwrap()
+        .as_mapping_mut()
+        .unwrap();
+    rm.insert(
+        serde_yaml::Value::from("secret-key"),
+        serde_yaml::Value::from(password.as_str()),
+    );
+
+    // Write updated config
+    let updated_content = serde_yaml::to_string(&conf).map_err(|e| e.to_string())?;
+    fs::write(&config, updated_content).map_err(|e| e.to_string())?;
+
     println!("[CLIProxyAPI][RESTART] exec: {}", exec.to_string_lossy());
-    println!("[CLIProxyAPI][RESTART] args: -config {}", config.to_string_lossy());
+    println!(
+        "[CLIProxyAPI][RESTART] args: -config {} --password {}",
+        config.to_string_lossy(),
+        password
+    );
     let mut cmd = std::process::Command::new(&exec);
-    cmd.args(["-config", config.to_string_lossy().as_ref()])
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+    cmd.args([
+        "-config",
+        config.to_string_lossy().as_ref(),
+        "--password",
+        &password,
+    ])
+    .stdin(Stdio::null())
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped());
     let mut child = cmd.spawn().map_err(|e| {
         eprintln!("[CLIProxyAPI][ERROR] failed to restart process: {}", e);
         e.to_string()
@@ -609,34 +926,47 @@ fn restart_cliproxyapi(app: tauri::AppHandle) -> Result<(), String> {
     pipe_child_output(&mut child);
     *PROCESS.lock() = Some(child);
     start_monitor(app.clone());
-    if let Some(w) = app.get_webview_window("main") { let _ = w.emit("cliproxyapi-restarted", json!({"version": ver})); }
+    if let Some(w) = app.get_webview_window("main") {
+        let _ = w.emit("cliproxyapi-restarted", json!({"version": ver}));
+    }
     Ok(())
 }
 
 fn stop_process_internal() {
-    if let Some(mut child) = PROCESS.lock().take() { let _ = child.kill(); }
+    if let Some(mut child) = PROCESS.lock().take() {
+        let _ = child.kill();
+    }
 }
 
 fn create_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
-    use tauri::{menu::{MenuBuilder, MenuItemBuilder}, tray::TrayIconBuilder};
+    use tauri::{
+        menu::{MenuBuilder, MenuItemBuilder},
+        tray::TrayIconBuilder,
+    };
     let mut guard = TRAY_ICON.lock();
-    if guard.is_some() { return Ok(()); }
+    if guard.is_some() {
+        return Ok(());
+    }
 
     let open_settings = MenuItemBuilder::with_id("open_settings", "Open Settings").build(app)?;
     let quit = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
-    let menu = MenuBuilder::new(app).items(&[&open_settings, &quit]).build()?;
+    let menu = MenuBuilder::new(app)
+        .items(&[&open_settings, &quit])
+        .build()?;
     let mut builder = TrayIconBuilder::new()
         .menu(&menu)
         .show_menu_on_left_click(true)
         .tooltip("EasyCLI")
         .on_menu_event(|app, event| match event.id().as_ref() {
-            "open_settings" => { let _ = open_settings_window(app.clone()); },
+            "open_settings" => {
+                let _ = open_settings_window(app.clone());
+            }
             "quit" => {
                 // Stop backend process then exit
                 stop_process_internal();
                 let _ = TRAY_ICON.lock().take();
                 let _ = app.exit(0);
-            },
+            }
             _ => {}
         });
     // Platform-specific tray icon
@@ -720,7 +1050,13 @@ fn callback_path_for(provider: &str) -> &'static str {
     }
 }
 
-fn build_redirect_url(mode: &str, provider: &str, base_url: Option<String>, local_port: Option<u16>, query: &str) -> String {
+fn build_redirect_url(
+    mode: &str,
+    provider: &str,
+    base_url: Option<String>,
+    local_port: Option<u16>,
+    query: &str,
+) -> String {
     let cb = callback_path_for(provider);
     let mut base = String::new();
     if mode == "local" {
@@ -729,13 +1065,27 @@ fn build_redirect_url(mode: &str, provider: &str, base_url: Option<String>, loca
     } else {
         let bu = base_url.unwrap_or_else(|| "http://127.0.0.1:8317".to_string());
         // ensure single slash
-        if bu.ends_with('/') { base = format!("{}{}", bu, cb.trim_start_matches('/')); }
-        else { base = format!("{}/{}", bu, cb.trim_start_matches('/')); }
+        if bu.ends_with('/') {
+            base = format!("{}{}", bu, cb.trim_start_matches('/'));
+        } else {
+            base = format!("{}/{}", bu, cb.trim_start_matches('/'));
+        }
     }
-    if query.is_empty() { base } else { format!("{}?{}", base, query) }
+    if query.is_empty() {
+        base
+    } else {
+        format!("{}?{}", base, query)
+    }
 }
 
-fn run_callback_server(stop: Arc<AtomicBool>, listen_port: u16, mode: String, provider: String, base_url: Option<String>, local_port: Option<u16>) {
+fn run_callback_server(
+    stop: Arc<AtomicBool>,
+    listen_port: u16,
+    mode: String,
+    provider: String,
+    base_url: Option<String>,
+    local_port: Option<u16>,
+) {
     let addr = format!("127.0.0.1:{}", listen_port);
     let listener = match std::net::TcpListener::bind(&addr) {
         Ok(l) => l,
@@ -744,7 +1094,9 @@ fn run_callback_server(stop: Arc<AtomicBool>, listen_port: u16, mode: String, pr
             return;
         }
     };
-    if let Err(e) = listener.set_nonblocking(false) { eprintln!("[CALLBACK] set_nonblocking failed: {}", e); }
+    if let Err(e) = listener.set_nonblocking(false) {
+        eprintln!("[CALLBACK] set_nonblocking failed: {}", e);
+    }
     println!("[CALLBACK] listening on {} for provider {}", addr, provider);
     while !stop.load(Ordering::SeqCst) {
         match listener.accept() {
@@ -755,7 +1107,8 @@ fn run_callback_server(stop: Arc<AtomicBool>, listen_port: u16, mode: String, pr
                 if reader.read_line(&mut req_line).is_ok() {
                     let pathq = req_line.split_whitespace().nth(1).unwrap_or("/");
                     let query = pathq.splitn(2, '?').nth(1).unwrap_or("");
-                    let loc = build_redirect_url(&mode, &provider, base_url.clone(), local_port, query);
+                    let loc =
+                        build_redirect_url(&mode, &provider, base_url.clone(), local_port, query);
                     let resp = format!(
                         "HTTP/1.1 302 Found\r\nLocation: {}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
                         loc
@@ -766,7 +1119,9 @@ fn run_callback_server(stop: Arc<AtomicBool>, listen_port: u16, mode: String, pr
                 let _ = stream.shutdown(std::net::Shutdown::Both);
             }
             Err(e) => {
-                if stop.load(Ordering::SeqCst) { break; }
+                if stop.load(Ordering::SeqCst) {
+                    break;
+                }
                 eprintln!("[CALLBACK] accept error: {}", e);
                 thread::sleep(Duration::from_millis(50));
             }
@@ -776,7 +1131,13 @@ fn run_callback_server(stop: Arc<AtomicBool>, listen_port: u16, mode: String, pr
 }
 
 #[tauri::command]
-fn start_callback_server(provider: String, listen_port: u16, mode: String, base_url: Option<String>, local_port: Option<u16>) -> Result<serde_json::Value, String> {
+fn start_callback_server(
+    provider: String,
+    listen_port: u16,
+    mode: String,
+    base_url: Option<String>,
+    local_port: Option<u16>,
+) -> Result<serde_json::Value, String> {
     let mut map = CALLBACK_SERVERS.lock();
     if let Some((flag, handle)) = map.remove(&listen_port) {
         flag.store(true, Ordering::SeqCst);
@@ -785,7 +1146,16 @@ fn start_callback_server(provider: String, listen_port: u16, mode: String, base_
     }
     let stop = Arc::new(AtomicBool::new(false));
     let stop_clone = stop.clone();
-    let handle = thread::spawn(move || run_callback_server(stop_clone, listen_port, mode, provider, base_url, local_port));
+    let handle = thread::spawn(move || {
+        run_callback_server(
+            stop_clone,
+            listen_port,
+            mode,
+            provider,
+            base_url,
+            local_port,
+        )
+    });
     map.insert(listen_port, (stop, handle));
     Ok(json!({"success": true}))
 }
@@ -950,17 +1320,20 @@ fn main() {
             restart_cliproxyapi,
             start_cliproxyapi,
             open_settings_window,
-            open_login_window
-            ,start_callback_server
-            ,stop_callback_server
-            ,save_files_to_directory
+            open_login_window,
+            start_callback_server,
+            stop_callback_server,
+            save_files_to_directory
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
 
 #[derive(Deserialize)]
-struct SaveFile { name: String, content: String }
+struct SaveFile {
+    name: String,
+    content: String,
+}
 
 #[tauri::command]
 fn save_files_to_directory(files: Vec<SaveFile>) -> Result<serde_json::Value, String> {
@@ -981,7 +1354,10 @@ fn save_files_to_directory(files: Vec<SaveFile>) -> Result<serde_json::Value, St
         let path = folder.join(&f.name);
         match fs::write(&path, f.content.as_bytes()) {
             Ok(_) => success += 1,
-            Err(e) => { error_count += 1; errors.push(format!("{}: {}", f.name, e)); }
+            Err(e) => {
+                error_count += 1;
+                errors.push(format!("{}: {}", f.name, e));
+            }
         }
     }
 

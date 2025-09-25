@@ -82,7 +82,7 @@ async function handleClaudeCallback(req, res) {
     }
 }
 
-async function stopClaudeLocalServer() { try { await window.__TAURI__.core.invoke('stop_callback_server', { listenPort: 54545 }); } catch (_) {} }
+async function stopClaudeLocalServer() { try { await window.__TAURI__.core.invoke('stop_callback_server', { listenPort: 54545 }); } catch (_) { } }
 
 async function getClaudeAuthUrl() {
     try {
@@ -94,7 +94,7 @@ async function getClaudeAuthUrl() {
             const config = await configManager.getConfig();
             const port = config.port || 8317; // Default port
             baseUrl = `http://127.0.0.1:${port}`;
-            password = config['remote-management']?.['secret-key'] || '';
+            password = localStorage.getItem('local-management-key') || '';
         } else {
             // Read configuration from localStorage in Remote mode
             baseUrl = localStorage.getItem('base-url');
@@ -103,7 +103,10 @@ async function getClaudeAuthUrl() {
         }
 
         const apiUrl = baseUrl.endsWith('/') ? `${baseUrl}v0/management/anthropic-auth-url` : `${baseUrl}/v0/management/anthropic-auth-url`;
-        const response = await fetch(apiUrl, { method: 'GET', headers: { 'Authorization': `Bearer ${password}`, 'Content-Type': 'application/json' } });
+        const headers = currentMode === 'local'
+            ? { 'X-Management-Key': password, 'Content-Type': 'application/json' }
+            : { 'Authorization': `Bearer ${password}`, 'Content-Type': 'application/json' };
+        const response = await fetch(apiUrl, { method: 'GET', headers: headers });
         if (!response.ok) throw new Error(`Failed to get Claude authentication URL: ${response.status}`);
         const data = await response.json();
         claudeAuthUrl = data.url;
@@ -273,7 +276,7 @@ async function pollClaudeAuthStatus(authType, state, onSuccess, onError) {
                     const config = await configManager.getConfig();
                     const port = config.port || 8317;
                     baseUrl = `http://127.0.0.1:${port}`;
-                    password = config['remote-management']?.['secret-key'] || '';
+                    password = localStorage.getItem('local-management-key') || '';
                 } else {
                     baseUrl = localStorage.getItem('base-url');
                     password = localStorage.getItem('password');
@@ -284,12 +287,12 @@ async function pollClaudeAuthStatus(authType, state, onSuccess, onError) {
                     ? `${baseUrl}v0/management/get-auth-status?state=${encodeURIComponent(state)}`
                     : `${baseUrl}/v0/management/get-auth-status?state=${encodeURIComponent(state)}`;
 
+                const headers = currentMode === 'local'
+                    ? { 'X-Management-Key': password, 'Content-Type': 'application/json' }
+                    : { 'Authorization': `Bearer ${password}`, 'Content-Type': 'application/json' };
                 const response = await fetch(apiUrl, {
                     method: 'GET',
-                    headers: {
-                        'Authorization': `Bearer ${password}`,
-                        'Content-Type': 'application/json'
-                    },
+                    headers: headers,
                     signal: claudeAbortController.signal
                 });
 

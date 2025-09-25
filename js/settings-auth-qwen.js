@@ -28,17 +28,21 @@ async function getQwenAuthUrl() {
             const config = await configManager.getConfig();
             const port = config.port || 8317; // Default port
             baseUrl = `http://127.0.0.1:${port}`;
-            password = config['remote-management']?.['secret-key'] || '';
+            password = localStorage.getItem('local-management-key') || '';
         } else {
-            // Read configuration from localStorage in Remote mode
-            baseUrl = localStorage.getItem('base-url');
-            password = localStorage.getItem('password');
+            // Read configuration from configManager in Remote mode
+            configManager.refreshConnection();
+            baseUrl = configManager.baseUrl;
+            password = configManager.password;
             if (!baseUrl || !password) throw new Error('Missing connection information');
         }
 
         const apiUrl = baseUrl.endsWith('/') ? `${baseUrl}v0/management/qwen-auth-url` : `${baseUrl}/v0/management/qwen-auth-url`;
         console.log('Requesting Qwen auth URL from:', apiUrl);
-        const response = await fetch(apiUrl, { method: 'GET', headers: { 'Authorization': `Bearer ${password}`, 'Content-Type': 'application/json' } });
+        const headers = currentMode === 'local'
+            ? { 'X-Management-Key': password, 'Content-Type': 'application/json' }
+            : { 'Authorization': `Bearer ${password}`, 'Content-Type': 'application/json' };
+        const response = await fetch(apiUrl, { method: 'GET', headers: headers });
         if (!response.ok) throw new Error(`Failed to get Qwen authentication URL: ${response.status}`);
         const data = await response.json();
         qwenAuthUrl = data.url;
@@ -208,10 +212,11 @@ async function pollQwenAuthStatus(authType, state, onSuccess, onError) {
                     const config = await configManager.getConfig();
                     const port = config.port || 8317;
                     baseUrl = `http://127.0.0.1:${port}`;
-                    password = config['remote-management']?.['secret-key'] || '';
+                    password = localStorage.getItem('local-management-key') || '';
                 } else {
-                    baseUrl = localStorage.getItem('base-url');
-                    password = localStorage.getItem('password');
+                    configManager.refreshConnection();
+                    baseUrl = configManager.baseUrl;
+                    password = configManager.password;
                     if (!baseUrl || !password) throw new Error('Missing connection information');
                 }
 
@@ -219,12 +224,12 @@ async function pollQwenAuthStatus(authType, state, onSuccess, onError) {
                     ? `${baseUrl}v0/management/get-auth-status?state=${encodeURIComponent(state)}`
                     : `${baseUrl}/v0/management/get-auth-status?state=${encodeURIComponent(state)}`;
 
+                const headers = currentMode === 'local'
+                    ? { 'X-Management-Key': password, 'Content-Type': 'application/json' }
+                    : { 'Authorization': `Bearer ${password}`, 'Content-Type': 'application/json' };
                 const response = await fetch(apiUrl, {
                     method: 'GET',
-                    headers: {
-                        'Authorization': `Bearer ${password}`,
-                        'Content-Type': 'application/json'
-                    },
+                    headers: headers,
                     signal: qwenAbortController.signal
                 });
 
