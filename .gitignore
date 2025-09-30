@@ -3,3 +3,4 @@ src-tauri/target/
 out/
 dist-web/
 src-tauri/logs/
+.serena/

@@ -315,6 +315,12 @@
                         <label for="base-url-input">Base URL <span class="required">*</span></label>
                         <input type="url" id="base-url-input" class="form-input" placeholder="https://api.example.com">
                     </div>
+                    <div class="form-group" id="proxy-url-group" style="display: none;">
+                        <label for="api-key-proxy-url-input">Proxy URL</label>
+                        <input type="text" id="api-key-proxy-url-input" class="form-input"
+                            placeholder="socks5://user:pass@host:port">
+                        <small class="form-help">Optional proxy URL for API requests</small>
+                    </div>
                 </form>
             </div>
             <div class="form-actions">
@@ -372,12 +378,13 @@
                             <div class="dynamic-input-row">
                                 <input type="text" class="form-input dynamic-input" placeholder="Enter API key"
                                     required>
+                                <input type="text" class="form-input dynamic-input" placeholder="Proxy URL (optional)">
                                 <button type="button" class="add-row-btn" onclick="addApiKeyRow()">+</button>
                                 <button type="button" class="remove-row-btn"
                                     onclick="removeApiKeyRow(this.parentElement)">−</button>
                             </div>
                         </div>
-                        <small class="form-help">Enter one API key per row</small>
+                        <small class="form-help">Enter API key and optional proxy URL per row</small>
                     </div>
                     <div class="form-group">
                         <label>Models</label>

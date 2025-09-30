@@ -10,6 +10,8 @@ const apiKeyForm = document.getElementById('api-key-form');
 const apiKeyInput = document.getElementById('api-key-input');
 const baseUrlInput = document.getElementById('base-url-input');
 const baseUrlGroup = document.getElementById('base-url-group');
+const apiKeyProxyUrlInput = document.getElementById('api-key-proxy-url-input');
+const proxyUrlGroup = document.getElementById('proxy-url-group');
 const modalClose = document.getElementById('modal-close');
 const modalCancel = document.getElementById('modal-cancel');
 const modalSave = document.getElementById('modal-save');
@@ -129,6 +131,7 @@ function renderCodexKeys() {
             <div class="api-key-info">
                 <div class="api-key-value">${keyObj['api-key']}</div>
                 ${keyObj['base-url'] ? `<div class=\"api-key-base-url\">Base URL: ${keyObj['base-url']}</div>` : ''}
+                ${keyObj['proxy-url'] ? `<div class=\"api-key-proxy-url\">Proxy URL: ${keyObj['proxy-url']}</div>` : ''}
             </div>
             <div class="api-key-actions">
                 <button class="api-key-btn edit" onclick="editCodexKey(${index})">Edit</button>
@@ -162,6 +165,7 @@ function renderClaudeKeys() {
             <div class="api-key-info">
                 <div class="api-key-value">${keyObj['api-key']}</div>
                 ${keyObj['base-url'] ? `<div class=\"api-key-base-url\">Base URL: ${keyObj['base-url']}</div>` : ''}
+                ${keyObj['proxy-url'] ? `<div class=\"api-key-proxy-url\">Proxy URL: ${keyObj['proxy-url']}</div>` : ''}
             </div>
             <div class="api-key-actions">
                 <button class="api-key-btn edit" onclick="editClaudeKey(${index})">Edit</button>
@@ -179,13 +183,17 @@ function showApiKeyModal(type, editIndex = null) {
     modalTitle.textContent = editIndex !== null ? 'Edit API Key' : 'Add API Key';
     apiKeyInput.value = '';
     baseUrlInput.value = '';
+    apiKeyProxyUrlInput.value = '';
     apiKeyInput.classList.remove('error');
     baseUrlInput.classList.remove('error');
+    apiKeyProxyUrlInput.classList.remove('error');
 
     if (type === 'codex' || type === 'claude') {
         baseUrlGroup.style.display = 'block';
+        proxyUrlGroup.style.display = 'block';
     } else {
         baseUrlGroup.style.display = 'none';
+        proxyUrlGroup.style.display = 'none';
     }
 
     if (editIndex !== null) {
@@ -195,10 +203,12 @@ function showApiKeyModal(type, editIndex = null) {
             const keyObj = codexKeys[editIndex];
             apiKeyInput.value = keyObj['api-key'] || '';
             baseUrlInput.value = keyObj['base-url'] || '';
+            apiKeyProxyUrlInput.value = keyObj['proxy-url'] || '';
         } else if (type === 'claude') {
             const keyObj = claudeKeys[editIndex];
             apiKeyInput.value = keyObj['api-key'] || '';
             baseUrlInput.value = keyObj['base-url'] || '';
+            apiKeyProxyUrlInput.value = keyObj['proxy-url'] || '';
         }
     }
 
@@ -215,8 +225,10 @@ function hideApiKeyModal() {
 function saveApiKey() {
     const apiKey = apiKeyInput.value.trim();
     const baseUrl = baseUrlInput.value.trim();
+    const proxyUrl = apiKeyProxyUrlInput.value.trim();
     apiKeyInput.classList.remove('error');
     baseUrlInput.classList.remove('error');
+    apiKeyProxyUrlInput.classList.remove('error');
 
     const currentTab = document.querySelector('.tab.active').getAttribute('data-tab');
     if (currentTab !== 'api') {
@@ -253,6 +265,7 @@ function saveApiKey() {
     } else if (currentApiType === 'codex') {
         const keyObj = { 'api-key': apiKey };
         if (baseUrl) keyObj['base-url'] = baseUrl;
+        if (proxyUrl) keyObj['proxy-url'] = proxyUrl;
         if (currentEditIndex !== null) {
             codexKeys[currentEditIndex] = keyObj;
         } else {
@@ -262,6 +275,7 @@ function saveApiKey() {
     } else if (currentApiType === 'claude') {
         const keyObj = { 'api-key': apiKey };
         if (baseUrl) keyObj['base-url'] = baseUrl;
+        if (proxyUrl) keyObj['proxy-url'] = proxyUrl;
         if (currentEditIndex !== null) {
             claudeKeys[currentEditIndex] = keyObj;
         } else {
@@ -321,6 +335,7 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && apiKeyMo
 // Clear inline errors on input
 apiKeyInput.addEventListener('input', () => { if (apiKeyInput.classList.contains('error')) apiKeyInput.classList.remove('error'); });
 baseUrlInput.addEventListener('input', () => { if (baseUrlInput.classList.contains('error')) baseUrlInput.classList.remove('error'); });
+apiKeyProxyUrlInput.addEventListener('input', () => { if (apiKeyProxyUrlInput.classList.contains('error')) apiKeyProxyUrlInput.classList.remove('error'); });
 
 // Buttons to open modal
 addGeminiKeyBtn.addEventListener('click', () => showApiKeyModal('gemini'));

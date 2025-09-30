@@ -50,7 +50,7 @@ function renderOpenaiProviders() {
     openaiProviders.forEach((provider, index) => {
         const providerItem = document.createElement('div');
         providerItem.className = 'openai-provider-item';
-        const apiKeysCount = provider['api-keys'] ? provider['api-keys'].length : 0;
+        const apiKeysCount = provider['api-key-entries'] ? provider['api-key-entries'].length : 0;
         const modelsCount = provider.models ? provider.models.length : 0;
         providerItem.innerHTML = `
             <div class="openai-provider-info">
@@ -85,7 +85,7 @@ function showOpenaiProviderModal(editIndex = null) {
         const provider = openaiProviders[editIndex];
         providerNameInput.value = provider.name || '';
         providerBaseUrlInput.value = provider['base-url'] || '';
-        const apiKeys = provider['api-keys'] || [];
+        const apiKeys = provider['api-key-entries'] || [];
         const models = provider.models || [];
         populateDynamicInputs(apiKeys, models);
     }
@@ -118,17 +118,20 @@ function saveOpenaiProvider() {
     }
     const { apiKeys, models } = getDynamicInputData();
     if (apiKeys.length === 0) {
-        const firstApiKeyInput = apiKeysContainer.querySelector('.dynamic-input');
+        const firstApiKeyInput = apiKeysContainer.querySelector('.dynamic-input:first-child');
         if (firstApiKeyInput) showProviderFieldError(firstApiKeyInput, 'Please fill in this field');
         hasErrors = true;
     }
     if (!hasErrors && apiKeys.length > 0) {
         for (let i = apiKeys.length - 1; i >= 0; i--) {
-            const currentKey = apiKeys[i];
-            const duplicateIndex = apiKeys.findIndex((key, index) => index !== i && key === currentKey);
+            const currentKey = apiKeys[i]['api-key'];
+            const duplicateIndex = apiKeys.findIndex((key, index) => index !== i && key['api-key'] === currentKey);
             if (duplicateIndex !== -1) {
-                const apiKeyInputs = apiKeysContainer.querySelectorAll('.dynamic-input');
-                if (apiKeyInputs[i]) showProviderFieldError(apiKeyInputs[i], 'This API key already exists');
+                const apiKeyRows = apiKeysContainer.querySelectorAll('.dynamic-input-row');
+                if (apiKeyRows[i]) {
+                    const apiKeyInput = apiKeyRows[i].querySelector('.dynamic-input:first-child');
+                    if (apiKeyInput) showProviderFieldError(apiKeyInput, 'This API key already exists');
+                }
                 hasErrors = true;
                 break;
             }
@@ -157,7 +160,7 @@ function saveOpenaiProvider() {
         }
     }
     if (hasErrors) return;
-    const providerData = { name: name, 'base-url': baseUrl, 'api-keys': apiKeys, models: models };
+    const providerData = { name: name, 'base-url': baseUrl, 'api-key-entries': apiKeys, models: models };
     if (currentProviderEditIndex !== null) {
         openaiProviders[currentProviderEditIndex] = providerData;
     } else {
@@ -194,26 +197,36 @@ function addApiKeyRow() {
     const container = apiKeysContainer;
     const newRow = document.createElement('div');
     newRow.className = 'dynamic-input-row';
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'form-input dynamic-input';
-    input.placeholder = 'Enter API key';
-    input.required = true;
+
+    const apiKeyInput = document.createElement('input');
+    apiKeyInput.type = 'text';
+    apiKeyInput.className = 'form-input dynamic-input';
+    apiKeyInput.placeholder = 'Enter API key';
+    apiKeyInput.required = true;
+
+    const proxyUrlInput = document.createElement('input');
+    proxyUrlInput.type = 'text';
+    proxyUrlInput.className = 'form-input dynamic-input';
+    proxyUrlInput.placeholder = 'Proxy URL (optional)';
+
     const addBtn = document.createElement('button');
     addBtn.type = 'button';
     addBtn.className = 'add-row-btn';
     addBtn.textContent = '+';
     addBtn.onclick = addApiKeyRow;
+
     const removeBtn = document.createElement('button');
     removeBtn.type = 'button';
     removeBtn.className = 'remove-row-btn';
     removeBtn.textContent = '−';
     removeBtn.onclick = () => removeApiKeyRow(newRow);
-    newRow.appendChild(input);
+
+    newRow.appendChild(apiKeyInput);
+    newRow.appendChild(proxyUrlInput);
     newRow.appendChild(addBtn);
     newRow.appendChild(removeBtn);
     container.appendChild(newRow);
-    input.focus();
+    apiKeyInput.focus();
 }
 
 function removeApiKeyRow(row) {
@@ -221,8 +234,8 @@ function removeApiKeyRow(row) {
     if (container.children.length > 1) {
         row.remove();
     } else {
-        const input = row.querySelector('.dynamic-input');
-        if (input) input.value = '';
+        const inputs = row.querySelectorAll('.dynamic-input');
+        inputs.forEach(input => input.value = '');
     }
 }
 
@@ -273,9 +286,104 @@ function clearDynamicInputs() {
     addModelRow();
 }
 
+function populateDynamicInputs(apiKeys, models) {
+    // Clear existing inputs
+    apiKeysContainer.innerHTML = '';
+    modelsContainer.innerHTML = '';
+
+    // Populate API keys
+    if (apiKeys && apiKeys.length > 0) {
+        apiKeys.forEach(apiKeyEntry => {
+            const row = document.createElement('div');
+            row.className = 'dynamic-input-row';
+
+            const apiKeyInput = document.createElement('input');
+            apiKeyInput.type = 'text';
+            apiKeyInput.className = 'form-input dynamic-input';
+            apiKeyInput.placeholder = 'Enter API key';
+            apiKeyInput.required = true;
+            apiKeyInput.value = apiKeyEntry['api-key'] || '';
+
+            const proxyUrlInput = document.createElement('input');
+            proxyUrlInput.type = 'text';
+            proxyUrlInput.className = 'form-input dynamic-input';
+            proxyUrlInput.placeholder = 'Proxy URL (optional)';
+            proxyUrlInput.value = apiKeyEntry['proxy-url'] || '';
+
+            const addBtn = document.createElement('button');
+            addBtn.type = 'button';
+            addBtn.className = 'add-row-btn';
+            addBtn.textContent = '+';
+            addBtn.onclick = addApiKeyRow;
+
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.className = 'remove-row-btn';
+            removeBtn.textContent = '−';
+            removeBtn.onclick = () => removeApiKeyRow(row);
+
+            row.appendChild(apiKeyInput);
+            row.appendChild(proxyUrlInput);
+            row.appendChild(addBtn);
+            row.appendChild(removeBtn);
+            apiKeysContainer.appendChild(row);
+        });
+    } else {
+        addApiKeyRow();
+    }
+
+    // Populate models
+    if (models && models.length > 0) {
+        models.forEach(model => {
+            const row = document.createElement('div');
+            row.className = 'dynamic-input-row';
+
+            const modelNameInput = document.createElement('input');
+            modelNameInput.type = 'text';
+            modelNameInput.className = 'form-input dynamic-input';
+            modelNameInput.placeholder = 'Model name';
+            modelNameInput.value = model.name || '';
+
+            const aliasInput = document.createElement('input');
+            aliasInput.type = 'text';
+            aliasInput.className = 'form-input dynamic-input';
+            aliasInput.placeholder = 'Alias name';
+            aliasInput.value = model.alias || '';
+
+            const addBtn = document.createElement('button');
+            addBtn.type = 'button';
+            addBtn.className = 'add-row-btn';
+            addBtn.textContent = '+';
+            addBtn.onclick = addModelRow;
+
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.className = 'remove-row-btn';
+            removeBtn.textContent = '−';
+            removeBtn.onclick = () => removeModelRow(row);
+
+            row.appendChild(modelNameInput);
+            row.appendChild(aliasInput);
+            row.appendChild(addBtn);
+            row.appendChild(removeBtn);
+            modelsContainer.appendChild(row);
+        });
+    } else {
+        addModelRow();
+    }
+}
+
 function getDynamicInputData() {
     const apiKeys = Array.from(apiKeysContainer.querySelectorAll('.dynamic-input-row'))
-        .map(row => row.querySelector('.dynamic-input')?.value.trim())
+        .map(row => {
+            const inputs = row.querySelectorAll('.dynamic-input');
+            const apiKey = inputs[0]?.value.trim();
+            const proxyUrl = inputs[1]?.value.trim();
+            if (!apiKey) return null;
+            const entry = { 'api-key': apiKey };
+            if (proxyUrl) entry['proxy-url'] = proxyUrl;
+            return entry;
+        })
         .filter(v => v);
     const models = Array.from(modelsContainer.querySelectorAll('.dynamic-input-row'))
         .map(row => {
