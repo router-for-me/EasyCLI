@@ -20,6 +20,22 @@
                 location.reload();
             }
         });
+
+        (async () => {
+            try {
+                // Disable maximize on Windows to match desktop UX
+                const isWindows = navigator.userAgent.toLowerCase().includes('windows');
+                const getCurrentWindow = window.__TAURI__?.window?.getCurrent;
+                if (isWindows && typeof getCurrentWindow === 'function') {
+                    const currentWindow = getCurrentWindow();
+                    if (currentWindow && typeof currentWindow.setMaximizable === 'function') {
+                        await currentWindow.setMaximizable(false);
+                    }
+                }
+            } catch (err) {
+                console.warn('Disable maximize failed:', err);
+            }
+        })();
     </script>
 </head>
 
