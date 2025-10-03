@@ -410,32 +410,53 @@ fn check_secret_key() -> Result<serde_json::Value, String> {
     Ok(json!({"needsPassword": true, "reason": "Missing secret-key"}))
 }
 
+#[derive(Deserialize)]
+struct UpdateSecretKeyArgs {
+    secret_key: String,
+}
+
 #[tauri::command]
-fn update_secret_key(secret_key: String) -> Result<serde_json::Value, String> {
+fn update_secret_key(args: UpdateSecretKeyArgs) -> Result<serde_json::Value, String> {
+    let secret_key = args.secret_key;
     let dir = app_dir().map_err(|e| e.to_string())?;
     let p = dir.join("config.yaml");
-    if !p.exists() {
-        return Err("Configuration file does not exist".into());
+
+    // Create directory if it doesn't exist
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+
+    let mut v: serde_yaml::Value = if p.exists() {
+        let content = fs::read_to_string(&p).map_err(|e| e.to_string())?;
+        serde_yaml::from_str(&content).map_err(|e| e.to_string())?
+    } else {
+        // Create a new empty config if file doesn't exist
+        serde_yaml::Value::Mapping(Default::default())
+    };
+
+    // Ensure the value is a mapping
+    if !v.is_mapping() {
+        v = serde_yaml::Value::Mapping(Default::default());
     }
-    let content = fs::read_to_string(&p).map_err(|e| e.to_string())?;
-    let mut v: serde_yaml::Value = serde_yaml::from_str(&content).map_err(|e| e.to_string())?;
-    let rm = v
+
+    let m = v
         .as_mapping_mut()
-        .and_then(|m| m.get_mut(&serde_yaml::Value::from("remote-management")));
-    if let Some(rm_val) = rm {
-        if rm_val.is_null() {
-            *rm_val = serde_yaml::Value::Mapping(Default::default());
-        }
-    }
-    let m = v.as_mapping_mut().unwrap();
+        .ok_or("Failed to create config mapping")?;
     let entry = m
         .entry(serde_yaml::Value::from("remote-management"))
         .or_insert_with(|| serde_yaml::Value::Mapping(Default::default()));
-    let map = entry.as_mapping_mut().unwrap();
+
+    // Ensure remote-management is a mapping
+    if !entry.is_mapping() {
+        *entry = serde_yaml::Value::Mapping(Default::default());
+    }
+
+    let map = entry
+        .as_mapping_mut()
+        .ok_or("Failed to create remote-management mapping")?;
     map.insert(
         serde_yaml::Value::from("secret-key"),
         serde_yaml::Value::from(secret_key),
     );
+
     let out = serde_yaml::to_string(&v).map_err(|e| e.to_string())?;
     fs::write(&p, out).map_err(|e| e.to_string())?;
     Ok(json!({"success": true}))

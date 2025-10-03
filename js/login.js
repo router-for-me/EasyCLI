@@ -226,7 +226,9 @@ passwordSaveBtn.addEventListener('click', async () => {
         passwordSaveBtn.textContent = 'Saving...';
 
         if (window.__TAURI__?.core?.invoke) {
-            const result = await window.__TAURI__.core.invoke('update_secret_key', password1);
+            const result = await window.__TAURI__.core.invoke('update_secret_key', {
+                args: { secret_key: password1 },
+            });
 
             if (result.success) {
                 showSuccess('Password set successfully!');
@@ -261,7 +263,16 @@ passwordSaveBtn.addEventListener('click', async () => {
         }
     } catch (error) {
         console.error('Error setting password:', error);
-        showError('Error setting password: ' + error.message);
+        // Handle different error types
+        let errorMessage = 'Unknown error';
+        if (error && typeof error === 'string') {
+            errorMessage = error;
+        } else if (error && error.message) {
+            errorMessage = error.message;
+        } else if (error && error.toString) {
+            errorMessage = error.toString();
+        }
+        showError('Error setting password: ' + errorMessage);
     } finally {
         // Restore save button
         passwordSaveBtn.disabled = false;
