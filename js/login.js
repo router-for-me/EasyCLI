@@ -61,18 +61,23 @@ function validateProxyUrl(proxyUrl) {
 
     const trimmedUrl = proxyUrl.trim();
 
-    // Check for supported proxy types
-    const httpProxyRegex = /^https?:\/\/[^:\s]+:\d+$/;
-    const socks5ProxyRegex = /^socks5:\/\/[^:\s]+:\d+$/;
+    // Enhanced regex patterns to match backend parsing logic
+    // Support both formats: protocol://host:port and protocol://user:pass@host:port
+    const httpProxyRegex = /^https?:\/\/[^:\s@]+:\d+$/;
+    const httpProxyWithAuthRegex = /^https?:\/\/[^:\s]+:[^:\s]+@[^:\s]+:\d+$/;
+    const socks5ProxyRegex = /^socks5:\/\/[^:\s@]+:\d+$/;
     const socks5WithAuthRegex = /^socks5:\/\/[^:\s]+:[^:\s]+@[^:\s]+:\d+$/;
 
-    if (httpProxyRegex.test(trimmedUrl) || socks5ProxyRegex.test(trimmedUrl) || socks5WithAuthRegex.test(trimmedUrl)) {
+    if (httpProxyRegex.test(trimmedUrl) ||
+        httpProxyWithAuthRegex.test(trimmedUrl) ||
+        socks5ProxyRegex.test(trimmedUrl) ||
+        socks5WithAuthRegex.test(trimmedUrl)) {
         return { valid: true, error: null };
     }
 
     return {
         valid: false,
-        error: 'Invalid proxy format. Supported formats: http://ip:port, https://ip:port, socks5://ip:port, socks5://user:pass@ip:port'
+        error: 'Invalid proxy format. Supported formats: http://host:port, https://host:port, socks5://host:port, http://user:pass@host:port, https://user:pass@host:port, socks5://user:pass@host:port'
     };
 }
 

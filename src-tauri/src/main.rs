@@ -166,10 +166,191 @@ fn parse_proxy(proxy_url: &str, builder: reqwest::ClientBuilder) -> reqwest::Cli
     if proxy_url.is_empty() {
         return builder;
     }
-    // Accept http/https/socks5
-    match reqwest::Proxy::all(proxy_url) {
-        Ok(p) => builder.proxy(p),
-        Err(_) => builder,
+
+    // Parse proxy URL to extract protocol, host, port, and optional auth
+    match parse_proxy_url(proxy_url) {
+        Ok(proxy_config) => {
+            let proxy_builder = match proxy_config.protocol.as_str() {
+                "http" | "https" => {
+                    let url = if proxy_config.username.is_some() && proxy_config.password.is_some()
+                    {
+                        format!(
+                            "{}://{}:{}@{}:{}",
+                            proxy_config.protocol,
+                            proxy_config.username.unwrap(),
+                            proxy_config.password.unwrap(),
+                            proxy_config.host,
+                            proxy_config.port
+                        )
+                    } else {
+                        format!(
+                            "{}://{}:{}",
+                            proxy_config.protocol, proxy_config.host, proxy_config.port
+                        )
+                    };
+                    reqwest::Proxy::all(&url)
+                }
+                "socks5" => {
+                    let url = if proxy_config.username.is_some() && proxy_config.password.is_some()
+                    {
+                        format!(
+                            "socks5://{}:{}@{}:{}",
+                            proxy_config.username.unwrap(),
+                            proxy_config.password.unwrap(),
+                            proxy_config.host,
+                            proxy_config.port
+                        )
+                    } else {
+                        format!("socks5://{}:{}", proxy_config.host, proxy_config.port)
+                    };
+                    reqwest::Proxy::all(&url)
+                }
+                _ => {
+                    // Fallback to original behavior for unsupported protocols
+                    return match reqwest::Proxy::all(proxy_url) {
+                        Ok(p) => builder.proxy(p),
+                        Err(_) => builder,
+                    };
+                }
+            };
+
+            match proxy_builder {
+                Ok(proxy) => builder.proxy(proxy),
+                Err(_) => builder,
+            }
+        }
+        Err(_) => {
+            // Fallback to original behavior if parsing fails
+            match reqwest::Proxy::all(proxy_url) {
+                Ok(p) => builder.proxy(p),
+                Err(_) => builder,
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+struct ProxyConfig {
+    protocol: String,
+    host: String,
+    port: u16,
+    username: Option<String>,
+    password: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_proxy_url() {
+        // Test HTTP proxy without auth
+        let result = parse_proxy_url("http://proxy.example.com:8080");
+        assert!(result.is_ok());
+        let config = result.unwrap();
+        assert_eq!(config.protocol, "http");
+        assert_eq!(config.host, "proxy.example.com");
+        assert_eq!(config.port, 8080);
+        assert!(config.username.is_none());
+        assert!(config.password.is_none());
+
+        // Test HTTPS proxy with auth
+        let result = parse_proxy_url("https://user:pass@proxy.example.com:3128");
+        assert!(result.is_ok());
+        let config = result.unwrap();
+        assert_eq!(config.protocol, "https");
+        assert_eq!(config.host, "proxy.example.com");
+        assert_eq!(config.port, 3128);
+        assert_eq!(config.username, Some("user".to_string()));
+        assert_eq!(config.password, Some("pass".to_string()));
+
+        // Test SOCKS5 proxy without auth
+        let result = parse_proxy_url("socks5://127.0.0.1:1080");
+        assert!(result.is_ok());
+        let config = result.unwrap();
+        assert_eq!(config.protocol, "socks5");
+        assert_eq!(config.host, "127.0.0.1");
+        assert_eq!(config.port, 1080);
+        assert!(config.username.is_none());
+        assert!(config.password.is_none());
+
+        // Test SOCKS5 proxy with auth
+        let result = parse_proxy_url("socks5://myuser:mypass@192.168.1.1:1080");
+        assert!(result.is_ok());
+        let config = result.unwrap();
+        assert_eq!(config.protocol, "socks5");
+        assert_eq!(config.host, "192.168.1.1");
+        assert_eq!(config.port, 1080);
+        assert_eq!(config.username, Some("myuser".to_string()));
+        assert_eq!(config.password, Some("mypass".to_string()));
+
+        // Test invalid formats
+        assert!(parse_proxy_url("invalid").is_err());
+        assert!(parse_proxy_url("ftp://proxy:8080").is_err());
+        assert!(parse_proxy_url("http://proxy").is_err());
+        assert!(parse_proxy_url("http://user@proxy:8080").is_err());
+    }
+}
+
+fn parse_proxy_url(proxy_url: &str) -> Result<ProxyConfig, String> {
+    // Remove any whitespace
+    let url = proxy_url.trim();
+
+    // Parse URL format: protocol://[user:pass@]host:port
+    if let Some(colon_pos) = url.find("://") {
+        let protocol = &url[..colon_pos].to_lowercase();
+        let rest = &url[colon_pos + 3..];
+
+        // Check if protocol is supported
+        if !["http", "https", "socks5"].contains(&protocol.as_str()) {
+            return Err(format!("Unsupported proxy protocol: {}", protocol));
+        }
+
+        // Parse host:port and optional auth
+        let (host_port, username, password) = if let Some(at_pos) = rest.find('@') {
+            // Has authentication: user:pass@host:port
+            let auth_part = &rest[..at_pos];
+            let host_port_part = &rest[at_pos + 1..];
+
+            if let Some(colon_pos) = auth_part.find(':') {
+                let user = &auth_part[..colon_pos];
+                let pass = &auth_part[colon_pos + 1..];
+                (
+                    host_port_part,
+                    Some(user.to_string()),
+                    Some(pass.to_string()),
+                )
+            } else {
+                return Err(
+                    "Invalid proxy authentication format. Expected user:pass@host:port".to_string(),
+                );
+            }
+        } else {
+            // No authentication: host:port
+            (rest, None, None)
+        };
+
+        // Parse host:port
+        if let Some(colon_pos) = host_port.rfind(':') {
+            let host = &host_port[..colon_pos];
+            let port_str = &host_port[colon_pos + 1..];
+
+            if let Ok(port) = port_str.parse::<u16>() {
+                Ok(ProxyConfig {
+                    protocol: protocol.to_string(),
+                    host: host.to_string(),
+                    port,
+                    username,
+                    password,
+                })
+            } else {
+                Err(format!("Invalid port number: {}", port_str))
+            }
+        } else {
+            Err("Invalid proxy format. Expected protocol://host:port or protocol://user:pass@host:port".to_string())
+        }
+    } else {
+        Err("Invalid proxy URL format. Expected protocol://host:port".to_string())
     }
 }
 
