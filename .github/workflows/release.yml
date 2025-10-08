@@ -42,14 +42,14 @@ jobs:
                       os_name: windows
                       arch_label: x64
                       target: x86_64-pc-windows-msvc
-                      bundles: none
                       artifact_suffix: windows-x64
+                      single_bundle: true
                     - os: windows-latest
                       os_name: windows
-                      arch_label: aarch64
+                      arch_label: arm64
                       target: aarch64-pc-windows-msvc
-                      bundles: none
-                      artifact_suffix: windows-aarch64
+                      artifact_suffix: windows-arm64
+                      single_bundle: true
                     # macOS
                     - os: macos-15-intel
                       os_name: darwin
@@ -58,7 +58,7 @@ jobs:
                       bundles: dmg
                     - os: macos-14
                       os_name: darwin
-                      arch_label: aarch64
+                      arch_label: arm64
                       target: aarch64-apple-darwin
                       bundles: dmg
 
@@ -97,6 +97,8 @@ jobs:
                     librsvg2-dev \
                     patchelf
 
+            # MSVC toolchain is preinstalled on GitHub-hosted Windows runners; no extra setup needed
+
             - name: Install frontend deps
               run: npm ci
 
@@ -118,7 +120,9 @@ jobs:
                   APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
               with:
                   includeDebug: false
-                  args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+                  args: >
+                      --target ${{ matrix.target }}
+                      ${{ matrix.bundles && format('--bundles {0}', matrix.bundles) }}
 
             - name: Setup artifact folder
               shell: bash
@@ -133,27 +137,48 @@ jobs:
                   TAG=${{ github.ref_name }}
                   shopt -s nullglob
                   for f in src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg; do
-                    base="CLIProxyAPIGUI-${TAG}-${{ matrix.os_name }}-${{ matrix.arch_label }}.dmg"
+                    base="EasyCLI-${TAG}-${{ matrix.os_name }}-${{ matrix.arch_label }}.dmg"
                     cp "$f" "release-out/$base"
                     echo "Packaged $f -> release-out/$base"
                   done
 
             - name: Collect and rename artifacts (Windows)
               if: runner.os == 'Windows'
-              shell: bash
+              shell: powershell
               run: |
-                  set -euo pipefail
-                  shopt -s nullglob
-                  TAG=${{ github.ref_name }}
-                  dest="release-out/EasyCLI-${TAG}-${{ matrix.artifact_suffix }}.exe"
-                  src="src-tauri/target/${{ matrix.target }}/release/easycli.exe"
-                  if [ -f "$src" ]; then
-                    cp "$src" "$dest"
-                    echo "Packaged $src -> $dest"
-                  else
-                    echo "Windows executable not found: $src" >&2
-                    exit 1
-                  fi
+                  $ErrorActionPreference = 'Stop'
+                  $tag = "${{ github.ref_name }}"
+                  $base = "EasyCLI-$tag-${{ matrix.artifact_suffix }}"
+                  $exeSrc = "src-tauri/target/${{ matrix.target }}/release/easycli.exe"
+                  $dllSrc = "src-tauri/target/${{ matrix.target }}/release/WebView2Loader.dll"
+                  $destZip = "release-out/$base.zip"
+
+                  if (-not (Test-Path $exeSrc)) {
+                    Write-Error "Windows executable not found: $exeSrc"
+                  }
+
+                  $files = @()
+                  $tmpDir = New-Item -ItemType Directory -Path ([System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), [System.IO.Path]::GetRandomFileName()))
+                  try {
+                    $exeDest = Join-Path $tmpDir.Path "$base.exe"
+                    Copy-Item $exeSrc $exeDest
+                    $files += $exeDest
+
+                    if (Test-Path $dllSrc) {
+                      $dllDest = Join-Path $tmpDir.Path "WebView2Loader.dll"
+                      Copy-Item $dllSrc $dllDest
+                      $files += $dllDest
+                    }
+
+                    if (Test-Path $destZip) {
+                      Remove-Item $destZip
+                    }
+                    Compress-Archive -Path $files -DestinationPath $destZip
+                    Write-Output "Packaged Windows artifacts -> $destZip"
+                  }
+                  finally {
+                    Remove-Item $tmpDir.Path -Recurse -Force
+                  }
 
             - name: Collect and rename artifacts (Linux)
               if: runner.os == 'Linux'
@@ -163,7 +188,7 @@ jobs:
                   TAG=${{ github.ref_name }}
                   shopt -s nullglob
                   for f in src-tauri/target/${{ matrix.target }}/release/bundle/deb/*.deb; do
-                    base="CLIProxyAPIGUI-${TAG}-${{ matrix.os_name }}-${{ matrix.arch_label }}.deb"
+                    base="EasyCLI-${TAG}-${{ matrix.os_name }}-${{ matrix.arch_label }}.deb"
                     cp "$f" "release-out/$base"
                     echo "Packaged $f -> release-out/$base"
                   done
