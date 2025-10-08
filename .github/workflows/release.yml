@@ -5,11 +5,26 @@ on:
         tags:
             - 'v*'
     workflow_dispatch:
+        inputs:
+            only:
+                description: "Run only one target (all/windows-x64/windows-arm64/linux-amd64/darwin-x64/darwin-arm64)"
+                required: false
+                default: all
+                type: choice
+                options:
+                    - all
+                    - windows-x64
+                    - windows-arm64
+                    - linux-amd64
+                    - darwin-x64
+                    - darwin-arm64
 
 jobs:
     create_release:
         name: Create GitHub Release
         runs-on: ubuntu-latest
+        # Create a GitHub Release only on tag pushes; skip for manual runs
+        if: startsWith(github.ref, 'refs/tags/')
         steps:
             - name: Create release for tag
               id: gh-release
@@ -25,8 +40,10 @@ jobs:
 
     build:
         name: Tauri Build (${{ matrix.os }} - ${{ matrix.arch_label }})
-        needs: create_release
+        # Selection is handled at step level via env.SELECTED
         runs-on: ${{ matrix.os }}
+        env:
+            SELECTED: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.only == 'all' || github.event.inputs.only == '' || github.event.inputs.only == format('{0}-{1}', matrix.os_name, matrix.arch_label) }}
         strategy:
             fail-fast: false
             matrix:
@@ -64,23 +81,26 @@ jobs:
 
         steps:
             - name: Checkout
+              if: env.SELECTED == 'true'
               uses: actions/checkout@v4
               with:
                   fetch-depth: 0
 
             - name: Setup Node.js
+              if: env.SELECTED == 'true'
               uses: actions/setup-node@v4
               with:
                   node-version: 20
                   cache: 'npm'
 
             - name: Install Rust toolchain
+              if: env.SELECTED == 'true'
               uses: dtolnay/rust-toolchain@stable
               with:
                   targets: ${{ matrix.target }}
 
             - name: Install Linux dependencies
-              if: runner.os == 'Linux'
+              if: env.SELECTED == 'true' && runner.os == 'Linux'
               shell: bash
               run: |
                   set -euo pipefail
@@ -97,18 +117,18 @@ jobs:
                     librsvg2-dev \
                     patchelf
 
-            # MSVC toolchain is preinstalled on GitHub-hosted Windows runners; no extra setup needed
-
             - name: Install frontend deps
+              if: env.SELECTED == 'true'
               run: npm ci
 
             - name: Install create-dmg (macOS)
-              if: runner.os == 'macOS'
+              if: env.SELECTED == 'true' && runner.os == 'macOS'
               run: |
                   brew update
                   brew install create-dmg || true
 
             - name: Build with Tauri Action
+              if: env.SELECTED == 'true'
               uses: tauri-apps/tauri-action@v0
               env:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -125,12 +145,13 @@ jobs:
                       ${{ matrix.bundles && format('--bundles {0}', matrix.bundles) }}
 
             - name: Setup artifact folder
+              if: env.SELECTED == 'true'
               shell: bash
               run: |
                   mkdir -p release-out
 
             - name: Collect and rename artifacts (macOS)
-              if: runner.os == 'macOS'
+              if: env.SELECTED == 'true' && runner.os == 'macOS'
               shell: bash
               run: |
                   set -euo pipefail
@@ -143,7 +164,7 @@ jobs:
                   done
 
             - name: Collect and rename artifacts (Windows)
-              if: runner.os == 'Windows'
+              if: env.SELECTED == 'true' && runner.os == 'Windows'
               shell: powershell
               run: |
                   $ErrorActionPreference = 'Stop'
@@ -151,21 +172,26 @@ jobs:
                   $base = "EasyCLI-$tag-${{ matrix.artifact_suffix }}"
                   $exeSrc = "src-tauri/target/${{ matrix.target }}/release/easycli.exe"
                   $dllSrc = "src-tauri/target/${{ matrix.target }}/release/WebView2Loader.dll"
-                  $destZip = "release-out/$base.zip"
+                  $destDir = "release-out"
+                  $destZip = Join-Path $destDir "$base.zip"
 
                   if (-not (Test-Path $exeSrc)) {
                     Write-Error "Windows executable not found: $exeSrc"
                   }
 
+                  # Ensure destination exists
+                  New-Item -ItemType Directory -Force -Path $destDir | Out-Null
+
                   $files = @()
-                  $tmpDir = New-Item -ItemType Directory -Path ([System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), [System.IO.Path]::GetRandomFileName()))
+                  $tmpDirPath = Join-Path ([System.IO.Path]::GetTempPath()) ([System.IO.Path]::GetRandomFileName())
+                  New-Item -ItemType Directory -Path $tmpDirPath | Out-Null
                   try {
-                    $exeDest = Join-Path $tmpDir.Path "$base.exe"
+                    $exeDest = Join-Path $tmpDirPath "$base.exe"
                     Copy-Item $exeSrc $exeDest
                     $files += $exeDest
 
                     if (Test-Path $dllSrc) {
-                      $dllDest = Join-Path $tmpDir.Path "WebView2Loader.dll"
+                      $dllDest = Join-Path $tmpDirPath "WebView2Loader.dll"
                       Copy-Item $dllSrc $dllDest
                       $files += $dllDest
                     }
@@ -177,11 +203,13 @@ jobs:
                     Write-Output "Packaged Windows artifacts -> $destZip"
                   }
                   finally {
-                    Remove-Item $tmpDir.Path -Recurse -Force
+                    if ($null -ne $tmpDirPath -and (Test-Path $tmpDirPath)) {
+                      Remove-Item $tmpDirPath -Recurse -Force
+                    }
                   }
 
             - name: Collect and rename artifacts (Linux)
-              if: runner.os == 'Linux'
+              if: env.SELECTED == 'true' && runner.os == 'Linux'
               shell: bash
               run: |
                   set -euo pipefail
@@ -195,6 +223,7 @@ jobs:
 
             - name: Upload to GitHub Release
               uses: softprops/action-gh-release@v2
+              if: env.SELECTED == 'true' && startsWith(github.ref, 'refs/tags/')
               with:
                   tag_name: ${{ github.ref_name }}
                   files: |
