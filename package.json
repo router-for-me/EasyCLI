@@ -1,7 +1,7 @@
 {
   "name": "easycli",
   "version": "1.0.0",
-  "description": "CLI Proxy API's Electron GUI",
+  "description": "EasyCLI - A Tauri-based desktop GUI for CLIProxyAPI",
   "scripts": {
     "dev": "tauri dev",
     "build": "tauri build",
