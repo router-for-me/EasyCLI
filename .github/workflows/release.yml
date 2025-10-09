@@ -18,6 +18,10 @@ on:
                     - linux-amd64
                     - darwin-x64
                     - darwin-arm64
+            tag:
+                description: "Release tag for manual run (e.g., v0.1.0-manual)"
+                required: false
+                type: string
 
 jobs:
     create_release:
@@ -44,23 +48,24 @@ jobs:
         runs-on: ${{ matrix.os }}
         env:
             SELECTED: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.only == 'all' || github.event.inputs.only == '' || github.event.inputs.only == format('{0}-{1}', matrix.os_name, matrix.arch_label) }}
+            RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || github.event.inputs.tag || format('manual-{0}', github.run_id) }}
         strategy:
             fail-fast: false
             matrix:
                 include:
                     # Linux (amd64 only for now)
-                    # - os: ubuntu-latest
-                    #   os_name: linux
-                    #   arch_label: amd64
-                    #   target: x86_64-unknown-linux-gnu
-                    #   bundles: deb
+                    - os: ubuntu-latest
+                      os_name: linux
+                      arch_label: amd64
+                      target: x86_64-unknown-linux-gnu
+                      bundles: deb
                     # Windows
-                    # - os: windows-latest
-                    #   os_name: windows
-                    #   arch_label: x64
-                    #   target: x86_64-pc-windows-msvc
-                    #   artifact_suffix: windows-x64
-                    #   single_bundle: true
+                    - os: windows-latest
+                      os_name: windows
+                      arch_label: x64
+                      target: x86_64-pc-windows-msvc
+                      artifact_suffix: windows-x64
+                      single_bundle: true
                     - os: windows-latest
                       os_name: windows
                       arch_label: arm64
@@ -68,16 +73,16 @@ jobs:
                       artifact_suffix: windows-arm64
                       single_bundle: true
                     # macOS
-                    # - os: macos-15-intel
-                    #   os_name: darwin
-                    #   arch_label: x64
-                    #   target: x86_64-apple-darwin
-                    #   bundles: dmg
-                    # - os: macos-14
-                    #   os_name: darwin
-                    #   arch_label: arm64
-                    #   target: aarch64-apple-darwin
-                    #   bundles: dmg
+                    - os: macos-15-intel
+                      os_name: darwin
+                      arch_label: x64
+                      target: x86_64-apple-darwin
+                      bundles: dmg
+                    - os: macos-14
+                      os_name: darwin
+                      arch_label: arm64
+                      target: aarch64-apple-darwin
+                      bundles: dmg
 
         steps:
             - name: Checkout
@@ -155,7 +160,7 @@ jobs:
               shell: bash
               run: |
                   set -euo pipefail
-                  TAG=${{ github.ref_name }}
+                  TAG=${{ env.RELEASE_TAG }}
                   shopt -s nullglob
                   for f in src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg; do
                     base="EasyCLI-${TAG}-${{ matrix.os_name }}-${{ matrix.arch_label }}.dmg"
@@ -168,7 +173,7 @@ jobs:
               shell: powershell
               run: |
                   $ErrorActionPreference = 'Stop'
-                  $tag = "${{ github.ref_name }}"
+                  $tag = "${{ env.RELEASE_TAG }}"
                   $base = "EasyCLI-$tag-${{ matrix.artifact_suffix }}"
                   $exeSrc = "src-tauri/target/${{ matrix.target }}/release/easycli.exe"
                   $dllSrc = "src-tauri/target/${{ matrix.target }}/release/WebView2Loader.dll"
@@ -213,7 +218,7 @@ jobs:
               shell: bash
               run: |
                   set -euo pipefail
-                  TAG=${{ github.ref_name }}
+                  TAG=${{ env.RELEASE_TAG }}
                   shopt -s nullglob
                   for f in src-tauri/target/${{ matrix.target }}/release/bundle/deb/*.deb; do
                     base="EasyCLI-${TAG}-${{ matrix.os_name }}-${{ matrix.arch_label }}.deb"
@@ -223,9 +228,9 @@ jobs:
 
             - name: Upload to GitHub Release
               uses: softprops/action-gh-release@v2
-              if: env.SELECTED == 'true' && startsWith(github.ref, 'refs/tags/')
+              if: env.SELECTED == 'true'
               with:
-                  tag_name: ${{ github.ref_name }}
+                  tag_name: ${{ env.RELEASE_TAG }}
                   files: |
                       release-out/*
               env:
