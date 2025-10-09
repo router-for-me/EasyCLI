@@ -86,7 +86,7 @@ async function openSettingsWindowPreferNew() {
     try {
         if (window.__TAURI__?.core?.invoke) {
             await window.__TAURI__.core.invoke('open_settings_window');
-            try { const cur = window.__TAURI__.window.getCurrent?.(); await cur?.close?.(); } catch (_) { }
+            // Backend command closes the login window; avoid double-close that could exit the app.
             return;
         }
     } catch (e) {

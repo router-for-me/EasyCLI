@@ -49,18 +49,18 @@ jobs:
             matrix:
                 include:
                     # Linux (amd64 only for now)
-                    - os: ubuntu-latest
-                      os_name: linux
-                      arch_label: amd64
-                      target: x86_64-unknown-linux-gnu
-                      bundles: deb
+                    # - os: ubuntu-latest
+                    #   os_name: linux
+                    #   arch_label: amd64
+                    #   target: x86_64-unknown-linux-gnu
+                    #   bundles: deb
                     # Windows
-                    - os: windows-latest
-                      os_name: windows
-                      arch_label: x64
-                      target: x86_64-pc-windows-msvc
-                      artifact_suffix: windows-x64
-                      single_bundle: true
+                    # - os: windows-latest
+                    #   os_name: windows
+                    #   arch_label: x64
+                    #   target: x86_64-pc-windows-msvc
+                    #   artifact_suffix: windows-x64
+                    #   single_bundle: true
                     - os: windows-latest
                       os_name: windows
                       arch_label: arm64
@@ -68,16 +68,16 @@ jobs:
                       artifact_suffix: windows-arm64
                       single_bundle: true
                     # macOS
-                    - os: macos-15-intel
-                      os_name: darwin
-                      arch_label: x64
-                      target: x86_64-apple-darwin
-                      bundles: dmg
-                    - os: macos-14
-                      os_name: darwin
-                      arch_label: arm64
-                      target: aarch64-apple-darwin
-                      bundles: dmg
+                    # - os: macos-15-intel
+                    #   os_name: darwin
+                    #   arch_label: x64
+                    #   target: x86_64-apple-darwin
+                    #   bundles: dmg
+                    # - os: macos-14
+                    #   os_name: darwin
+                    #   arch_label: arm64
+                    #   target: aarch64-apple-darwin
+                    #   bundles: dmg
 
         steps:
             - name: Checkout

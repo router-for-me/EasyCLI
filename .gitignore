@@ -4,3 +4,4 @@ out/
 dist-web/
 src-tauri/logs/
 .serena/
+AGENTS.md
