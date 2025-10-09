@@ -1425,9 +1425,8 @@ fn open_settings_window(app: tauri::AppHandle) -> Result<(), String> {
         let app_cloned = app.clone();
         tauri::async_runtime::spawn(async move {
             sleep(Duration::from_millis(50)).await;
-            SKIP_EXIT_ON_MAIN_CLOSE.store(true, Ordering::SeqCst);
             if let Some(main) = app_cloned.get_webview_window("main") {
-                let _ = main.close();
+                let _ = main.hide();
             }
         });
         return Ok(());
@@ -1454,9 +1453,8 @@ fn open_settings_window(app: tauri::AppHandle) -> Result<(), String> {
     let app_cloned = app.clone();
     tauri::async_runtime::spawn(async move {
         sleep(Duration::from_millis(50)).await;
-        SKIP_EXIT_ON_MAIN_CLOSE.store(true, Ordering::SeqCst);
         if let Some(main) = app_cloned.get_webview_window("main") {
-            let _ = main.close();
+            let _ = main.hide();
         }
     });
     Ok(())
