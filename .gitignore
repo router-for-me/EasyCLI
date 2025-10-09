@@ -5,3 +5,4 @@ dist-web/
 src-tauri/logs/
 .serena/
 AGENTS.md
+CLAUDE.md
