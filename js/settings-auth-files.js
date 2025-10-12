@@ -180,6 +180,7 @@ function createNewAuthFile(type) {
         'claude': 'Claude Code',
         'codex': 'Codex',
         'qwen': 'Qwen Code',
+        'iflow': 'iFlow',
         'local': 'Local File'
     };
 
@@ -195,6 +196,8 @@ function createNewAuthFile(type) {
         showGeminiWebDialog();
     } else if (type === 'qwen') {
         startQwenAuthFlow();
+    } else if (type === 'iflow') {
+        startIFlowAuthFlow();
     } else {
         console.log(`Creating new ${typeNames[type]} auth file`);
         showSuccessMessage(`Creating new ${typeNames[type]} auth file...`);
