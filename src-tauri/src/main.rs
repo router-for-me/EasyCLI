@@ -1516,6 +1516,14 @@ fn main() {
                     return;
                 }
 
+                if window.label() == "settings" && cfg!(target_os = "windows") {
+                    // Exit entirely when settings window closes on Windows to avoid hidden login window lingering.
+                    stop_process_internal();
+                    let _ = TRAY_ICON.lock().take();
+                    let _ = window.app_handle().exit(0);
+                    return;
+                }
+
                 // Keep running in background (tray) if local process is active
                 let running = PROCESS.lock().is_some();
                 if running {
