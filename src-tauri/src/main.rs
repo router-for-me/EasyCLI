@@ -1278,6 +1278,7 @@ fn callback_path_for(provider: &str) -> &'static str {
         "anthropic" => "/anthropic/callback",
         "codex" => "/codex/callback",
         "google" => "/google/callback",
+        "iflow" => "/iflow/callback",
         _ => "/callback",
     }
 }
