@@ -95,9 +95,10 @@ function updateServerStatus() {
     if (connectionType === 'local') {
         serverStatusText.innerHTML = '<span style="color: #10b981;">●</span> Local';
     } else {
-        // Use configManager to get current connection info
         configManager.refreshConnection();
-        const baseUrl = configManager.baseUrl;
+        const storedBaseUrl = localStorage.getItem('base-url');
+        const baseUrl = storedBaseUrl || configManager.baseUrl;
+
         if (baseUrl) {
             serverStatusText.innerHTML = `Remote:<br><span style="color: #10b981;">●</span> ${baseUrl}`;
         } else {
@@ -105,6 +106,13 @@ function updateServerStatus() {
         }
     }
 }
+
+window.addEventListener('storage', (event) => {
+    if (!event || event.key === null || event.key === 'base-url' || event.key === 'type') {
+        updateServerStatus();
+    }
+});
+
 
 // Initialize additional settings from config
 async function initializeAdditionalSettings() {
