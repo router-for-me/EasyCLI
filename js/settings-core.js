@@ -119,7 +119,7 @@ async function initializeAdditionalSettings() {
     try {
         const config = await configManager.getConfig();
         requestLogSwitch.checked = config['request-log'] || false;
-        requestRetryInput.value = config['request-retry'] || 3;
+        requestRetryInput.value = config['request-retry'] ?? 3;
 
         if (config['quota-exceeded']) {
             switchProjectSwitch.checked = config['quota-exceeded']['switch-project'] || false;
@@ -194,7 +194,7 @@ async function applyAllSettings() {
                 changes.push({ endpoint: 'request-log', value: requestLogSwitch.checked });
             }
 
-            const serverRetry = serverConfig['request-retry'] || 3;
+            const serverRetry = serverConfig['request-retry'] ?? 3;
             if (parseInt(requestRetryInput.value) !== serverRetry) {
                 changes.push({ endpoint: 'request-retry', value: parseInt(requestRetryInput.value) });
             }
@@ -320,7 +320,7 @@ async function resetAllSettings() {
             debugSwitch.checked = serverConfig.debug || false;
             proxyUrlInput.value = serverConfig['proxy-url'] || '';
             requestLogSwitch.checked = serverConfig['request-log'] || false;
-            requestRetryInput.value = serverConfig['request-retry'] || 3;
+            requestRetryInput.value = serverConfig['request-retry'] ?? 3;
 
             const connectionType = localStorage.getItem('type') || 'local';
             if (connectionType === 'local') {
