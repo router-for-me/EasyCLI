@@ -979,6 +979,75 @@ fn pipe_child_output(child: &mut Child) {
     }
 }
 
+// Kill any process using the specified port
+fn kill_process_on_port(port: u16) -> Result<(), String> {
+    println!("[PORT_CLEANUP] Checking port {}", port);
+    
+    #[cfg(target_os = "macos")]
+    {
+        // Use lsof to find the process
+        let output = std::process::Command::new("lsof")
+            .args(["-ti", &format!(":{}", port)])
+            .output()
+            .map_err(|e| format!("Failed to run lsof: {}", e))?;
+        
+        if output.status.success() {
+            let pids = String::from_utf8_lossy(&output.stdout);
+            for pid_str in pids.lines() {
+                if let Ok(pid) = pid_str.trim().parse::<i32>() {
+                    println!("[PORT_CLEANUP] Killing PID {} on port {}", pid, port);
+                    let _ = std::process::Command::new("kill")
+                        .args(["-9", &pid.to_string()])
+                        .output();
+                }
+            }
+        }
+    }
+    
+    #[cfg(target_os = "linux")]
+    {
+        // Use fuser to kill the process
+        let output = std::process::Command::new("fuser")
+            .args(["-k", "-9", &format!("{}/tcp", port)])
+            .output()
+            .map_err(|e| format!("Failed to run fuser: {}", e))?;
+        
+        if output.status.success() {
+            println!("[PORT_CLEANUP] Killed processes on port {}", port);
+        }
+    }
+    
+    #[cfg(target_os = "windows")]
+    {
+        // Use netstat to find the PID, then taskkill to kill it
+        let output = std::process::Command::new("netstat")
+            .args(["-ano"])
+            .output()
+            .map_err(|e| format!("Failed to run netstat: {}", e))?;
+        
+        if output.status.success() {
+            let netstat_output = String::from_utf8_lossy(&output.stdout);
+            let port_pattern = format!(":{}", port);
+            
+            for line in netstat_output.lines() {
+                if line.contains(&port_pattern) && line.contains("LISTENING") {
+                    // Extract PID from the last column
+                    if let Some(pid_str) = line.split_whitespace().last() {
+                        if let Ok(pid) = pid_str.parse::<i32>() {
+                            println!("[PORT_CLEANUP] Killing PID {} on port {}", pid, port);
+                            let _ = std::process::Command::new("taskkill")
+                                .args(["/F", "/PID", &pid.to_string()])
+                                .output();
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    Ok(())
+}
+
 #[tauri::command]
 fn start_cliproxyapi(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
     // If running, return success
@@ -999,13 +1068,26 @@ fn start_cliproxyapi(app: tauri::AppHandle) -> Result<serde_json::Value, String>
         return Err("Configuration file does not exist".into());
     }
 
+    // Read port from config and kill any process using it
+    let config_content = fs::read_to_string(&config).map_err(|e| e.to_string())?;
+    let config_yaml: serde_yaml::Value = serde_yaml::from_str(&config_content).map_err(|e| e.to_string())?;
+    let port = config_yaml
+        .get("port")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(8317) as u16;
+    
+    // Automatic port cleanup
+    if let Err(e) = kill_process_on_port(port) {
+        eprintln!("[PORT_CLEANUP] Warning: {}", e);
+    }
+
     // Generate random password for local mode
     let password = generate_random_password();
 
     // Store the password for keep-alive authentication
     *CLI_PROXY_PASSWORD.lock() = Some(password.clone());
 
-    // Update config.yaml with the generated password
+    // Update config.yaml with the generated password (re-read to ensure fresh state)
     let content = fs::read_to_string(&config).map_err(|e| e.to_string())?;
     let mut conf: serde_yaml::Value = serde_yaml::from_str(&content).map_err(|e| e.to_string())?;
 
@@ -1090,6 +1172,19 @@ fn restart_cliproxyapi(app: tauri::AppHandle) -> Result<(), String> {
     let config = app_dir().map_err(|e| e.to_string())?.join("config.yaml");
     if !config.exists() {
         return Err("Configuration file does not exist".into());
+    }
+
+    // Read port from config and kill any process using it
+    let config_content = fs::read_to_string(&config).map_err(|e| e.to_string())?;
+    let config_yaml: serde_yaml::Value = serde_yaml::from_str(&config_content).map_err(|e| e.to_string())?;
+    let port = config_yaml
+        .get("port")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(8317) as u16;
+    
+    // Automatic port cleanup
+    if let Err(e) = kill_process_on_port(port) {
+        eprintln!("[PORT_CLEANUP] Warning: {}", e);
     }
 
     // Generate random password for local mode
