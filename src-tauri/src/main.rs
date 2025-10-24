@@ -518,7 +518,25 @@ async fn download_cliproxyapi(
     }
     // Save version.txt
     fs::write(dir.join("version.txt"), &latest).map_err(|e| e.to_string())?;
-    // Cleanup
+    // Cleanup old versions - remove version directories that don't match the latest
+    if let Ok(entries) = fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            if let Ok(metadata) = entry.metadata() {
+                if metadata.is_dir() {
+                    let dir_name = entry.file_name();
+                    let dir_name_str = dir_name.to_string_lossy();
+                    // Check if it's a version directory (starts with digit) and not the latest
+                    if dir_name_str.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false)
+                        && dir_name_str != latest
+                    {
+                        println!("[CLEANUP] Removing old version: {}", dir_name_str);
+                        let _ = fs::remove_dir_all(entry.path());
+                    }
+                }
+            }
+        }
+    }
+    // Cleanup downloaded archive
     let _ = fs::remove_file(&download_path);
 
     // Ensure config exists
