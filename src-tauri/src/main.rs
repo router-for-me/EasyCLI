@@ -1172,7 +1172,67 @@ fn restart_cliproxyapi(app: tauri::AppHandle) -> Result<(), String> {
 
 fn stop_process_internal() {
     if let Some(mut child) = PROCESS.lock().take() {
+        println!("[CLIProxyAPI][STOP] Stopping process (PID: {:?})", child.id());
+        
+        // First try graceful termination
         let _ = child.kill();
+        
+        // Wait for a short time to see if it exits
+        for _ in 0..10 {
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    println!("[CLIProxyAPI][STOP] Process exited with status: {:?}", status);
+                    break;
+                }
+                Ok(None) => {
+                    // Still running, wait a bit more
+                    thread::sleep(Duration::from_millis(50));
+                }
+                Err(e) => {
+                    println!("[CLIProxyAPI][STOP] Error checking process status: {}", e);
+                    break;
+                }
+            }
+        }
+        
+        // Force kill if still running
+        match child.try_wait() {
+            Ok(None) => {
+                // Process still alive, force kill
+                #[cfg(target_os = "macos")]
+                {
+                    let pid = child.id();
+                    println!("[CLIProxyAPI][STOP] Force killing process {}", pid);
+                    let _ = std::process::Command::new("kill")
+                        .args(["-9", &pid.to_string()])
+                        .output();
+                }
+                #[cfg(target_os = "linux")]
+                {
+                    let pid = child.id();
+                    println!("[CLIProxyAPI][STOP] Force killing process {}", pid);
+                    let _ = std::process::Command::new("kill")
+                        .args(["-9", &pid.to_string()])
+                        .output();
+                }
+                #[cfg(target_os = "windows")]
+                {
+                    let pid = child.id();
+                    println!("[CLIProxyAPI][STOP] Force killing process {}", pid);
+                    let _ = std::process::Command::new("taskkill")
+                        .args(["/F", "/PID", &pid.to_string()])
+                        .output();
+                }
+                // Give it a moment to die
+                thread::sleep(Duration::from_millis(100));
+                let _ = child.wait();
+            }
+            _ => {
+                // Already exited or error
+            }
+        }
+        
+        println!("[CLIProxyAPI][STOP] Process cleanup completed");
     }
     // Stop keep-alive mechanism when process stops
     stop_keep_alive_internal();
