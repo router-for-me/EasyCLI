@@ -7,6 +7,7 @@ const proxyUrlInput = document.getElementById('proxy-url-input');
 const portInput = document.getElementById('port-input');
 const requestLogSwitch = document.getElementById('request-log-switch');
 const requestRetryInput = document.getElementById('request-retry-input');
+const timeoutInput = document.getElementById('timeout-input');
 const allowRemoteSwitch = document.getElementById('allow-remote-switch');
 const secretKeyInput = document.getElementById('secret-key-input');
 const switchProjectSwitch = document.getElementById('switch-project-switch');
@@ -120,6 +121,7 @@ async function initializeAdditionalSettings() {
         const config = await configManager.getConfig();
         requestLogSwitch.checked = config['request-log'] || false;
         requestRetryInput.value = config['request-retry'] ?? 3;
+        timeoutInput.value = config['timeout'] ?? 120;
 
         if (config['quota-exceeded']) {
             switchProjectSwitch.checked = config['quota-exceeded']['switch-project'] || false;
@@ -132,6 +134,7 @@ async function initializeAdditionalSettings() {
         console.error('Error loading config:', error);
         requestLogSwitch.checked = false;
         requestRetryInput.value = 3;
+        timeoutInput.value = 120;
         switchProjectSwitch.checked = false;
         switchPreviewModelSwitch.checked = false;
     }
@@ -199,6 +202,10 @@ async function applyAllSettings() {
                 changes.push({ endpoint: 'request-retry', value: parseInt(requestRetryInput.value) });
             }
 
+            const serverTimeout = serverConfig['timeout'] ?? 120;
+            if (parseInt(timeoutInput.value) !== serverTimeout) {
+                changes.push({ endpoint: 'timeout', value: parseInt(timeoutInput.value) });
+            }
 
             if (connectionType === 'local') {
                 const serverRemoteManagement = serverConfig['remote-management'] || {};
