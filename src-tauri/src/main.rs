@@ -1199,22 +1199,21 @@ fn stop_process_internal() {
         match child.try_wait() {
             Ok(None) => {
                 // Process still alive, force kill
-#[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
-{
-    let pid = child.id();
-    println!("[CLIProxyAPI][STOP] Force killing process {}", pid);
-    let kill_command = match cfg!(target_os = "windows") {
-        true => "taskkill",
-        false => "kill",
-    };
-    let kill_arg = match cfg!(target_os = "windows") {
-        true => "/PID",
-        false => "-9",
-    };
-    let _ = std::process::Command::new(kill_command)
-        .args([kill_arg, &pid.to_string()])
-        .output();
-}
+                #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
+                {
+                    let pid = child.id();
+                    println!("[CLIProxyAPI][STOP] Force killing process {}", pid);
+                    let kill_command = match cfg!(target_os = "windows") {
+                        true => "taskkill",
+                        false => "kill",
+                    };
+                    let kill_arg = match cfg!(target_os = "windows") {
+                        true => "/PID",
+                        false => "-9",
+                    };
+                    let _ = std::process::Command::new(kill_command)
+                        .args([kill_arg, &pid.to_string()])
+                        .output();
                 }
                 // Give it a moment to die
                 thread::sleep(Duration::from_millis(100));
