@@ -944,6 +944,7 @@ dependencies = [
  "icns",
  "ico 0.3.0",
  "image",
+ "libc",
  "once_cell",
  "parking_lot",
  "rand 0.8.5",

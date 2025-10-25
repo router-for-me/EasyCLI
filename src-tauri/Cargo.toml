@@ -27,3 +27,6 @@ ico = "0.3"
 icns = "0.3"
 rfd = "0.14"
 rand = "0.8"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

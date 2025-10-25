@@ -21,6 +21,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Stdio};
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
+#[cfg(not(target_os = "windows"))]
+use std::os::unix::process::CommandExt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
@@ -32,6 +34,7 @@ use thiserror::Error;
 use tokio::time::sleep;
 
 static PROCESS: Lazy<Arc<Mutex<Option<Child>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
+static PROCESS_PID: Lazy<Arc<Mutex<Option<u32>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
 static TRAY_ICON: Lazy<Arc<Mutex<Option<TrayIcon>>>> = Lazy::new(|| Arc::new(Mutex::new(None)));
 static CALLBACK_SERVERS: Lazy<Arc<Mutex<HashMap<u16, (Arc<AtomicBool>, thread::JoinHandle<()>)>>>> =
     Lazy::new(|| Arc::new(Mutex::new(HashMap::new())));
@@ -1075,12 +1078,25 @@ fn kill_process_on_port(port: u16) -> Result<(), String> {
 
 #[tauri::command]
 fn start_cliproxyapi(app: tauri::AppHandle) -> Result<serde_json::Value, String> {
-    // If running, return success
-    {
-        let mut guard = PROCESS.lock();
-        if let Some(child) = guard.as_mut() {
-            if let Ok(None) = child.try_wait() {
-                return Ok(json!({"success": true, "message": "already running"}));
+    // Check if already running by testing PID
+    if let Some(pid) = *PROCESS_PID.lock() {
+        #[cfg(target_os = "windows")]
+        {
+            let output = std::process::Command::new("tasklist")
+                .args(["/FI", &format!("PID eq {}", pid)])
+                .output();
+            if let Ok(output) = output {
+                if String::from_utf8_lossy(&output.stdout).contains(&pid.to_string()) {
+                    return Ok(json!({"success": true, "message": "already running"}));
+                }
+            }
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            unsafe {
+                if libc::kill(pid as i32, 0) == 0 {
+                    return Ok(json!({"success": true, "message": "already running"}));
+                }
             }
         }
     }
@@ -1157,19 +1173,34 @@ fn start_cliproxyapi(app: tauri::AppHandle) -> Result<serde_json::Value, String>
     ]);
     #[cfg(target_os = "windows")]
     {
-        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        cmd.creation_flags(0x08000000 | 0x00000008); // CREATE_NO_WINDOW | DETACHED_PROCESS
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        // On Unix systems, use process_group to detach from parent
+        unsafe {
+            cmd.pre_exec(|| {
+                // Create new process group (session leader)
+                libc::setsid();
+                Ok(())
+            });
+        }
     }
     cmd.stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
     let mut child = cmd.spawn().map_err(|e| {
         eprintln!("[CLIProxyAPI][ERROR] failed to start process: {}", e);
         e.to_string()
     })?;
-    // Attach output piping before storing child
-    pipe_child_output(&mut child);
-    *PROCESS.lock() = Some(child);
-    start_monitor(app.clone());
+    // Don't track the child process - let it run independently
+    // Store PID for restart functionality
+    let pid = child.id();
+    *PROCESS_PID.lock() = Some(pid);
+    println!("[CLIProxyAPI][START] Detached process with PID: {}", pid);
+    // Drop child handle to fully detach
+    std::mem::drop(child);
+    // Don't monitor - process is fully detached
     // Create tray icon when local process starts
     let _ = create_tray(&app);
 
@@ -1183,9 +1214,24 @@ fn start_cliproxyapi(app: tauri::AppHandle) -> Result<serde_json::Value, String>
 
 #[tauri::command]
 fn restart_cliproxyapi(app: tauri::AppHandle) -> Result<(), String> {
-    // Stop existing
-    if let Some(mut child) = PROCESS.lock().take() {
-        let _ = child.kill();
+    // Kill existing detached process if PID is stored
+    if let Some(pid) = *PROCESS_PID.lock() {
+        println!("[CLIProxyAPI][RESTART] Killing old process PID: {}", pid);
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            let _ = std::process::Command::new("taskkill")
+                .args(["/F", "/PID", &pid.to_string()])
+                .creation_flags(0x08000000) // CREATE_NO_WINDOW
+                .output();
+        }
+        #[cfg(not(target_os = "windows"))]
+        {
+            unsafe {
+                libc::kill(pid as i32, libc::SIGTERM);
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(500));
     }
     // Start new using current version
     let info = current_local_info().map_err(|e| e.to_string())?;
@@ -1260,18 +1306,31 @@ fn restart_cliproxyapi(app: tauri::AppHandle) -> Result<(), String> {
     ]);
     #[cfg(target_os = "windows")]
     {
-        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        cmd.creation_flags(0x08000000 | 0x00000008); // CREATE_NO_WINDOW | DETACHED_PROCESS
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        // On Unix systems, use process_group to detach from parent
+        unsafe {
+            cmd.pre_exec(|| {
+                // Create new process group (session leader)
+                libc::setsid();
+                Ok(())
+            });
+        }
     }
     cmd.stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
     let mut child = cmd.spawn().map_err(|e| {
         eprintln!("[CLIProxyAPI][ERROR] failed to restart process: {}", e);
         e.to_string()
     })?;
-    pipe_child_output(&mut child);
-    *PROCESS.lock() = Some(child);
-    start_monitor(app.clone());
+    // Store PID and drop child handle to fully detach
+    let pid = child.id();
+    *PROCESS_PID.lock() = Some(pid);
+    println!("[CLIProxyAPI][RESTART] Detached process with PID: {}", pid);
+    std::mem::drop(child);
 
     // Start keep-alive mechanism for Local mode
     let config = read_config_yaml().unwrap_or(json!({}));
@@ -1285,13 +1344,12 @@ fn restart_cliproxyapi(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 fn stop_process_internal() {
-    if let Some(mut child) = PROCESS.lock().take() {
-        let _ = child.kill();
-    }
-    // Stop keep-alive mechanism when process stops
+    // Process is detached, don't try to kill it
+    // Just stop keep-alive mechanism
     stop_keep_alive_internal();
-    // Clear stored password when process stops
+    // Clear stored password when app stops
     *CLI_PROXY_PASSWORD.lock() = None;
+    println!("[CLIProxyAPI][INFO] EasyCLI app closing - CLIProxyAPI will continue running in background");
 }
 
 fn create_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
@@ -1318,9 +1376,9 @@ fn create_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
                 let _ = open_settings_window(app.clone());
             }
             "quit" => {
-                // Stop backend process then exit
-                stop_process_internal();
+                // Just exit app - CLIProxyAPI continues running
                 let _ = TRAY_ICON.lock().take();
+                println!("[CLIProxyAPI][INFO] Quitting app - CLIProxyAPI continues in background");
                 let _ = app.exit(0);
             }
             _ => {}
@@ -1634,8 +1692,8 @@ fn main() {
                     if SKIP_EXIT_ON_MAIN_CLOSE.swap(false, Ordering::SeqCst) {
                         return; // Allow close without quitting
                     }
-                    // Stop backend process if running then quit.
-                    stop_process_internal();
+                    // CLIProxyAPI continues running - just exit app
+                    println!("[CLIProxyAPI][INFO] Main window closed - CLIProxyAPI continues in background");
                     let _ = TRAY_ICON.lock().take();
                     let _ = window.app_handle().exit(0);
                     return;
@@ -1643,26 +1701,23 @@ fn main() {
 
                 if window.label() == "settings" && cfg!(target_os = "windows") {
                     // Exit entirely when settings window closes on Windows to avoid hidden login window lingering.
-                    stop_process_internal();
+                    println!("[CLIProxyAPI][INFO] Settings window closed - CLIProxyAPI continues in background");
                     let _ = TRAY_ICON.lock().take();
                     let _ = window.app_handle().exit(0);
                     return;
                 }
 
-                // Keep running in background (tray) if local process is active
-                let running = PROCESS.lock().is_some();
-                if running {
-                    api.prevent_close();
-                    let _ = window.hide();
-                    // Hide Dock icon when settings window is closed in Local mode (macOS only)
-                    if window.label() == "settings" {
-                        #[cfg(target_os = "macos")]
-                        {
-                            let _ = window
-                                .app_handle()
-                                .set_activation_policy(tauri::ActivationPolicy::Accessory);
-                            let _ = window.app_handle().set_dock_visibility(false);
-                        }
+                // Always keep app running in tray mode after first start
+                api.prevent_close();
+                let _ = window.hide();
+                // Hide Dock icon when settings window is closed (macOS only)
+                if window.label() == "settings" {
+                    #[cfg(target_os = "macos")]
+                    {
+                        let _ = window
+                            .app_handle()
+                            .set_activation_policy(tauri::ActivationPolicy::Accessory);
+                        let _ = window.app_handle().set_dock_visibility(false);
                     }
                 }
             }
