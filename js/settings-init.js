@@ -9,6 +9,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         await initializeProxyUrl();
         await initializeRemoteManagement();
         await initializeAdditionalSettings();
+        await initializeAutoStart();
         toggleLocalOnlyFields();
         updateServerStatus();
         updateActionButtons();
