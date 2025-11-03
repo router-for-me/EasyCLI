@@ -1681,6 +1681,203 @@ fn open_login_window(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+// Auto-start functionality
+
+#[cfg(target_os = "macos")]
+fn get_launch_agent_path() -> Result<PathBuf, AppError> {
+    let home = home_dir()?;
+    Ok(home.join("Library/LaunchAgents/com.easycli.app.plist"))
+}
+
+#[cfg(target_os = "linux")]
+fn get_autostart_path() -> Result<PathBuf, AppError> {
+    let home = home_dir()?;
+    Ok(home.join(".config/autostart/easycli.desktop"))
+}
+
+#[cfg(target_os = "macos")]
+fn get_app_path() -> Result<String, AppError> {
+    // Get the path to the current executable
+    let exe = std::env::current_exe()?;
+
+    // Navigate up from the executable to find the .app bundle
+    // Typical path: /Applications/EasyCLI.app/Contents/MacOS/EasyCLI
+    let mut path = exe.as_path();
+
+    // Go up directories until we find the .app bundle
+    while let Some(parent) = path.parent() {
+        if let Some(file_name) = parent.file_name() {
+            if file_name.to_string_lossy().ends_with(".app") {
+                return Ok(parent.to_string_lossy().to_string());
+            }
+        }
+        path = parent;
+    }
+
+    // Fallback: return the executable path
+    Ok(exe.to_string_lossy().to_string())
+}
+
+#[cfg(target_os = "linux")]
+fn get_app_path() -> Result<String, AppError> {
+    let exe = std::env::current_exe()?;
+    Ok(exe.to_string_lossy().to_string())
+}
+
+#[cfg(target_os = "windows")]
+fn get_app_path() -> Result<String, AppError> {
+    let exe = std::env::current_exe()?;
+    Ok(exe.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn check_auto_start_enabled() -> Result<serde_json::Value, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let plist_path = get_launch_agent_path().map_err(|e| e.to_string())?;
+        Ok(json!({"enabled": plist_path.exists()}))
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let desktop_path = get_autostart_path().map_err(|e| e.to_string())?;
+        Ok(json!({"enabled": desktop_path.exists()}))
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        use winreg::enums::*;
+        use winreg::RegKey;
+
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let run_key = hkcu.open_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Run");
+
+        match run_key {
+            Ok(key) => {
+                match key.get_value::<String, _>("EasyCLI") {
+                    Ok(_) => Ok(json!({"enabled": true})),
+                    Err(_) => Ok(json!({"enabled": false})),
+                }
+            }
+            Err(_) => Ok(json!({"enabled": false})),
+        }
+    }
+}
+
+#[tauri::command]
+fn enable_auto_start() -> Result<serde_json::Value, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let plist_path = get_launch_agent_path().map_err(|e| e.to_string())?;
+        let app_path = get_app_path().map_err(|e| e.to_string())?;
+
+        // Create LaunchAgents directory if it doesn't exist
+        if let Some(parent) = plist_path.parent() {
+            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+
+        // Create plist content
+        let plist_content = format!(r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.easycli.app</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/open</string>
+        <string>{}</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+</dict>
+</plist>"#, app_path);
+
+        fs::write(&plist_path, plist_content).map_err(|e| e.to_string())?;
+        Ok(json!({"success": true}))
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let desktop_path = get_autostart_path().map_err(|e| e.to_string())?;
+        let app_path = get_app_path().map_err(|e| e.to_string())?;
+
+        // Create autostart directory if it doesn't exist
+        if let Some(parent) = desktop_path.parent() {
+            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+
+        // Create .desktop file content
+        let desktop_content = format!(r#"[Desktop Entry]
+Type=Application
+Name=EasyCLI
+Exec={}
+Hidden=false
+NoDisplay=false
+X-GNOME-Autostart-enabled=true
+Comment=EasyCLI - API Proxy Management Tool"#, app_path);
+
+        fs::write(&desktop_path, desktop_content).map_err(|e| e.to_string())?;
+        Ok(json!({"success": true}))
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        use winreg::enums::*;
+        use winreg::RegKey;
+
+        let app_path = get_app_path().map_err(|e| e.to_string())?;
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let run_key = hkcu.open_subkey_with_flags(
+            "Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+            KEY_WRITE
+        ).map_err(|e| e.to_string())?;
+
+        run_key.set_value("EasyCLI", &app_path).map_err(|e| e.to_string())?;
+        Ok(json!({"success": true}))
+    }
+}
+
+#[tauri::command]
+fn disable_auto_start() -> Result<serde_json::Value, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let plist_path = get_launch_agent_path().map_err(|e| e.to_string())?;
+        if plist_path.exists() {
+            fs::remove_file(&plist_path).map_err(|e| e.to_string())?;
+        }
+        Ok(json!({"success": true}))
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let desktop_path = get_autostart_path().map_err(|e| e.to_string())?;
+        if desktop_path.exists() {
+            fs::remove_file(&desktop_path).map_err(|e| e.to_string())?;
+        }
+        Ok(json!({"success": true}))
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        use winreg::enums::*;
+        use winreg::RegKey;
+
+        let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+        let run_key = hkcu.open_subkey_with_flags(
+            "Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+            KEY_WRITE
+        );
+
+        if let Ok(key) = run_key {
+            let _ = key.delete_value("EasyCLI");
+        }
+        Ok(json!({"success": true}))
+    }
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -1742,7 +1939,10 @@ fn main() {
             stop_callback_server,
             save_files_to_directory,
             start_keep_alive,
-            stop_keep_alive
+            stop_keep_alive,
+            check_auto_start_enabled,
+            enable_auto_start,
+            disable_auto_start
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
