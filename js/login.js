@@ -134,7 +134,7 @@ updateConfirmBtn.addEventListener('click', async () => {
 
         if (window.__TAURI__?.core?.invoke) {
             const proxyUrl = proxyInput.value.trim();
-            const result = await window.__TAURI__.core.invoke('download_cliproxyapi', proxyUrl);
+            const result = await window.__TAURI__.core.invoke('download_cliproxyapi', { proxyUrl });
 
             if (result.success) {
                 console.log('CLIProxyAPI updated successfully:', result.path);
@@ -364,7 +364,7 @@ async function handleConnectClick() {
 
             // Check version and download if needed
             if (window.__TAURI__?.core?.invoke) {
-                const result = await window.__TAURI__.core.invoke('check_version_and_download', proxyUrl);
+                const result = await window.__TAURI__.core.invoke('check_version_and_download', { proxyUrl });
 
                 if (result.success) {
                     if (result.needsUpdate) {
