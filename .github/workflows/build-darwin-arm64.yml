@@ -1,0 +1,78 @@
+name: Build Darwin ARM64
+
+on:
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: "Build reason"
+        required: false
+        default: "Manual build"
+        type: string
+
+jobs:
+  build:
+    name: Build Darwin ARM64
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Install frontend deps
+        run: npm ci
+
+      - name: Build Tauri app for Darwin ARM64
+        run: |
+          npm run tauri build -- --target aarch64-apple-darwin --no-bundle
+
+      - name: Setup artifact folder
+        shell: bash
+        run: |
+          mkdir -p release-out
+
+      - name: Collect executable
+        shell: bash
+        run: |
+          set -euo pipefail
+          EXECUTABLE="src-tauri/target/aarch64-apple-darwin/release/easycli"
+          DEST="release-out/EasyCLI-darwin-arm64"
+
+          if [ -f "$EXECUTABLE" ]; then
+            cp "$EXECUTABLE" "$DEST"
+            chmod +x "$DEST"
+            echo "✅ Executable copied to $DEST"
+            ls -la "$DEST"
+          else
+            echo "❌ Executable not found at $EXECUTABLE"
+            exit 1
+          fi
+
+      - name: Upload executable as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: EasyCLI-darwin-arm64
+          path: release-out/EasyCLI-darwin-arm64
+          retention-days: 7
+
+      - name: Display build info
+        shell: bash
+        run: |
+          echo "🎉 Build completed!"
+          echo "Architecture: aarch64-apple-darwin (Apple Silicon)"
+          echo "Executable: EasyCLI-darwin-arm64"
+          echo "Retention: 7 days"
+          echo ""
+          echo "Download from: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
