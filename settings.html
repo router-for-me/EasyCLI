@@ -42,6 +42,14 @@
             <div class="server-status-content">
                 <span class="server-status-text" id="server-status-text">Local</span>
             </div>
+            <!-- CLI Version and Update (Local Mode Only) -->
+            <div class="cli-version-container local-only" id="cli-version-container">
+                <div class="cli-version-info">
+                    <span class="cli-version-label">CLI Version:</span>
+                    <span class="cli-version-text" id="cli-version-text">-</span>
+                </div>
+                <button class="update-cli-btn" id="update-cli-btn">Check Update</button>
+            </div>
         </div>
     </div>
 
@@ -278,6 +286,42 @@
 
     <div class="error-toast" id="error-toast"></div>
 
+    <!-- CLI Update Dialog -->
+    <div class="modal" id="cli-update-dialog">
+        <div class="modal-content confirm-modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">New Version Available</h3>
+                <button class="modal-close" id="cli-update-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="confirm-message" id="cli-update-message">
+                    A new version of CLIProxyAPI is available. Would you like to update now?
+                </div>
+                <div class="cli-update-details" id="cli-update-details"></div>
+            </div>
+            <div class="form-actions">
+                <button type="button" class="btn-cancel" id="cli-update-cancel">Update Later</button>
+                <button type="button" class="btn-save" id="cli-update-confirm">Update Now</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CLI Update Progress Dialog -->
+    <div class="modal" id="cli-progress-dialog" style="pointer-events: none;">
+        <div class="modal-content confirm-modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">Updating CLIProxyAPI</h3>
+            </div>
+            <div class="modal-body">
+                <div class="progress-label" id="cli-progress-label">Checking for updates...</div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="cli-progress-fill" style="width: 0%;"></div>
+                </div>
+                <div class="progress-text" id="cli-progress-text">0%</div>
+            </div>
+        </div>
+    </div>
+
     <!-- Custom Confirmation Dialog -->
     <div class="modal" id="confirm-modal">
         <div class="modal-content confirm-modal-content">
@@ -444,6 +488,7 @@
     <script src="js/settings-auth-gemini.js"></script>
     <script src="js/settings-auth-qwen.js"></script>
     <script src="js/settings-auth-iflow.js"></script>
+    <script src="js/settings-update.js"></script>
     <script src="js/settings-tabs.js"></script>
     <script src="js/settings-ipc.js"></script>
     <script src="js/settings-init.js"></script>
