@@ -45,12 +45,10 @@ body {
 /* Server Status Display */
 .server-status-container {
     border-top: 1px solid #e0e0e0;
-    padding: 8px 20px;
     background: #f9f9f9;
     margin-top: auto;
     display: flex;
-    align-items: center;
-    height: 55px;
+    flex-direction: column;
 }
 
 .server-status-content {
@@ -58,7 +56,7 @@ body {
     align-items: center;
     justify-content: flex-start;
     width: 100%;
-    height: 100%;
+    padding: 8px 20px;
 }
 
 .server-status-text {
@@ -1664,4 +1662,105 @@ textarea.form-input {
     border-radius: 50%;
     animation: spin 1s linear infinite;
     margin: 0 auto;
+}
+
+/* CLI Version and Update Styles */
+.cli-version-container {
+    border-top: 1px solid #e0e0e0;
+    padding: 12px 20px;
+    background: #ffffff;
+    display: none;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.cli-version-container.show {
+    display: flex;
+}
+
+.cli-version-info {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.cli-version-label {
+    font-size: 11px;
+    font-weight: 500;
+    color: #6b7280;
+}
+
+.cli-version-text {
+    font-size: 11px;
+    font-weight: 600;
+    color: #000000;
+    font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+}
+
+.update-cli-btn {
+    width: 100%;
+    padding: 8px 12px;
+    background: #8b5cf6;
+    color: #ffffff;
+    border: none;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: inherit;
+}
+
+.update-cli-btn:hover {
+    background: #7c3aed;
+}
+
+.update-cli-btn:active {
+    transform: translateY(1px);
+}
+
+.update-cli-btn:disabled {
+    background: #d1d5db;
+    cursor: not-allowed;
+}
+
+/* Update Dialog Styles */
+.cli-update-details {
+    margin-top: 8px;
+    font-size: 13px;
+    color: #4b5563;
+    line-height: 1.6;
+}
+
+/* Progress Bar Styles for Update Dialog */
+#cli-progress-dialog .progress-label {
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 12px;
+    color: #000000;
+    text-align: center;
+}
+
+#cli-progress-dialog .progress-bar {
+    width: 100%;
+    height: 8px;
+    background: #e0e0e0;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+
+#cli-progress-dialog .progress-fill {
+    height: 100%;
+    background: #8b5cf6;
+    border-radius: 4px;
+    transition: width 0.3s ease;
+    width: 0%;
+}
+
+#cli-progress-dialog .progress-text {
+    font-size: 11px;
+    color: #6b7280;
+    text-align: center;
 }
