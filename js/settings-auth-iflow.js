@@ -1,3 +1,93 @@
+// iFlow cookie import flow (preferred)
+
+function startIFlowCookieFlow() {
+    showIFlowCookieDialog();
+}
+
+function showIFlowCookieDialog() {
+    const modal = document.createElement('div');
+    modal.className = 'modal show';
+    modal.id = 'iflow-cookie-modal';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title">iFlow Cookie Import</h3>
+                <button class="modal-close" id="iflow-cookie-modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="codex-auth-content">
+                    <p>Paste your iFlow cookie to save it as an authentication file.</p>
+                    <div class="form-group">
+                        <label for="iflow-cookie-input">Cookie <span class="required">*</span></label>
+                        <textarea id="iflow-cookie-input" class="form-input" rows="4" placeholder="Paste iFlow cookie here"></textarea>
+                        <small class="form-help">Cookie is required and must not be empty.</small>
+                    </div>
+                    <div class="auth-actions">
+                        <button type="button" id="iflow-cookie-save-btn" class="btn-primary">Save</button>
+                        <button type="button" id="iflow-cookie-cancel-btn" class="btn-cancel">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    document.body.appendChild(modal);
+    const input = document.getElementById('iflow-cookie-input');
+    const saveBtn = document.getElementById('iflow-cookie-save-btn');
+    document.getElementById('iflow-cookie-modal-close').addEventListener('click', closeIFlowCookieDialog);
+    document.getElementById('iflow-cookie-cancel-btn').addEventListener('click', closeIFlowCookieDialog);
+    saveBtn.addEventListener('click', () => handleIFlowCookieSubmit(input, saveBtn));
+    document.addEventListener('keydown', handleIFlowCookieEscapeKey);
+    if (input) {
+        input.focus();
+    }
+}
+
+async function handleIFlowCookieSubmit(inputEl, saveBtn) {
+    try {
+        const cookie = inputEl && inputEl.value ? inputEl.value.trim() : '';
+        if (!cookie) {
+            showError('Please enter iFlow cookie');
+            return;
+        }
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
+
+        const result = await configManager.saveIFlowCookie(cookie);
+        if (result && result.success) {
+            const emailLabel = result.data?.email ? result.data.email : '';
+            showSuccessMessage(`iFlow cookie saved${emailLabel ? ` for ${emailLabel}` : ''}`);
+            closeIFlowCookieDialog();
+            if (typeof loadAuthFiles === 'function') {
+                await loadAuthFiles();
+            }
+        } else {
+            showError(result?.error || 'Failed to save iFlow cookie');
+        }
+    } catch (error) {
+        console.error('Error saving iFlow cookie:', error);
+        showError('Failed to save iFlow cookie: ' + error.message);
+    } finally {
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save';
+        }
+    }
+}
+
+function closeIFlowCookieDialog() {
+    document.removeEventListener('keydown', handleIFlowCookieEscapeKey);
+    const modal = document.getElementById('iflow-cookie-modal');
+    if (modal) {
+        modal.remove();
+    }
+}
+
+function handleIFlowCookieEscapeKey(e) {
+    if (e.key === 'Escape') {
+        closeIFlowCookieDialog();
+    }
+}
+
+// Legacy iFlow authentication flow (kept for fallback)
 // iFlow authentication flow (Electron-based local callback server)
 
 let iflowLocalServer = null;

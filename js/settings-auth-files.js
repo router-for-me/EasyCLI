@@ -203,7 +203,7 @@ function createNewAuthFile(type) {
     } else if (type === 'antigravity') {
         startAntigravityAuthFlow();
     } else if (type === 'iflow') {
-        startIFlowAuthFlow();
+        startIFlowCookieFlow();
     } else {
         console.log(`Creating new ${typeNames[type]} auth file`);
         showSuccessMessage(`Creating new ${typeNames[type]} auth file...`);

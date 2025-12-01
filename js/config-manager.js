@@ -188,6 +188,22 @@ class ConfigManager {
     }
 
     /**
+     * Save iFlow cookie directly
+     * @param {string} cookie - Raw iFlow cookie string
+     * @returns {Promise<Object>} Save result
+     */
+    async saveIFlowCookie(cookie) {
+        if (!cookie || !cookie.trim()) {
+            return { success: false, error: 'Cookie is required' };
+        }
+        if (this.type === 'local') {
+            return this.saveLocalIFlowCookie(cookie.trim());
+        } else {
+            return this.saveRemoteIFlowCookie(cookie.trim());
+        }
+    }
+
+    /**
      * Import Vertex credential using service account JSON
      * @param {File} file - Service account JSON file
      * @param {string} location - Vertex location, defaults to us-central1
@@ -448,6 +464,54 @@ class ConfigManager {
             }
         } catch (error) {
             console.error('Error saving local Gemini Web tokens:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
+    /**
+     * Save iFlow cookie in Local mode
+     * @param {string} cookie - Raw cookie string
+     * @returns {Promise<Object>} Save result
+     */
+    async saveLocalIFlowCookie(cookie) {
+        try {
+            const config = await this.getConfig();
+            const port = config.port || 8317;
+            const baseUrl = `http://127.0.0.1:${port}`;
+            const password = localStorage.getItem('local-management-key') || '';
+
+            if (!password) {
+                throw new Error('Missing local management key. Please restart CLIProxyAPI.');
+            }
+
+            const apiUrl = baseUrl.endsWith('/')
+                ? `${baseUrl}v0/management/iflow-auth-url`
+                : `${baseUrl}/v0/management/iflow-auth-url`;
+
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: {
+                    'X-Management-Key': password,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ cookie })
+            });
+
+            const data = await response.json().catch(() => ({}));
+
+            if (response.ok) {
+                return { success: true, data };
+            }
+
+            return {
+                success: false,
+                error: data.error || `HTTP ${response.status}: ${response.statusText}`
+            };
+        } catch (error) {
+            console.error('Error saving local iFlow cookie:', error);
             return {
                 success: false,
                 error: error.message
@@ -1128,6 +1192,50 @@ class ConfigManager {
             }
         } catch (error) {
             console.error('Error saving remote Gemini Web tokens:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
+    /**
+     * Save iFlow cookie in Remote mode
+     * @param {string} cookie - Raw cookie string
+     * @returns {Promise<Object>} Save result
+     */
+    async saveRemoteIFlowCookie(cookie) {
+        try {
+            this.refreshConnection();
+            if (!this.baseUrl || !this.password) {
+                throw new Error('Missing connection information');
+            }
+
+            const apiUrl = this.baseUrl.endsWith('/')
+                ? `${this.baseUrl}v0/management/iflow-auth-url`
+                : `${this.baseUrl}/v0/management/iflow-auth-url`;
+
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${this.password}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ cookie })
+            });
+
+            const data = await response.json().catch(() => ({}));
+
+            if (response.ok) {
+                return { success: true, data };
+            }
+
+            return {
+                success: false,
+                error: data.error || `HTTP ${response.status}: ${response.statusText}`
+            };
+        } catch (error) {
+            console.error('Error saving remote iFlow cookie:', error);
             return {
                 success: false,
                 error: error.message
