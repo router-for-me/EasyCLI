@@ -9,6 +9,7 @@ const providerNameInput = document.getElementById('provider-name-input');
 const providerBaseUrlInput = document.getElementById('provider-base-url-input');
 const apiKeysContainer = document.getElementById('api-keys-container');
 const modelsContainer = document.getElementById('models-container');
+const providerHeadersInput = document.getElementById('provider-headers-input');
 const providerModalClose = document.getElementById('provider-modal-close');
 const providerModalCancel = document.getElementById('provider-modal-cancel');
 const providerModalSave = document.getElementById('provider-modal-save');
@@ -21,7 +22,8 @@ let currentProviderEditIndex = null;
 // Load providers
 async function loadOpenaiProviders() {
     try {
-        openaiProviders = await configManager.getApiKeys('openai');
+        const providers = await configManager.getApiKeys('openai');
+        openaiProviders = Array.isArray(providers) ? providers.map(normalizeOpenaiProvider) : [];
         originalOpenaiProviders = JSON.parse(JSON.stringify(openaiProviders));
         renderOpenaiProviders();
     } catch (error) {
@@ -50,21 +52,23 @@ function renderOpenaiProviders() {
     openaiProviders.forEach((provider, index) => {
         const providerItem = document.createElement('div');
         providerItem.className = 'openai-provider-item';
-        const apiKeysCount = provider['api-key-entries'] ? provider['api-key-entries'].length : 0;
-        const modelsCount = provider.models ? provider.models.length : 0;
-        providerItem.innerHTML = `
-            <div class="openai-provider-info">
-                <div class="openai-provider-name">${provider.name}</div>
-                <div class="openai-provider-base-url">${provider['base-url']}</div>
-                <div class="openai-provider-details">
-                    <div class="openai-provider-detail">
-                        <strong>${apiKeysCount}</strong> API Key${apiKeysCount !== 1 ? 's' : ''}
-                    </div>
-                    <div class="openai-provider-detail">
-                        <strong>${modelsCount}</strong> Model${modelsCount !== 1 ? 's' : ''}
-                    </div>
+    const apiKeysCount = provider['api-key-entries'] ? provider['api-key-entries'].length : 0;
+    const modelsCount = provider.models ? provider.models.length : 0;
+    const headersText = provider.headers ? JSON.stringify(provider.headers) : '';
+    providerItem.innerHTML = `
+        <div class="openai-provider-info">
+            <div class="openai-provider-name">${provider.name}</div>
+            <div class="openai-provider-base-url">${provider['base-url']}</div>
+            <div class="openai-provider-details">
+                <div class="openai-provider-detail">
+                    <strong>${apiKeysCount}</strong> API Key${apiKeysCount !== 1 ? 's' : ''}
                 </div>
+                <div class="openai-provider-detail">
+                    <strong>${modelsCount}</strong> Model${modelsCount !== 1 ? 's' : ''}
+                </div>
+                ${headersText ? `<div class="openai-provider-detail">Headers: ${headersText}</div>` : ''}
             </div>
+        </div>
             <div class="openai-provider-actions">
                 <button class="openai-provider-btn edit" onclick="editOpenaiProvider(${index})">Edit</button>
                 <button class="openai-provider-btn delete" onclick="deleteOpenaiProvider(${index})">Delete</button>
@@ -79,6 +83,7 @@ function showOpenaiProviderModal(editIndex = null) {
     providerModalTitle.textContent = editIndex !== null ? 'Edit Provider' : 'Add Provider';
     providerNameInput.value = '';
     providerBaseUrlInput.value = '';
+    providerHeadersInput.value = '';
     clearProviderFormErrors();
     clearDynamicInputs();
     if (editIndex !== null) {
@@ -88,6 +93,7 @@ function showOpenaiProviderModal(editIndex = null) {
         const apiKeys = provider['api-key-entries'] || [];
         const models = provider.models || [];
         populateDynamicInputs(apiKeys, models);
+        providerHeadersInput.value = provider.headers ? JSON.stringify(provider.headers, null, 2) : '';
     }
     openaiProviderModal.classList.add('show');
     providerNameInput.focus();
@@ -152,6 +158,21 @@ function saveOpenaiProvider() {
             }
         }
     }
+    let headersObj = null;
+    if (!hasErrors && providerHeadersInput.value.trim()) {
+        try {
+            const parsed = JSON.parse(providerHeadersInput.value.trim());
+            if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+                showProviderFieldError(providerHeadersInput, 'Headers must be a JSON object');
+                hasErrors = true;
+            } else {
+                headersObj = parsed;
+            }
+        } catch (e) {
+            showProviderFieldError(providerHeadersInput, 'Headers must be valid JSON');
+            hasErrors = true;
+        }
+    }
     if (!hasErrors) {
         const isDuplicate = openaiProviders.some((provider, index) => index !== currentProviderEditIndex && provider.name === name);
         if (isDuplicate) {
@@ -161,6 +182,9 @@ function saveOpenaiProvider() {
     }
     if (hasErrors) return;
     const providerData = { name: name, 'base-url': baseUrl, 'api-key-entries': apiKeys, models: models };
+    if (headersObj) {
+        providerData.headers = headersObj;
+    }
     if (currentProviderEditIndex !== null) {
         openaiProviders[currentProviderEditIndex] = providerData;
     } else {
@@ -188,6 +212,9 @@ function showProviderFieldError(input, message) {
 function clearProviderFormErrors() {
     providerNameInput.classList.remove('error');
     providerBaseUrlInput.classList.remove('error');
+    if (providerHeadersInput) {
+        providerHeadersInput.classList.remove('error');
+    }
     const allDynamicInputs = document.querySelectorAll('.dynamic-input');
     allDynamicInputs.forEach(input => input.classList.remove('error'));
 }
@@ -407,5 +434,38 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && openaiPr
 
 providerNameInput.addEventListener('input', () => { if (providerNameInput.classList.contains('error')) providerNameInput.classList.remove('error'); });
 providerBaseUrlInput.addEventListener('input', () => { if (providerBaseUrlInput.classList.contains('error')) providerBaseUrlInput.classList.remove('error'); });
+providerHeadersInput.addEventListener('input', () => { if (providerHeadersInput.classList.contains('error')) providerHeadersInput.classList.remove('error'); });
 document.addEventListener('input', (e) => { if (e.target.classList.contains('dynamic-input') && e.target.classList.contains('error')) e.target.classList.remove('error'); });
 
+// Normalize OpenAI provider entry to expected structure
+function normalizeOpenaiProvider(entry) {
+    if (!entry) {
+        return { name: '', 'base-url': '', 'api-key-entries': [], models: [] };
+    }
+    const provider = {
+        name: entry.name || '',
+        'base-url': entry['base-url'] || entry.baseUrl || '',
+        'api-key-entries': [],
+        models: []
+    };
+    const keys = entry['api-key-entries'] || entry['api-keys'] || entry.apiKeys || [];
+    if (Array.isArray(keys)) {
+        provider['api-key-entries'] = keys.map(k => {
+            if (!k) return { 'api-key': '' };
+            if (typeof k === 'string') return { 'api-key': k };
+            const obj = { 'api-key': k['api-key'] || k.apiKey || '' };
+            if (k['proxy-url'] || k.proxyUrl) {
+                obj['proxy-url'] = k['proxy-url'] || k.proxyUrl;
+            }
+            return obj;
+        });
+    }
+    const models = entry.models || [];
+    if (Array.isArray(models)) {
+        provider.models = models.map(m => ({ name: m.name || '', alias: m.alias || '' }));
+    }
+    if (entry.headers && typeof entry.headers === 'object' && !Array.isArray(entry.headers)) {
+        provider.headers = entry.headers;
+    }
+    return provider;
+}

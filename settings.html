@@ -424,6 +424,12 @@
                         <small class="form-help">Enter model name and alias name. Leave empty if no custom
                             models.</small>
                     </div>
+                    <div class="form-group">
+                        <label for="provider-headers-input">Headers (JSON)</label>
+                        <textarea id="provider-headers-input" class="form-input" rows="3"
+                            placeholder='{ "X-Provider": "openrouter" }'></textarea>
+                        <small class="form-help">Optional request headers in JSON object format</small>
+                    </div>
                     <div class="form-actions">
                         <button type="button" class="btn-cancel" id="provider-modal-cancel">Cancel</button>
                         <button type="submit" class="btn-save" id="provider-modal-save">Save</button>

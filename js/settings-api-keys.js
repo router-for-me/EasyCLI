@@ -59,7 +59,8 @@ async function loadGeminiKeys() {
 
 async function loadCodexKeys() {
     try {
-        codexKeys = await configManager.getApiKeys('codex');
+        const keys = await configManager.getApiKeys('codex');
+        codexKeys = Array.isArray(keys) ? keys.map(normalizeCodexKey) : [];
         originalCodexKeys = JSON.parse(JSON.stringify(codexKeys));
         renderCodexKeys();
     } catch (error) {
@@ -139,13 +140,19 @@ function renderCodexKeys() {
     }
     list.innerHTML = '';
     codexKeys.forEach((keyObj, index) => {
+        const baseUrl = keyObj['base-url'] || '';
+        const proxyUrl = keyObj['proxy-url'] || '';
+        const excluded = Array.isArray(keyObj['excluded-models']) ? keyObj['excluded-models'].join(', ') : '';
+        const headersText = keyObj.headers ? JSON.stringify(keyObj.headers) : '';
         const keyItem = document.createElement('div');
         keyItem.className = 'api-key-item';
         keyItem.innerHTML = `
             <div class="api-key-info">
                 <div class="api-key-value">${keyObj['api-key']}</div>
-                ${keyObj['base-url'] ? `<div class=\"api-key-base-url\">Base URL: ${keyObj['base-url']}</div>` : ''}
-                ${keyObj['proxy-url'] ? `<div class=\"api-key-proxy-url\">Proxy URL: ${keyObj['proxy-url']}</div>` : ''}
+                ${baseUrl ? `<div class=\"api-key-base-url\">Base URL: ${baseUrl}</div>` : ''}
+                ${proxyUrl ? `<div class=\"api-key-proxy-url\">Proxy URL: ${proxyUrl}</div>` : ''}
+                ${excluded ? `<div class=\"api-key-excluded\">Excluded: ${excluded}</div>` : ''}
+                ${headersText ? `<div class=\"api-key-headers\">Headers: ${headersText}</div>` : ''}
             </div>
             <div class="api-key-actions">
                 <button class="api-key-btn edit" onclick="editCodexKey(${index})">Edit</button>
@@ -215,8 +222,8 @@ function showApiKeyModal(type, editIndex = null) {
     if (type === 'codex') {
         baseUrlGroup.style.display = 'block';
         proxyUrlGroup.style.display = 'block';
-        excludedModelsGroup.style.display = 'none';
-        headersGroup.style.display = 'none';
+        excludedModelsGroup.style.display = 'block';
+        headersGroup.style.display = 'block';
     } else if (type === 'gemini' || type === 'claude') {
         baseUrlGroup.style.display = 'block';
         proxyUrlGroup.style.display = 'block';
@@ -242,6 +249,8 @@ function showApiKeyModal(type, editIndex = null) {
             apiKeyInput.value = keyObj['api-key'] || '';
             baseUrlInput.value = keyObj['base-url'] || '';
             apiKeyProxyUrlInput.value = keyObj['proxy-url'] || '';
+            excludedModelsInput.value = Array.isArray(keyObj['excluded-models']) ? keyObj['excluded-models'].join(', ') : '';
+            headersInput.value = keyObj.headers ? JSON.stringify(keyObj.headers, null, 2) : '';
         } else if (type === 'claude') {
             const keyObj = claudeKeys[editIndex];
             apiKeyInput.value = keyObj['api-key'] || '';
@@ -293,7 +302,7 @@ function saveApiKey() {
         }
     }
 
-    if (currentApiType === 'gemini' || currentApiType === 'claude') {
+    if (currentApiType === 'gemini' || currentApiType === 'claude' || currentApiType === 'codex') {
         if (headersInput.value.trim()) {
             try {
                 const parsed = JSON.parse(headersInput.value.trim());
@@ -341,6 +350,16 @@ function saveApiKey() {
         const keyObj = { 'api-key': apiKey };
         if (baseUrl) keyObj['base-url'] = baseUrl;
         if (proxyUrl) keyObj['proxy-url'] = proxyUrl;
+        if (headersInput.value.trim()) {
+            keyObj.headers = JSON.parse(headersInput.value.trim());
+        }
+        const excludedList = excludedModelsInput.value
+            .split(/[,\\n]/)
+            .map(item => item.trim())
+            .filter(Boolean);
+        if (excludedList.length > 0) {
+            keyObj['excluded-models'] = excludedList;
+        }
         if (currentEditIndex !== null) {
             codexKeys[currentEditIndex] = keyObj;
         } else {
@@ -456,6 +475,31 @@ function normalizeGeminiKey(entry) {
 
 // Normalize Claude key entry to structured object
 function normalizeClaudeKey(entry) {
+    if (!entry) {
+        return { 'api-key': '' };
+    }
+    if (typeof entry === 'string') {
+        return { 'api-key': entry };
+    }
+    const obj = { 'api-key': entry['api-key'] || entry.apiKey || '' };
+    if (entry['base-url'] || entry.baseUrl) {
+        obj['base-url'] = entry['base-url'] || entry.baseUrl;
+    }
+    if (entry['proxy-url'] || entry.proxyUrl) {
+        obj['proxy-url'] = entry['proxy-url'] || entry.proxyUrl;
+    }
+    if (entry.headers && typeof entry.headers === 'object' && !Array.isArray(entry.headers)) {
+        obj.headers = entry.headers;
+    }
+    const excluded = entry['excluded-models'] || entry.excludedModels;
+    if (Array.isArray(excluded)) {
+        obj['excluded-models'] = excluded;
+    }
+    return obj;
+}
+
+// Normalize Codex key entry to structured object
+function normalizeCodexKey(entry) {
     if (!entry) {
         return { 'api-key': '' };
     }
