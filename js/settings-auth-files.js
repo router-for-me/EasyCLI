@@ -182,6 +182,7 @@ function createNewAuthFile(type) {
         'qwen': 'Qwen Code',
         'vertex': 'Vertex',
         'iflow': 'iFlow',
+        'antigravity': 'Antigravity',
         'local': 'Local File'
     };
 
@@ -199,6 +200,8 @@ function createNewAuthFile(type) {
         startQwenAuthFlow();
     } else if (type === 'vertex') {
         showVertexImportDialog();
+    } else if (type === 'antigravity') {
+        startAntigravityAuthFlow();
     } else if (type === 'iflow') {
         startIFlowAuthFlow();
     } else {
