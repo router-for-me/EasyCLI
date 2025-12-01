@@ -180,6 +180,7 @@ function createNewAuthFile(type) {
         'claude': 'Claude Code',
         'codex': 'Codex',
         'qwen': 'Qwen Code',
+        'vertex': 'Vertex',
         'iflow': 'iFlow',
         'local': 'Local File'
     };
@@ -196,6 +197,8 @@ function createNewAuthFile(type) {
         showGeminiWebDialog();
     } else if (type === 'qwen') {
         startQwenAuthFlow();
+    } else if (type === 'vertex') {
+        showVertexImportDialog();
     } else if (type === 'iflow') {
         startIFlowAuthFlow();
     } else {
@@ -407,4 +410,3 @@ document.addEventListener('click', (e) => {
         closeDropdown();
     }
 });
-

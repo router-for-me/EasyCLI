@@ -187,6 +187,23 @@ class ConfigManager {
         }
     }
 
+    /**
+     * Import Vertex credential using service account JSON
+     * @param {File} file - Service account JSON file
+     * @param {string} location - Vertex location, defaults to us-central1
+     * @returns {Promise<Object>} Import result
+     */
+    async importVertexCredential(file, location = 'us-central1') {
+        if (!file) {
+            return { success: false, error: 'No file selected' };
+        }
+        if (this.type === 'local') {
+            return this.importLocalVertexCredential(file, location);
+        } else {
+            return this.importRemoteVertexCredential(file, location);
+        }
+    }
+
     // ==================== Local Mode Implementation ====================
 
     /**
@@ -431,6 +448,59 @@ class ConfigManager {
             }
         } catch (error) {
             console.error('Error saving local Gemini Web tokens:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
+    /**
+     * Import Vertex credential in Local mode
+     * @param {File} file - Service account JSON file
+     * @param {string} location - Vertex location
+     * @returns {Promise<Object>} Import result
+     */
+    async importLocalVertexCredential(file, location = 'us-central1') {
+        try {
+            const config = await this.getConfig();
+            const port = config.port || 8317;
+            const baseUrl = `http://127.0.0.1:${port}`;
+            const password = localStorage.getItem('local-management-key') || '';
+
+            if (!password) {
+                throw new Error('Missing local management key. Please restart CLIProxyAPI.');
+            }
+
+            const apiUrl = baseUrl.endsWith('/')
+                ? `${baseUrl}v0/management/vertex/import`
+                : `${baseUrl}/v0/management/vertex/import`;
+
+            const formData = new FormData();
+            formData.append('file', file);
+            const normalizedLocation = location && location.trim() ? location.trim() : 'us-central1';
+            formData.append('location', normalizedLocation);
+
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: {
+                    'X-Management-Key': password
+                },
+                body: formData
+            });
+
+            const data = await response.json().catch(() => ({}));
+
+            if (response.ok) {
+                return { success: true, data };
+            }
+
+            return {
+                success: false,
+                error: data.error || `HTTP ${response.status}: ${response.statusText}`
+            };
+        } catch (error) {
+            console.error('Error importing local Vertex credential:', error);
             return {
                 success: false,
                 error: error.message
@@ -1058,6 +1128,55 @@ class ConfigManager {
             }
         } catch (error) {
             console.error('Error saving remote Gemini Web tokens:', error);
+            return {
+                success: false,
+                error: error.message
+            };
+        }
+    }
+
+    /**
+     * Import Vertex credential in Remote mode
+     * @param {File} file - Service account JSON file
+     * @param {string} location - Vertex location
+     * @returns {Promise<Object>} Import result
+     */
+    async importRemoteVertexCredential(file, location = 'us-central1') {
+        try {
+            this.refreshConnection();
+            if (!this.baseUrl || !this.password) {
+                throw new Error('Missing connection information');
+            }
+
+            const apiUrl = this.baseUrl.endsWith('/')
+                ? `${this.baseUrl}v0/management/vertex/import`
+                : `${this.baseUrl}/v0/management/vertex/import`;
+
+            const formData = new FormData();
+            formData.append('file', file);
+            const normalizedLocation = location && location.trim() ? location.trim() : 'us-central1';
+            formData.append('location', normalizedLocation);
+
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${this.password}`
+                },
+                body: formData
+            });
+
+            const data = await response.json().catch(() => ({}));
+
+            if (response.ok) {
+                return { success: true, data };
+            }
+
+            return {
+                success: false,
+                error: data.error || `HTTP ${response.status}: ${response.statusText}`
+            };
+        } catch (error) {
+            console.error('Error importing remote Vertex credential:', error);
             return {
                 success: false,
                 error: error.message
