@@ -269,10 +269,10 @@ async function applyAllSettings() {
                 changes.push({ endpoint: 'api-keys', value: accessTokenKeys });
             }
         } else if (currentTab === 'api') {
-            let serverGeminiKeys = serverConfig['generative-language-api-key'] || [];
+            let serverGeminiKeys = serverConfig['gemini-api-key'] || [];
             if (serverGeminiKeys === null) serverGeminiKeys = [];
             if (JSON.stringify(geminiKeys) !== JSON.stringify(serverGeminiKeys)) {
-                changes.push({ endpoint: 'generative-language-api-key', value: geminiKeys });
+                changes.push({ endpoint: 'gemini-api-key', value: geminiKeys });
             }
 
             let serverCodexKeys = serverConfig['codex-api-key'] || [];
@@ -384,7 +384,7 @@ async function resetAllSettings() {
             originalAccessTokenKeys = JSON.parse(JSON.stringify(accessTokenKeys));
             renderAccessTokenKeys();
         } else if (currentTab === 'api') {
-            let serverGeminiKeys = serverConfig['generative-language-api-key'] || [];
+            let serverGeminiKeys = serverConfig['gemini-api-key'] || [];
             let serverCodexKeys = serverConfig['codex-api-key'] || [];
             let serverClaudeKeys = serverConfig['claude-api-key'] || [];
             if (serverGeminiKeys === null) serverGeminiKeys = [];

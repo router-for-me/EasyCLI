@@ -280,7 +280,7 @@ class ConfigManager {
             const config = await this.getLocalConfig();
 
             const keyMap = {
-                'gemini': 'generative-language-api-key',
+                'gemini': 'gemini-api-key',
                 'codex': 'codex-api-key',
                 'claude': 'claude-api-key',
                 'openai': 'openai-compatibility',
@@ -309,7 +309,7 @@ class ConfigManager {
     async updateLocalApiKeys(keyType, keys) {
         try {
             const keyMap = {
-                'gemini': 'generative-language-api-key',
+                'gemini': 'gemini-api-key',
                 'codex': 'codex-api-key',
                 'claude': 'claude-api-key',
                 'openai': 'openai-compatibility',
@@ -763,7 +763,7 @@ class ConfigManager {
             }
 
             const keyMap = {
-                'gemini': 'generative-language-api-key',
+                'gemini': 'gemini-api-key',
                 'codex': 'codex-api-key',
                 'claude': 'claude-api-key',
                 'openai': 'openai-compatibility',
@@ -813,7 +813,7 @@ class ConfigManager {
             }
 
             const keyMap = {
-                'gemini': 'generative-language-api-key',
+                'gemini': 'gemini-api-key',
                 'codex': 'codex-api-key',
                 'claude': 'claude-api-key',
                 'openai': 'openai-compatibility',

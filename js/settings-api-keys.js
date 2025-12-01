@@ -12,6 +12,10 @@ const baseUrlInput = document.getElementById('base-url-input');
 const baseUrlGroup = document.getElementById('base-url-group');
 const apiKeyProxyUrlInput = document.getElementById('api-key-proxy-url-input');
 const proxyUrlGroup = document.getElementById('proxy-url-group');
+const excludedModelsGroup = document.getElementById('excluded-models-group');
+const excludedModelsInput = document.getElementById('excluded-models-input');
+const headersGroup = document.getElementById('headers-group');
+const headersInput = document.getElementById('headers-input');
 const modalClose = document.getElementById('modal-close');
 const modalCancel = document.getElementById('modal-cancel');
 const modalSave = document.getElementById('modal-save');
@@ -42,7 +46,8 @@ async function loadAllApiKeys() {
 
 async function loadGeminiKeys() {
     try {
-        geminiKeys = await configManager.getApiKeys('gemini');
+        const keys = await configManager.getApiKeys('gemini');
+        geminiKeys = Array.isArray(keys) ? keys.map(normalizeGeminiKey) : [];
         originalGeminiKeys = JSON.parse(JSON.stringify(geminiKeys));
         renderGeminiKeys();
     } catch (error) {
@@ -92,12 +97,20 @@ function renderGeminiKeys() {
         return;
     }
     list.innerHTML = '';
-    geminiKeys.forEach((key, index) => {
+    geminiKeys.forEach((keyObj, index) => {
+        const baseUrl = keyObj['base-url'] || '';
+        const proxyUrl = keyObj['proxy-url'] || '';
+        const excluded = Array.isArray(keyObj['excluded-models']) ? keyObj['excluded-models'].join(', ') : '';
+        const headersText = keyObj.headers ? JSON.stringify(keyObj.headers) : '';
         const keyItem = document.createElement('div');
         keyItem.className = 'api-key-item';
         keyItem.innerHTML = `
             <div class="api-key-info">
-                <div class="api-key-value">${key}</div>
+                <div class="api-key-value">${keyObj['api-key'] || ''}</div>
+                ${baseUrl ? `<div class="api-key-base-url">Base URL: ${baseUrl}</div>` : ''}
+                ${proxyUrl ? `<div class="api-key-proxy-url">Proxy URL: ${proxyUrl}</div>` : ''}
+                ${excluded ? `<div class="api-key-excluded">Excluded: ${excluded}</div>` : ''}
+                ${headersText ? `<div class="api-key-headers">Headers: ${headersText}</div>` : ''}
             </div>
             <div class="api-key-actions">
                 <button class="api-key-btn edit" onclick="editGeminiKey(${index})">Edit</button>
@@ -184,21 +197,39 @@ function showApiKeyModal(type, editIndex = null) {
     apiKeyInput.value = '';
     baseUrlInput.value = '';
     apiKeyProxyUrlInput.value = '';
+    excludedModelsInput.value = '';
+    headersInput.value = '';
     apiKeyInput.classList.remove('error');
     baseUrlInput.classList.remove('error');
     apiKeyProxyUrlInput.classList.remove('error');
+    excludedModelsInput.classList.remove('error');
+    headersInput.classList.remove('error');
 
     if (type === 'codex' || type === 'claude') {
         baseUrlGroup.style.display = 'block';
         proxyUrlGroup.style.display = 'block';
+        excludedModelsGroup.style.display = 'none';
+        headersGroup.style.display = 'none';
+    } else if (type === 'gemini') {
+        baseUrlGroup.style.display = 'block';
+        proxyUrlGroup.style.display = 'block';
+        excludedModelsGroup.style.display = 'block';
+        headersGroup.style.display = 'block';
     } else {
         baseUrlGroup.style.display = 'none';
         proxyUrlGroup.style.display = 'none';
+        excludedModelsGroup.style.display = 'none';
+        headersGroup.style.display = 'none';
     }
 
     if (editIndex !== null) {
         if (type === 'gemini') {
-            apiKeyInput.value = geminiKeys[editIndex];
+            const keyObj = geminiKeys[editIndex];
+            apiKeyInput.value = keyObj['api-key'] || '';
+            baseUrlInput.value = keyObj['base-url'] || '';
+            apiKeyProxyUrlInput.value = keyObj['proxy-url'] || '';
+            excludedModelsInput.value = Array.isArray(keyObj['excluded-models']) ? keyObj['excluded-models'].join(', ') : '';
+            headersInput.value = keyObj.headers ? JSON.stringify(keyObj.headers, null, 2) : '';
         } else if (type === 'codex') {
             const keyObj = codexKeys[editIndex];
             apiKeyInput.value = keyObj['api-key'] || '';
@@ -253,13 +284,48 @@ function saveApiKey() {
         }
     }
 
+    if (currentApiType === 'gemini') {
+        if (headersInput.value.trim()) {
+            try {
+                const parsed = JSON.parse(headersInput.value.trim());
+                if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+                    headersInput.classList.add('error');
+                    headersInput.focus();
+                    showError('Headers must be a JSON object');
+                    hasErrors = true;
+                }
+            } catch (e) {
+                headersInput.classList.add('error');
+                headersInput.focus();
+                showError('Headers must be valid JSON');
+                hasErrors = true;
+            }
+        }
+    }
+
     if (hasErrors) return;
 
     if (currentApiType === 'gemini') {
+        const keyObj = { 'api-key': apiKey };
+        if (baseUrl) keyObj['base-url'] = baseUrl;
+        if (proxyUrl) keyObj['proxy-url'] = proxyUrl;
+
+        if (headersInput.value.trim()) {
+            keyObj.headers = JSON.parse(headersInput.value.trim());
+        }
+
+        const excludedList = excludedModelsInput.value
+            .split(/[,\\n]/)
+            .map(item => item.trim())
+            .filter(Boolean);
+        if (excludedList.length > 0) {
+            keyObj['excluded-models'] = excludedList;
+        }
+
         if (currentEditIndex !== null) {
-            geminiKeys[currentEditIndex] = apiKey;
+            geminiKeys[currentEditIndex] = keyObj;
         } else {
-            geminiKeys.push(apiKey);
+            geminiKeys.push(keyObj);
         }
         renderGeminiKeys();
     } else if (currentApiType === 'codex') {
@@ -336,8 +402,35 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && apiKeyMo
 apiKeyInput.addEventListener('input', () => { if (apiKeyInput.classList.contains('error')) apiKeyInput.classList.remove('error'); });
 baseUrlInput.addEventListener('input', () => { if (baseUrlInput.classList.contains('error')) baseUrlInput.classList.remove('error'); });
 apiKeyProxyUrlInput.addEventListener('input', () => { if (apiKeyProxyUrlInput.classList.contains('error')) apiKeyProxyUrlInput.classList.remove('error'); });
+excludedModelsInput.addEventListener('input', () => { if (excludedModelsInput.classList.contains('error')) excludedModelsInput.classList.remove('error'); });
+headersInput.addEventListener('input', () => { if (headersInput.classList.contains('error')) headersInput.classList.remove('error'); });
 
 // Buttons to open modal
 addGeminiKeyBtn.addEventListener('click', () => showApiKeyModal('gemini'));
 addCodexKeyBtn.addEventListener('click', () => showApiKeyModal('codex'));
 addClaudeKeyBtn.addEventListener('click', () => showApiKeyModal('claude'));
+
+// Normalize Gemini key entry to structured object
+function normalizeGeminiKey(entry) {
+    if (!entry) {
+        return { 'api-key': '' };
+    }
+    if (typeof entry === 'string') {
+        return { 'api-key': entry };
+    }
+    const obj = { 'api-key': entry['api-key'] || entry.apiKey || '' };
+    if (entry['base-url'] || entry.baseUrl) {
+        obj['base-url'] = entry['base-url'] || entry.baseUrl;
+    }
+    if (entry['proxy-url'] || entry.proxyUrl) {
+        obj['proxy-url'] = entry['proxy-url'] || entry.proxyUrl;
+    }
+    if (entry.headers && typeof entry.headers === 'object' && !Array.isArray(entry.headers)) {
+        obj.headers = entry.headers;
+    }
+    const excluded = entry['excluded-models'] || entry.excludedModels;
+    if (Array.isArray(excluded)) {
+        obj['excluded-models'] = excluded;
+    }
+    return obj;
+}

@@ -333,6 +333,18 @@
                             placeholder="socks5://user:pass@host:port">
                         <small class="form-help">Optional proxy URL for API requests</small>
                     </div>
+                    <div class="form-group" id="excluded-models-group" style="display: none;">
+                        <label for="excluded-models-input">Excluded Models</label>
+                        <input type="text" id="excluded-models-input" class="form-input"
+                            placeholder="model-a, model-b">
+                        <small class="form-help">Comma-separated model IDs to exclude</small>
+                    </div>
+                    <div class="form-group" id="headers-group" style="display: none;">
+                        <label for="headers-input">Headers (JSON)</label>
+                        <textarea id="headers-input" class="form-input" rows="3"
+                            placeholder='{ "X-Custom-Header": "value" }'></textarea>
+                        <small class="form-help">Optional request headers in JSON object format</small>
+                    </div>
                 </form>
             </div>
             <div class="form-actions">
