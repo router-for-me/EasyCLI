@@ -17,12 +17,12 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::Cursor;
 use std::io::{self, BufRead, BufReader, Read, Write};
-use std::path::{Path, PathBuf};
-use std::process::{Child, Stdio};
-#[cfg(target_os = "windows")]
-use std::os::windows::process::CommandExt;
 #[cfg(not(target_os = "windows"))]
 use std::os::unix::process::CommandExt;
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+use std::path::{Path, PathBuf};
+use std::process::{Child, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
@@ -44,8 +44,6 @@ static KEEP_ALIVE_HANDLE: Lazy<Arc<Mutex<Option<(Arc<AtomicBool>, thread::JoinHa
 // Store the password used to start CLIProxyAPI for keep-alive authentication
 static CLI_PROXY_PASSWORD: Lazy<Arc<Mutex<Option<String>>>> =
     Lazy::new(|| Arc::new(Mutex::new(None)));
-// Flag to allow programmatic login window close without exiting the app
-static SKIP_EXIT_ON_MAIN_CLOSE: AtomicBool = AtomicBool::new(false);
 
 #[derive(Error, Debug)]
 enum AppError {
@@ -529,7 +527,11 @@ async fn download_cliproxyapi(
                     let dir_name = entry.file_name();
                     let dir_name_str = dir_name.to_string_lossy();
                     // Check if it's a version directory (starts with digit) and not the latest
-                    if dir_name_str.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false)
+                    if dir_name_str
+                        .chars()
+                        .next()
+                        .map(|c| c.is_ascii_digit())
+                        .unwrap_or(false)
                         && dir_name_str != latest
                     {
                         println!("[CLEANUP] Removing old version: {}", dir_name_str);
@@ -1003,7 +1005,7 @@ fn pipe_child_output(child: &mut Child) {
 // Kill any process using the specified port
 fn kill_process_on_port(port: u16) -> Result<(), String> {
     println!("[PORT_CLEANUP] Checking port {}", port);
-    
+
     #[cfg(target_os = "macos")]
     {
         // Use lsof to find the process
@@ -1011,7 +1013,7 @@ fn kill_process_on_port(port: u16) -> Result<(), String> {
             .args(["-ti", &format!(":{}", port)])
             .output()
             .map_err(|e| format!("Failed to run lsof: {}", e))?;
-        
+
         if output.status.success() {
             let pids = String::from_utf8_lossy(&output.stdout);
             for pid_str in pids.lines() {
@@ -1027,7 +1029,7 @@ fn kill_process_on_port(port: u16) -> Result<(), String> {
             }
         }
     }
-    
+
     #[cfg(target_os = "linux")]
     {
         // Use fuser to kill the process
@@ -1035,12 +1037,12 @@ fn kill_process_on_port(port: u16) -> Result<(), String> {
             .args(["-k", "-9", &format!("{}/tcp", port)])
             .output()
             .map_err(|e| format!("Failed to run fuser: {}", e))?;
-        
+
         if output.status.success() {
             println!("[PORT_CLEANUP] Killed processes on port {}", port);
         }
     }
-    
+
     #[cfg(target_os = "windows")]
     {
         // Use netstat to find the PID, then taskkill to kill it
@@ -1048,14 +1050,17 @@ fn kill_process_on_port(port: u16) -> Result<(), String> {
             .args(["-ano"])
             .output()
             .map_err(|e| format!("Failed to run netstat: {}", e))?;
-        
+
         if output.status.success() {
             let netstat_output = String::from_utf8_lossy(&output.stdout);
             let port_pattern = format!(":{}", port);
-            
+
             for line in netstat_output.lines() {
                 let parts: Vec<&str> = line.split_whitespace().collect();
-                if parts.len() > 2 && parts[1].ends_with(&port_pattern) && line.contains("LISTENING") {
+                if parts.len() > 2
+                    && parts[1].ends_with(&port_pattern)
+                    && line.contains("LISTENING")
+                {
                     // Extract PID from the last column
                     if let Some(pid_str) = parts.last() {
                         if let Ok(pid) = pid_str.parse::<i32>() {
@@ -1064,7 +1069,10 @@ fn kill_process_on_port(port: u16) -> Result<(), String> {
                                 .args(["/F", "/PID", &pid.to_string()])
                                 .output()
                             {
-                                eprintln!("[PORT_CLEANUP] Failed to run taskkill for PID {}: {}", pid, e);
+                                eprintln!(
+                                    "[PORT_CLEANUP] Failed to run taskkill for PID {}: {}",
+                                    pid, e
+                                );
                             }
                         }
                     }
@@ -1072,7 +1080,7 @@ fn kill_process_on_port(port: u16) -> Result<(), String> {
             }
         }
     }
-    
+
     Ok(())
 }
 
@@ -1113,11 +1121,8 @@ fn start_cliproxyapi(app: tauri::AppHandle) -> Result<serde_json::Value, String>
     let content = fs::read_to_string(&config).map_err(|e| e.to_string())?;
     let mut conf: serde_yaml::Value = serde_yaml::from_str(&content).map_err(|e| e.to_string())?;
 
-    let port = conf
-        .get("port")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(8317) as u16;
-    
+    let port = conf.get("port").and_then(|v| v.as_u64()).unwrap_or(8317) as u16;
+
     // Automatic port cleanup
     if let Err(e) = kill_process_on_port(port) {
         eprintln!("[PORT_CLEANUP] Warning: {}", e);
@@ -1246,11 +1251,8 @@ fn restart_cliproxyapi(app: tauri::AppHandle) -> Result<(), String> {
     let content = fs::read_to_string(&config).map_err(|e| e.to_string())?;
     let mut conf: serde_yaml::Value = serde_yaml::from_str(&content).map_err(|e| e.to_string())?;
 
-    let port = conf
-        .get("port")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(8317) as u16;
-    
+    let port = conf.get("port").and_then(|v| v.as_u64()).unwrap_or(8317) as u16;
+
     // Automatic port cleanup
     if let Err(e) = kill_process_on_port(port) {
         eprintln!("[PORT_CLEANUP] Warning: {}", e);
@@ -1349,7 +1351,9 @@ fn stop_process_internal() {
     stop_keep_alive_internal();
     // Clear stored password when app stops
     *CLI_PROXY_PASSWORD.lock() = None;
-    println!("[CLIProxyAPI][INFO] EasyCLI app closing - CLIProxyAPI will continue running in background");
+    println!(
+        "[CLIProxyAPI][INFO] EasyCLI app closing - CLIProxyAPI will continue running in background"
+    );
 }
 
 fn create_tray(app: &tauri::AppHandle) -> tauri::Result<()> {
@@ -1753,12 +1757,10 @@ fn check_auto_start_enabled() -> Result<serde_json::Value, String> {
         let run_key = hkcu.open_subkey("Software\\Microsoft\\Windows\\CurrentVersion\\Run");
 
         match run_key {
-            Ok(key) => {
-                match key.get_value::<String, _>("EasyCLI") {
-                    Ok(_) => Ok(json!({"enabled": true})),
-                    Err(_) => Ok(json!({"enabled": false})),
-                }
-            }
+            Ok(key) => match key.get_value::<String, _>("EasyCLI") {
+                Ok(_) => Ok(json!({"enabled": true})),
+                Err(_) => Ok(json!({"enabled": false})),
+            },
             Err(_) => Ok(json!({"enabled": false})),
         }
     }
@@ -1777,7 +1779,8 @@ fn enable_auto_start() -> Result<serde_json::Value, String> {
         }
 
         // Create plist content
-        let plist_content = format!(r#"<?xml version="1.0" encoding="UTF-8"?>
+        let plist_content = format!(
+            r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
@@ -1793,7 +1796,9 @@ fn enable_auto_start() -> Result<serde_json::Value, String> {
     <key>KeepAlive</key>
     <false/>
 </dict>
-</plist>"#, app_path);
+</plist>"#,
+            app_path
+        );
 
         fs::write(&plist_path, plist_content).map_err(|e| e.to_string())?;
         Ok(json!({"success": true}))
@@ -1810,14 +1815,17 @@ fn enable_auto_start() -> Result<serde_json::Value, String> {
         }
 
         // Create .desktop file content
-        let desktop_content = format!(r#"[Desktop Entry]
+        let desktop_content = format!(
+            r#"[Desktop Entry]
 Type=Application
 Name=EasyCLI
 Exec={}
 Hidden=false
 NoDisplay=false
 X-GNOME-Autostart-enabled=true
-Comment=EasyCLI - API Proxy Management Tool"#, app_path);
+Comment=EasyCLI - API Proxy Management Tool"#,
+            app_path
+        );
 
         fs::write(&desktop_path, desktop_content).map_err(|e| e.to_string())?;
         Ok(json!({"success": true}))
@@ -1830,12 +1838,16 @@ Comment=EasyCLI - API Proxy Management Tool"#, app_path);
 
         let app_path = get_app_path().map_err(|e| e.to_string())?;
         let hkcu = RegKey::predef(HKEY_CURRENT_USER);
-        let run_key = hkcu.open_subkey_with_flags(
-            "Software\\Microsoft\\Windows\\CurrentVersion\\Run",
-            KEY_WRITE
-        ).map_err(|e| e.to_string())?;
+        let run_key = hkcu
+            .open_subkey_with_flags(
+                "Software\\Microsoft\\Windows\\CurrentVersion\\Run",
+                KEY_WRITE,
+            )
+            .map_err(|e| e.to_string())?;
 
-        run_key.set_value("EasyCLI", &app_path).map_err(|e| e.to_string())?;
+        run_key
+            .set_value("EasyCLI", &app_path)
+            .map_err(|e| e.to_string())?;
         Ok(json!({"success": true}))
     }
 }
@@ -1868,7 +1880,7 @@ fn disable_auto_start() -> Result<serde_json::Value, String> {
         let hkcu = RegKey::predef(HKEY_CURRENT_USER);
         let run_key = hkcu.open_subkey_with_flags(
             "Software\\Microsoft\\Windows\\CurrentVersion\\Run",
-            KEY_WRITE
+            KEY_WRITE,
         );
 
         if let Ok(key) = run_key {
@@ -1883,40 +1895,30 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { api, .. } = event {
-                // If user closes the login window, exit the entire app.
-                if window.label() == "main" {
-                    // If closing programmatically during navigation to settings, skip exiting once.
-                    if SKIP_EXIT_ON_MAIN_CLOSE.swap(false, Ordering::SeqCst) {
-                        return; // Allow close without quitting
+                let has_tray = TRAY_ICON.lock().is_some();
+                if has_tray {
+                    api.prevent_close();
+                    let _ = window.hide();
+                    if window.label() == "settings" {
+                        #[cfg(target_os = "macos")]
+                        {
+                            let _ = window
+                                .app_handle()
+                                .set_activation_policy(tauri::ActivationPolicy::Accessory);
+                            let _ = window.app_handle().set_dock_visibility(false);
+                        }
                     }
-                    // CLIProxyAPI continues running - just exit app
-                    println!("[CLIProxyAPI][INFO] Main window closed - CLIProxyAPI continues in background");
-                    let _ = TRAY_ICON.lock().take();
-                    let _ = window.app_handle().exit(0);
+                    println!(
+                        "[CLIProxyAPI][INFO] {} window hidden - app remains in tray",
+                        window.label()
+                    );
                     return;
                 }
-
-                if window.label() == "settings" && cfg!(target_os = "windows") {
-                    // Exit entirely when settings window closes on Windows to avoid hidden login window lingering.
-                    println!("[CLIProxyAPI][INFO] Settings window closed - CLIProxyAPI continues in background");
-                    let _ = TRAY_ICON.lock().take();
-                    let _ = window.app_handle().exit(0);
-                    return;
-                }
-
-                // Always keep app running in tray mode after first start
-                api.prevent_close();
-                let _ = window.hide();
-                // Hide Dock icon when settings window is closed (macOS only)
-                if window.label() == "settings" {
-                    #[cfg(target_os = "macos")]
-                    {
-                        let _ = window
-                            .app_handle()
-                            .set_activation_policy(tauri::ActivationPolicy::Accessory);
-                        let _ = window.app_handle().set_dock_visibility(false);
-                    }
-                }
+                // No tray icon yet (e.g., app closed before starting CLIProxyAPI) - allow default shutdown.
+                println!(
+                    "[CLIProxyAPI][INFO] {} window closed before tray initialization - exiting app",
+                    window.label()
+                );
             }
         })
         // Note: Tauri v2 has no Builder::on_exit; we rely on tray Quit and OS termination to close child.
