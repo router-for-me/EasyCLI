@@ -380,7 +380,32 @@ export const quotaRowsFor = (provider: QuotaProvider, payload: unknown): QuotaRo
   const value = parseBody(payload);
   if (!isRecord(value)) return [];
 
-  if (provider === 'codex') return codexWindowRows(value);
+  if (provider === 'codex') {
+    const rows = codexWindowRows(value);
+    const control = value.spend_control;
+    const individual = isRecord(control) ? control.individual_limit : undefined;
+    if (isRecord(individual)) {
+      const limit = numberValue(individual.limit);
+      const used = numberValue(individual.used);
+      const remaining = numberValue(individual.remaining);
+      const format = (amount: number) => new Intl.NumberFormat(getCurrentLocale(), {
+        maximumFractionDigits: 2,
+      }).format(amount);
+      rows.push({
+        label: quotaText('quota.service.individualSpendingLimit'),
+        remainingPercent: clampPercent(individual.remaining_percent)
+          ?? remainingFromUsedPercent(individual.used_percent)
+          ?? (remaining !== null && limit !== null && limit > 0
+            ? clampPercent(remaining / limit * 100) : null),
+        reset: codexResetLabel(individual),
+        resetAtMs: quotaResetFor(individual, ['reset_at'], ['reset_after_seconds']),
+        detail: used !== null && limit !== null
+          ? `${quotaText('quota.service.usedOf', { used: format(used), limit: format(limit) })} ${readString(individual, 'unit')}`.trim()
+          : undefined,
+      });
+    }
+    return rows;
+  }
 
   if (provider === 'claude') {
     const labels: Record<string, string> = {

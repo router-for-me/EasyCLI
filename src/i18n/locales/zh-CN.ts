@@ -2058,6 +2058,7 @@ export const zhCN = {
   'quota.service.limit.month': '月限额',
   'quota.service.limit.duration': '{duration}限额',
   'quota.service.codeReview': '代码审查',
+  'quota.service.individualSpendingLimit': '个人支出额度',
   'quota.service.additional': '附加 {index}',
   'quota.service.window.fiveHour': '5 小时窗口',
   'quota.service.window.sevenDay': '7 天窗口',

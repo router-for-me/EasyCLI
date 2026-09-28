@@ -1,0 +1,33 @@
+{
+  "plan_type": "business",
+  "rate_limit": null,
+  "code_review_rate_limit": null,
+  "additional_rate_limits": null,
+  "credits": {
+    "has_credits": true,
+    "unlimited": false,
+    "overage_limit_reached": false,
+    "balance": null,
+    "approx_local_messages": null,
+    "approx_cloud_messages": null
+  },
+  "spend_control": {
+    "reached": false,
+    "individual_limit": {
+      "source": "group_based_spend_controls",
+      "unit": "credit",
+      "limit": "10000",
+      "used": "2600",
+      "remaining": "7400",
+      "used_percent": 26,
+      "remaining_percent": 74,
+      "reset_after_seconds": 3600,
+      "reset_at": 1893456000
+    }
+  },
+  "rate_limit_reached_type": null,
+  "rate_limit_reset_credits": {
+    "available_count": 0,
+    "applicable_available_count": 0
+  }
+}
