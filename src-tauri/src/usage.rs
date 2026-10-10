@@ -2942,27 +2942,14 @@ fn load_usage_overview(
             COALESCE(SUM(cache_creation_tokens), 0),
             COALESCE(SUM(total_tokens), 0),
             COALESCE(SUM(latency_ms), 0),
-            COALESCE(
-                SUM(CASE
-                    WHEN generate != 0
-                     AND failed = 0
-                     AND canceled = 0
-                     AND output_tokens > 0
-                     AND latency_ms > 0
-                    THEN output_tokens
-                    ELSE 0
-                END) * 1000.0
-                / NULLIF(SUM(CASE
-                    WHEN generate != 0
-                     AND failed = 0
-                     AND canceled = 0
-                     AND output_tokens > 0
-                     AND latency_ms > 0
-                    THEN latency_ms
-                    ELSE 0
-                END), 0),
-                0.0
-            ),
+            COALESCE(AVG(CASE
+                WHEN generate != 0
+                 AND failed = 0
+                 AND canceled = 0
+                 AND output_tokens > 0
+                 AND latency_ms > 0
+                THEN output_tokens * 1000.0 / latency_ms
+            END), 0.0),
             COALESCE(SUM(CASE
                 WHEN generate != 0
                  AND failed = 0
@@ -6684,7 +6671,7 @@ mod tests {
     }
 
     #[test]
-    fn overview_tps_uses_weighted_total_latency_without_requiring_ttft() {
+    fn overview_tps_averages_request_speeds_without_requiring_ttft() {
         let root = test_root("tps-overview");
         let mut connection = open_test_database(&root);
 
@@ -6745,7 +6732,7 @@ mod tests {
 
         let overview = load_usage_overview(&connection, &UsageQuery::default()).unwrap();
 
-        assert!((overview.tps - (300.0 * 1_000.0 / 4_000.0)).abs() < f64::EPSILON);
+        assert_eq!(overview.tps, (80.0 + 10.0 + 200.0 + 200.0) / 4.0);
         assert_eq!(overview.tps_sample_count, 4);
         drop(connection);
         fs::remove_dir_all(root).unwrap();
