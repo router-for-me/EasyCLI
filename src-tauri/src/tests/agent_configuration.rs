@@ -1766,7 +1766,7 @@ async fn codex_configuration_uses_public_v1_model_ids_for_selection_and_files() 
 }
 
 #[test]
-fn omp_configuration_discovers_models_without_storing_the_api_key() {
+fn omp_configuration_stores_credentials_and_preserves_unmanaged_settings() {
     let home = agent_test_home("omp-provider");
     let existing_models = "providers:\n  other:\n    baseUrl: https://example.test/v1\n    apiKey: KEEP_OTHER\n";
     let existing_settings = "shellPath: E:/software/toolchain/w64devkit/bin/bash.exe\nmodelRoles:\n  tiny: local/lfm2.5-230m\n";
@@ -1776,11 +1776,10 @@ fn omp_configuration_discovers_models_without_storing_the_api_key() {
     let settings_value: serde_norway::Value = serde_norway::from_str(&settings).unwrap();
     let provider = &models_value["providers"]["easy-cliproxyapi"];
     assert_eq!(provider["baseUrl"].as_str(), Some("http://127.0.0.1:8317/v1"));
-    assert_eq!(provider["apiKey"].as_str(), Some("EASYCLIPROXYAPI_API_KEY"));
+    assert_eq!(provider["apiKey"].as_str(), Some("secret-value"));
     assert_eq!(provider["api"].as_str(), Some("openai-responses"));
     assert_eq!(provider["discovery"]["type"].as_str(), Some("openai-models-list"));
     assert!(provider.get("models").is_none());
-    assert!(!models.contains("secret-value"));
     assert_eq!(models_value["providers"]["other"]["apiKey"].as_str(), Some("KEEP_OTHER"));
     assert_eq!(settings_value["shellPath"].as_str(), Some("E:/software/toolchain/w64devkit/bin/bash.exe"));
     assert_eq!(settings_value["modelRoles"]["tiny"].as_str(), Some("local/lfm2.5-230m"));
@@ -1810,6 +1809,69 @@ fn omp_configuration_discovers_models_without_storing_the_api_key() {
     assert!(restored_settings.contains("shellPath"));
     assert!(restored_settings.contains("local/lfm2.5-230m"));
     fs::remove_dir_all(home).unwrap();
+}
+
+#[test]
+fn omp_legacy_environment_configuration_requires_update_and_migrates() {
+    let home = agent_test_home("omp-legacy-credentials");
+    let paths = agent_config_paths(AgentClient::Omp, &home);
+    fs::create_dir_all(paths[0].parent().unwrap()).unwrap();
+    let original = "providers:\n  other:\n    apiKey: KEEP_OTHER\n  easy-cliproxyapi:\n    baseUrl: http://127.0.0.1:8317/v1\n    apiKey: EASYCLIPROXYAPI_API_KEY\n    api: openai-responses\n    discovery:\n      type: openai-models-list\n";
+    fs::write(&paths[0], original).unwrap();
+    fs::write(&paths[1], build_omp_settings_config(None, "gpt-test").unwrap()).unwrap();
+
+    let (configured, model) = inspect_omp_agent_config(&paths, 8317, "test-cpa-key").unwrap();
+    assert!(!configured);
+    assert_eq!(model.as_deref(), Some("gpt-test"));
+    assert_eq!(agent_connection_state(configured, true, omp_has_managed_marker(&paths)), "needs-update");
+
+    let updated = build_omp_models_config(Some(original), "http://127.0.0.1:8317/v1", "test-cpa-key").unwrap();
+    fs::write(&paths[0], &updated).unwrap();
+    assert!(inspect_omp_agent_config(&paths, 8317, "test-cpa-key").unwrap().0);
+    assert!(!updated.contains("EASYCLIPROXYAPI_API_KEY"));
+    assert!(updated.contains("KEEP_OTHER"));
+    assert_eq!(build_omp_models_config(Some(&updated), "http://127.0.0.1:8317/v1", "test-cpa-key").unwrap(), updated);
+
+    let restored = build_restored_omp_models(&updated, Some(original)).unwrap().unwrap();
+    let restored: serde_norway::Value = serde_norway::from_str(&restored).unwrap();
+    let original: serde_norway::Value = serde_norway::from_str(original).unwrap();
+    assert_eq!(restored, original);
+    fs::remove_dir_all(home).unwrap();
+}
+
+#[test]
+fn omp_detects_rotated_credentials_and_round_trips_yaml_sensitive_keys() {
+    let home = agent_test_home("omp-rotated-credentials");
+    let paths = agent_config_paths(AgentClient::Omp, &home);
+    fs::create_dir_all(paths[0].parent().unwrap()).unwrap();
+    fs::write(&paths[1], build_omp_settings_config(None, "gpt-test").unwrap()).unwrap();
+    let mut models = build_omp_models_config(None, "http://127.0.0.1:8317/v1", "old-test-key").unwrap();
+    fs::write(&paths[0], &models).unwrap();
+    assert!(!inspect_omp_agent_config(&paths, 8317, "new-test-key").unwrap().0);
+
+    for key in ["new-test-key", "test: key # with 'quotes' and \"double quotes\"", "true", "0123"] {
+        models = build_omp_models_config(Some(&models), "http://127.0.0.1:8317/v1", key).unwrap();
+        fs::write(&paths[0], &models).unwrap();
+        assert!(inspect_omp_agent_config(&paths, 8317, key).unwrap().0);
+        assert!(!inspect_omp_agent_config(&paths, 8318, key).unwrap().0);
+    }
+    fs::remove_dir_all(home).unwrap();
+}
+
+#[test]
+#[ignore = "requires an isolated live-test directory containing cpa-core/config.yaml"]
+fn export_omp_live_configuration() {
+    let root = PathBuf::from(env::var("EZCPA_OMP_LIVE_ROOT").expect("isolated test directory"));
+    let config: serde_norway::Value = serde_norway::from_str(
+        &fs::read_to_string(root.join("cpa-core/config.yaml")).unwrap(),
+    ).expect("valid copied core configuration");
+    let port = config["server"]["port"].as_u64().expect("test port") as u16;
+    assert_eq!(port, 8320);
+    let key = config["access"]["api-keys"][0].as_str().expect("configured test key");
+    let directory = root.join("omp-agent");
+    fs::create_dir_all(&directory).unwrap();
+    let rendered = build_omp_models_config(None, &format!("http://127.0.0.1:{port}/v1"), key).unwrap();
+    fs::write(directory.join("models.yml"), rendered).unwrap();
 }
 
 #[test]

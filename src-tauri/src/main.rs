@@ -175,7 +175,6 @@ const DEEPSEEK_HARNESS_CREDENTIALS_FILE: &str = ".credentials.yaml";
 const PI_AGENT_ID: &str = "pi";
 const PI_AGENT_NAME: &str = "Pi";
 const OMP_AGENT_PROVIDER_ID: &str = "easy-cliproxyapi";
-const OMP_AGENT_API_KEY_ENV: &str = "EASYCLIPROXYAPI_API_KEY";
 const OMP_AGENT_API: &str = "openai-responses";
 const OMP_MODELS_FILE: &str = "models.yml";
 const OMP_SETTINGS_FILE: &str = "config.yml";

@@ -3668,7 +3668,7 @@ pub(crate) fn inspect_omp_agent_config(
         && provider
             .and_then(|provider| yaml_mapping_value(provider, "apiKey"))
             .and_then(serde_norway::Value::as_str)
-            == Some(OMP_AGENT_API_KEY_ENV)
+            == Some(api_key)
         && provider
             .and_then(|provider| yaml_mapping_value(provider, "api"))
             .and_then(serde_norway::Value::as_str)
@@ -3680,7 +3680,6 @@ pub(crate) fn inspect_omp_agent_config(
             .and_then(serde_norway::Value::as_str)
             == Some("openai-models-list")
         && model.is_some();
-    let _ = api_key;
     Ok((configured, model))
 }
 

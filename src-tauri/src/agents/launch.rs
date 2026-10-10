@@ -245,14 +245,13 @@ pub(crate) fn launch_agent(
                 &[]
             };
             let arguments = agent_cli_launch_arguments(client, deepseek_harness_options.as_ref())?;
-            let environment_to_set = omp_launch_environment(client, effective_agent_api_key(&config));
             launch_cli_agent(
                 &executable,
                 client.name(),
                 &launch_directory,
                 &arguments,
                 environment_to_remove,
-                &environment_to_set,
+                &[],
                 &terminal,
             )
         }
@@ -261,14 +260,6 @@ pub(crate) fn launch_agent(
     }
 }
 
-
-fn omp_launch_environment(client: AgentClient, api_key: &str) -> Vec<(&str, &str)> {
-    if client == AgentClient::Omp {
-        vec![(OMP_AGENT_API_KEY_ENV, api_key)]
-    } else {
-        Vec::new()
-    }
-}
 
 fn deepseek_harness_launch_mode(
     options: Option<&DeepSeekHarnessLaunchOptions>,

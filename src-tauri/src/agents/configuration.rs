@@ -3444,7 +3444,6 @@ pub(crate) fn build_omp_models_config(
     base_url: &str,
     api_key: &str,
 ) -> Result<String, String> {
-    let _ = api_key;
     render_agent_yaml_mapping_update(existing, "Oh My Pi models.yml", |root| {
         let providers = root
             .entry(yaml_key("providers"))
@@ -3456,7 +3455,7 @@ pub(crate) fn build_omp_models_config(
         provider.insert(yaml_key("baseUrl"), serde_norway::Value::String(base_url.to_string()));
         provider.insert(
             yaml_key("apiKey"),
-            serde_norway::Value::String(OMP_AGENT_API_KEY_ENV.to_string()),
+            serde_norway::Value::String(api_key.to_string()),
         );
         provider.insert(
             yaml_key("api"),
