@@ -1,0 +1,69 @@
+.immersive-window {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--theme-faf9f5);
+}
+
+.window-titlebar {
+  position: relative;
+  z-index: 11000; /* Native-like controls stay usable above application dialogs. */
+  background: var(--theme-faf9f5);
+  display: flex;
+  flex: 0 0 34px;
+  min-width: 0;
+  color: var(--text-tertiary);
+  user-select: none;
+}
+
+.window-drag-region {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+  padding-left: 18px;
+}
+
+.window-drag-region[data-tauri-drag-region] { app-region: drag; }
+.window-drag-region > span { pointer-events: none; }
+.window-caption { font-size: 11px; letter-spacing: 0.02em; }
+.window-preview-label { font-size: 10px; color: var(--text-quaternary); }
+.immersive-window[data-focused='false'] .window-caption { opacity: 0.6; }
+.window-error { align-self: center; font-size: 11px; color: var(--error-color); }
+.window-controls { display: flex; flex-shrink: 0; }
+.window-controls button {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 34px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  box-shadow: none;
+}
+.window-controls button:focus-visible { outline-offset: -3px; }
+.window-controls button:active { background: var(--border-color); }
+.window-controls button:active svg { transform: scale(0.92); }
+@media (hover: hover) {
+  .window-controls button:hover { background: var(--bg-hover); }
+  .window-controls .window-close:hover { background: #c42b1c; color: #fff; }
+}
+.window-controls .window-close:active { background: #a82317; color: #fff; }
+.window-content { flex: 1; min-height: 0; overflow: hidden; }
+
+/* Extend the sidebar material to the top edge instead of drawing a separate bar. */
+@media (min-width: 901px) {
+  .immersive-window:has(.sidebar) .window-titlebar {
+    background: linear-gradient(to right, var(--sidebar-bg) 263px,
+      var(--sidebar-edge) 263px, var(--sidebar-edge) 264px, var(--theme-faf9f5) 264px);
+  }
+  .immersive-window .sidebar { height: 100%; }
+}
+@media (max-width: 900px) {
+  .immersive-window:has(.sidebar) .window-titlebar { background: var(--sidebar-bg); }
+}

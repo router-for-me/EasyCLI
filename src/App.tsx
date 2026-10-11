@@ -1,4 +1,5 @@
 import { MessageNotice } from './appNotice';
+import { WindowFrame } from './components/WindowFrame';
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -145,7 +146,7 @@ function App() {
     <AppUpdateProvider>
       <CoreRuntimeProvider>
         <CoreUpdateProvider>
-          <AppContent />
+          <WindowFrame><AppContent /></WindowFrame>
         </CoreUpdateProvider>
       </CoreRuntimeProvider>
     </AppUpdateProvider>
