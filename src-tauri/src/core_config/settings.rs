@@ -324,28 +324,6 @@ pub(crate) fn merge_core_config_yaml(
         }
         None => merge_core_config_fields(template, None)?,
     };
-    // Seed defaults only when the user has never configured this list. An
-    // explicit empty list (or null) is an opt-out and must survive restarts.
-    let source: serde_norway::Value = serde_norway::from_str(current.unwrap_or(template))
-        .map_err(|error| format!("Failed to parse kernel configuration: {error}"))?;
-    let has_words = source.as_mapping().is_some_and(|root| {
-        nested_yaml_value(root, &["oauth", "providers", "antigravity", "sensitive-words"])
-            .or_else(|| nested_yaml_value(root, &["antigravity", "sensitive-words"]))
-            .is_some_and(|value| current.is_some() || value.as_sequence().is_some_and(|words| !words.is_empty()))
-    });
-    let base = if has_words {
-        base
-    } else {
-        patch_core_yaml_document(&base, |document| {
-            set_core_yaml_schema_value(
-                document,
-                &["antigravity", "sensitive-words"],
-                &["oauth", "providers", "antigravity", "sensitive-words"],
-                serde_norway::to_value(["Claude", "GPT-5", "GPT-6", "Codex", "Anthropic"])
-                    .map_err(|error| format!("Failed to serialize default sensitive words: {error}"))?,
-            )
-        })?.unwrap_or(base)
-    };
     // Old mirrored values may be stale after a kernel upgrade. Only an explicit
     // software-side opt-out should disable statistics when starting the kernel.
     let mut startup_config = config.clone();

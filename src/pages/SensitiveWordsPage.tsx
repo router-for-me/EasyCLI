@@ -123,7 +123,12 @@ export function SensitiveWordsPage({ onDirtyChange }: { onDirtyChange?: (dirty: 
     try {
       const result = await invoke<SensitiveWordsSettings>('get_core_sensitive_words_settings');
       setSaved(result);
-      replaceDraft(result);
+      replaceDraft({
+        ...result,
+        antigravitySensitiveWords: result.antigravitySensitiveWords.length
+          ? result.antigravitySensitiveWords
+          : ['Claude', 'GPT-5', 'GPT-6', 'Codex', 'Anthropic'],
+      });
       setSavedNotice(false);
     } catch (cause) {
       setError(String(cause));

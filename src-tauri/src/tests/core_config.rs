@@ -2263,37 +2263,3 @@ fn explicitly_selected_auth_directory_is_not_moved_on_restart() {
     assert!(selected.join("account.json").exists());
     fs::remove_dir_all(root).unwrap();
 }
-
-#[test]
-fn antigravity_sensitive_words_defaults_preserve_user_choices() {
-    let config = GuiConfigFile::default();
-    for template in [
-        "port: 8317\n",
-        "config-version: 8\noauth:\n  providers:\n    antigravity:\n      sensitive-words: []\n",
-    ] {
-        for current in [None, Some("port: 8317\n")] {
-            let merged = merge_core_config_yaml(template, current, &config).unwrap();
-            let document = serde_norway::from_str(&merged).unwrap();
-            let settings = core_sensitive_words_settings_from_value(&document).unwrap();
-            assert_eq!(settings.antigravity_sensitive_words, ["Claude", "GPT-5", "GPT-6", "Codex", "Anthropic"]);
-            assert!(settings.devin_sensitive_words.is_empty());
-            let restarted = merge_core_config_yaml(template, Some(&merged), &config).unwrap();
-            assert_eq!(restarted, merged);
-        }
-        for words in ["[]", "null", "[custom, Claude]"] {
-            for current in [
-                format!("antigravity:\n  sensitive-words: {words}\ndevin:\n  sensitive-words: [keep]\n"),
-                format!("config-version: 8\noauth:\n  providers:\n    antigravity:\n      sensitive-words: {words}\n    devin:\n      sensitive-words: [keep]\n"),
-            ] {
-                let merged = merge_core_config_yaml(template, Some(&current), &config).unwrap();
-                let document = serde_norway::from_str(&merged).unwrap();
-                let settings = core_sensitive_words_settings_from_value(&document).unwrap();
-                let expected: Vec<String> = if words.starts_with("[custom") {
-                    vec!["custom".into(), "Claude".into()]
-                } else { Vec::new() };
-                assert_eq!(settings.antigravity_sensitive_words, expected);
-                assert_eq!(settings.devin_sensitive_words, ["keep"]);
-            }
-        }
-    }
-}
