@@ -391,7 +391,6 @@ export const en: Record<MessageKey, string> = {
   'app.window.maximize': 'Maximize',
   'app.window.restore': 'Restore window',
   'app.window.close': 'Close',
-  'app.window.preview': 'Windows appearance preview',
   'app.window.error': 'Window action failed. Please retry.',
   'app.navigation': 'Main navigation',
   'app.nav.easy': 'Beginner Mode',

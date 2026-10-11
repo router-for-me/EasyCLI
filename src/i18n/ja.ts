@@ -442,7 +442,6 @@ export const jaOverrides = {
   'app.window.maximize': '最大化',
   'app.window.restore': '元のサイズに戻す',
   'app.window.close': '閉じる',
-  'app.window.preview': 'Windows 外観プレビュー',
   'app.window.error': 'ウィンドウ操作に失敗しました。再試行してください。',
   'app.navigation': 'メインナビゲーション',
   'app.nav.easy': '初心者モード',

@@ -390,7 +390,6 @@ export const zhCN = {
   'app.window.maximize': '最大化',
   'app.window.restore': '还原窗口',
   'app.window.close': '关闭',
-  'app.window.preview': 'Windows 外观预览',
   'app.window.error': '窗口操作失败，请重试',
   'app.navigation': '主导航',
   'app.nav.easy': '新手模式',

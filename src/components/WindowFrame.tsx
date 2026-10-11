@@ -74,10 +74,7 @@ export function WindowFrame({ children }: { children: ReactNode }) {
     <div className="immersive-window" data-focused={focused}>
       <header className="window-titlebar">
         <div className="window-drag-region" data-tauri-drag-region={!preview ? true : undefined}
-          onDoubleClick={preview ? () => void act('toggleMaximize') : undefined}>
-          <span className="window-caption">EasyCLIProxyAPI</span>
-          {preview ? <span className="window-preview-label">{t('app.window.preview')}</span> : null}
-        </div>
+          onDoubleClick={preview ? () => void act('toggleMaximize') : undefined} />
         {error ? <span className="window-error" role="alert">{t('app.window.error')}</span> : null}
         <div className="window-controls">
           <button type="button" aria-label={t('app.window.minimize')} title={t('app.window.minimize')}

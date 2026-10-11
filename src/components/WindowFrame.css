@@ -1,4 +1,5 @@
 .immersive-window {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -18,19 +19,12 @@
 }
 
 .window-drag-region {
-  display: flex;
-  align-items: center;
-  gap: 12px;
   flex: 1;
   min-width: 0;
-  padding-left: 18px;
 }
 
 .window-drag-region[data-tauri-drag-region] { app-region: drag; }
-.window-drag-region > span { pointer-events: none; }
-.window-caption { font-size: 11px; letter-spacing: 0.02em; }
-.window-preview-label { font-size: 10px; color: var(--text-quaternary); }
-.immersive-window[data-focused='false'] .window-caption { opacity: 0.6; }
+.immersive-window[data-focused='false'] .window-controls { color: var(--text-disabled); }
 .window-error { align-self: center; font-size: 11px; color: var(--error-color); }
 .window-controls { display: flex; flex-shrink: 0; }
 .window-controls button {
@@ -56,13 +50,17 @@
 .window-controls .window-close:active { background: #a82317; color: #fff; }
 .window-content { flex: 1; min-height: 0; overflow: hidden; }
 
-/* Extend the sidebar material to the top edge instead of drawing a separate bar. */
+/* The sidebar starts at the window edge; only the workspace reserves titlebar space. */
 @media (min-width: 901px) {
   .immersive-window:has(.sidebar) .window-titlebar {
-    background: linear-gradient(to right, var(--sidebar-bg) 263px,
-      var(--sidebar-edge) 263px, var(--sidebar-edge) 264px, var(--theme-faf9f5) 264px);
+    position: absolute;
+    top: 0;
+    right: 0;
+    left: 264px;
+    height: 34px;
   }
   .immersive-window .sidebar { height: 100%; }
+  .immersive-window:has(.sidebar) .workspace { padding-top: 34px; }
 }
 @media (max-width: 900px) {
   .immersive-window:has(.sidebar) .window-titlebar { background: var(--sidebar-bg); }
