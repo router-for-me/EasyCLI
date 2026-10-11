@@ -49,6 +49,7 @@ const records = Array.from({ length: 400 }, (_, index) => ({
   latency_ms: 2000,
   ttft_ms: 200,
   source: index % 2 ? 'secondary-source' : 'test-source',
+  auth_index: index % 2 ? 'auth-secondary' : 'auth-primary',
   source_display: index % 2 ? 'Secondary source' : 'Test source',
   failed: index % 4 === 0,
   canceled: false,
@@ -61,8 +62,8 @@ const records = Array.from({ length: 400 }, (_, index) => ({
   reasoning_effort: 'high',
   endpoint: '/v1/responses',
   api_key_hash: 'test-key',
-  api_key_display: 'sk-test',
-  api_key_remark: 'Test key, "local"',
+  api_key_display: params.has('noRequestKey') ? '' : 'sk-test',
+  api_key_remark: params.has('noRequestKey') ? '' : 'Test key, "local"',
   tokens: {
     input_tokens: 1000,
     output_tokens: 200,
@@ -74,6 +75,11 @@ const records = Array.from({ length: 400 }, (_, index) => ({
 }));
 
 const category = (key: string, label = key) => ({ key, label, requests: 200, failures: 25, tokens: 24_000 });
+const usageKeyFixture = {
+  apiKeys: [category('test-key', 'Test key')],
+  lastEventKey: '',
+};
+Object.assign(window, { usageKeyFixture });
 
 mockIPC(async (cmd, args) => {
   if (cmd === 'plugin:event|listen') return 1;
@@ -86,21 +92,27 @@ mockIPC(async (cmd, args) => {
       models: [category('test-model'), category('secondary-model')],
       providers: [category('test-provider')],
       sources: [category('test-source', 'Test source'), category('secondary-source', 'Secondary source')],
-      apiKeys: [category('test-key', 'Test key')],
+      apiKeys: usageKeyFixture.apiKeys,
+      upstreams: [
+        { ...category('auth:auth-primary', 'Primary credential'), provider: 'codex' },
+        { ...category('auth:auth-secondary', 'Secondary credential'), provider: 'claude' },
+      ],
     };
   }
   if (cmd === 'get_usage_events') {
     const query = args?.query as {
       page: number; page_size: number; model?: string; source?: string;
-      provider?: string; api_key_hash?: string; failed?: boolean; canceled?: boolean;
+      provider?: string; upstream?: string; api_key_hash?: string; failed?: boolean; canceled?: boolean;
     };
     const filtered = records.filter(record =>
       (!query.model || record.model === query.model)
+      && (!query.upstream || `auth:${record.auth_index}` === query.upstream)
       && (!query.source || record.source === query.source)
       && (!query.provider || record.provider === query.provider)
       && (!query.api_key_hash || record.api_key_hash === query.api_key_hash)
       && (query.failed === undefined || record.failed === query.failed)
       && (query.canceled === undefined || record.canceled === query.canceled));
+    usageKeyFixture.lastEventKey = query.api_key_hash || '';
     const start = (query.page - 1) * query.page_size;
     return {
       page: query.page,

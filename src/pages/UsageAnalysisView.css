@@ -135,7 +135,7 @@
 .usage-analysis-no-failures > svg { color: var(--analysis-success); flex: none; }
 .usage-analysis-no-failures strong { font-size: 12px; font-weight: 500; }
 .usage-analysis-no-failures p { font-size: 11px; margin-top: 3px; }
-.usage-analysis-context { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 0; }
+.usage-analysis-context { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 0; }
 .usage-context-detail { min-width: 0; padding: 15px 18px; }
 .usage-context-detail + .usage-context-detail { border-left: 1px solid var(--border-secondary); }
 .usage-context-detail summary { list-style: none; cursor: pointer; }

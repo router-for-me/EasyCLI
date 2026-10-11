@@ -1,0 +1,60 @@
+.api-provider-dialog .provider-advanced-fields {
+  padding: 12px;
+  gap: 12px;
+}
+
+.provider-settings-group {
+  min-width: 0;
+  border: 1px solid var(--theme-e2ddd3);
+  border-radius: 8px;
+  background: var(--theme-fffdf8);
+}
+
+.provider-settings-group > h3 {
+  margin: 0;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--theme-e8e4dc);
+  font-size: var(--font-size-label);
+  color: var(--theme-2d2a26);
+}
+
+.provider-settings-group-content {
+  display: grid;
+  min-width: 0;
+  gap: 18px;
+  padding: 14px 12px;
+}
+
+.api-provider-dialog .provider-settings-group label {
+  grid-template-rows: auto;
+  grid-auto-rows: auto;
+  min-width: 0;
+  gap: 6px;
+}
+
+.provider-settings-group :is(label > span, small) {
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.api-provider-dialog .provider-settings-group textarea {
+  min-height: 84px;
+  resize: vertical;
+}
+
+.provider-settings-group .provider-advanced-toggle {
+  padding-top: 12px;
+  border-top: 1px solid var(--theme-e8e4dc);
+}
+
+@media (max-width: 520px) {
+  .provider-settings-group .provider-advanced-toggle:has(> select) {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .provider-settings-group .provider-advanced-toggle > select {
+    width: 100%;
+    max-width: none;
+  }
+}

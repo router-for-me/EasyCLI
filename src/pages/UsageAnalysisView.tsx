@@ -52,7 +52,6 @@ export function UsageAnalysisView({ analysis, overview, range }: {
       </div>
       <UsageActivityChart timeline={overview.timeline} range={range} />
       <section className="usage-analysis-context">
-        <CategorySummary title={t('usage.column.provider')} items={analysis.providers} />
         <CategorySummary title={t('usage.analysis.sources')} items={analysis.sources} />
         <CategorySummary title={t('usage.analysis.keys')} items={analysis.apiKeys} />
       </section>
