@@ -1103,6 +1103,8 @@ export const jaOverrides = {
   'authFiles.deleted': '認証ファイルを削除しました',
   'common.copy': 'コピー',
   'common.copyFailed': 'コピーに失敗しました',
+  'usage.events.copyError': 'エラー情報をすべてコピー',
+  'usage.events.errorCopied': 'エラー情報をコピーしました',
   'authFiles.title': '認証ファイル',
   'authFiles.summary': 'ファイル {files} 件 · 無効 {disabled} 件',
   'common.refresh': '更新',

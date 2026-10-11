@@ -367,6 +367,37 @@
   white-space: nowrap;
 }
 
+.usage-request-log .usage-result-detail-line {
+  display: flex;
+  align-items: center;
+  margin-top: 2px;
+  gap: 4px;
+}
+
+.usage-request-log .usage-result-detail-line > small {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--usage-log-muted);
+  font-size: var(--font-size-caption);
+  text-align: left;
+}
+
+.usage-request-log .usage-error-copy {
+  flex: 0 0 24px;
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  padding: 3px;
+  vertical-align: middle;
+}
+
+.usage-request-log .usage-event-error-message > .usage-error-copy {
+  margin-left: 8px;
+}
+
 .usage-request-log .usage-result-cell > .usage-result-detail {
   font-family: var(--font-family-mono);
 }
