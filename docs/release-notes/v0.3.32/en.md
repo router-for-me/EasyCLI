@@ -1,5 +1,8 @@
+- If you have any questions or suggestions about the software, please contact us on [Discord](https://discord.gg/PxvX4D9kgs) or submit them through [GitHub Issues](https://github.com/router-for-me/EasyCLIProxyAPI/issues), and we will address them as soon as possible.
+
 ## Added
 
+- When the Antigravity system prompt sensitive words list is empty in Models & Requests, opening or refreshing the page prefills `Claude`, `GPT-5`, `GPT-6`, `Codex`, and `Anthropic`. Click Save to apply them; existing non-empty lists are preserved.
 - Added a copy button for request error details, available in both collapsed and expanded views, to simplify troubleshooting and sharing feedback.
 
 ## Improved
