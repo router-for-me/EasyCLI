@@ -1374,15 +1374,13 @@ fn windows_powershell_cli_script(
 }
 
 #[cfg(target_os = "windows")]
-fn launch_cli_agent(
+fn windows_cli_launch_command(
     executable: &Path,
     label: &str,
     working_directory: &Path,
     arguments: &[String],
-    environment_to_remove: &[&str],
-    environment_to_set: &[(&str, &str)],
     terminal: &str,
-) -> Result<(), String> {
+) -> Result<Command, String> {
     use std::os::windows::process::CommandExt;
 
     const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
@@ -1393,15 +1391,7 @@ fn launch_cli_agent(
             extension.eq_ignore_ascii_case("cmd") || extension.eq_ignore_ascii_case("bat")
         });
 
-    let mut command = match terminal {
-        "auto" => {
-            let mut command = windows_command_for_executable(executable, true);
-            command
-                .args(arguments)
-                .current_dir(working_directory)
-                .creation_flags(CREATE_NEW_CONSOLE);
-            command
-        }
+    let command = match terminal {
         "windows-terminal" => {
             let terminal_executable = program_on_path("wt.exe")
                 .ok_or_else(|| format!("Failed to start {label}: Windows Terminal not found"))?;
@@ -1419,7 +1409,10 @@ fn launch_cli_agent(
             }
             command
         }
-        "powershell" => {
+        // A native CLI launched directly by the GUI owns the console lifetime.
+        // Use an interactive shell, as with a manual launch, so terminal setup
+        // and the window lifetime do not depend on the CLI (notably on Win10).
+        "auto" | "powershell" => {
             let mut command = Command::new(windows_powershell_executable());
             let script = windows_powershell_cli_script(executable, working_directory, arguments);
             command.args(["-NoLogo", "-NoProfile", "-NoExit", "-Command", &script]);
@@ -1444,6 +1437,23 @@ fn launch_cli_agent(
         }
         _ => return Err(format!("Failed to start {label}: selected terminal is unsupported")),
     };
+    Ok(command)
+}
+
+#[cfg(target_os = "windows")]
+fn launch_cli_agent(
+    executable: &Path,
+    label: &str,
+    working_directory: &Path,
+    arguments: &[String],
+    environment_to_remove: &[&str],
+    environment_to_set: &[(&str, &str)],
+    terminal: &str,
+) -> Result<(), String> {
+    let mut command = windows_cli_launch_command(
+        executable, label, working_directory, arguments, terminal,
+    )?;
+    command.current_dir(working_directory);
     for key in environment_to_remove {
         command.env_remove(key);
     }
@@ -1530,6 +1540,56 @@ mod tests {
             DEFAULT_AGENT_TERMINAL
         );
         assert_eq!(normalize_agent_terminal(" auto "), "auto");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_auto_cli_uses_a_persistent_shell_for_native_and_batch_clients() {
+        let directory = Path::new(r"C:\Users\Test User\project's [work]");
+        for executable in [r"C:\Tools\Claude Code\claude.exe", r"C:\Tools\Claude Code\claude.cmd"] {
+            let command = windows_cli_launch_command(
+                Path::new(executable), "Claude Code", directory, &[], "auto",
+            ).unwrap();
+            assert_eq!(command.get_program(), windows_powershell_executable().as_os_str());
+            let arguments = command.get_args().map(|arg| arg.to_string_lossy().into_owned()).collect::<Vec<_>>();
+            assert_eq!(&arguments[..4], ["-NoLogo", "-NoProfile", "-NoExit", "-Command"]);
+            assert!(arguments[4].contains("Set-Location -LiteralPath 'C:\\Users\\Test User\\project''s [work]'"));
+            assert!(arguments[4].contains(&format!("& '{executable}'")));
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_auto_cli_preserves_directory_arguments_and_environment() {
+        let directory = env::temp_dir().join(format!(
+            "cpa-cli-launch-{}-{}", std::process::id(),
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos(),
+        )).join("project's [work]");
+        fs::create_dir_all(&directory).unwrap();
+        let batch = directory.join("test client.cmd");
+        fs::write(&batch, "@echo off\r\necho %CD%\r\necho %~1\r\necho %CPA_LAUNCH_TEST%\r\nexit /b 0\r\n").unwrap();
+        let native = windows_powershell_executable();
+        for (executable, arguments) in [
+            (batch, vec!["two words".to_string()]),
+            (native, vec!["-NoProfile".into(), "-Command".into(),
+                "[Console]::WriteLine([Environment]::CurrentDirectory); [Console]::WriteLine('two words'); [Console]::WriteLine($env:CPA_LAUNCH_TEST)".into()]),
+        ] {
+            let interactive = windows_cli_launch_command(
+                &executable, "test client", &directory, &arguments, "auto",
+            ).unwrap();
+            // Run the same startup script without keeping a test shell open.
+            let mut command = Command::new(interactive.get_program());
+            command.args(interactive.get_args().filter(|arg| *arg != "-NoExit"));
+            command.current_dir(&directory).env("CPA_LAUNCH_TEST", "launch-fixture");
+            configure_background_command(&mut command);
+            let output = command_output_with_timeout(&mut command, Duration::from_secs(20))
+                .unwrap().expect("launch fixture timed out");
+            assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let lines = stdout.lines().collect::<Vec<_>>();
+            assert_eq!(lines, [path_to_string(&directory).as_str(), "two words", "launch-fixture"]);
+        }
+        fs::remove_dir_all(directory.parent().unwrap()).unwrap();
     }
 
     #[cfg(windows)]
