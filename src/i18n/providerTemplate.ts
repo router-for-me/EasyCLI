@@ -2,6 +2,9 @@ import { getCurrentLocale, type AppLocale } from './index';
 import { createTraditionalMessages } from './traditional';
 
 const messages = {
+  modelRules: ['模型规则', 'Model rules', 'モデルルール'],
+  connectionRouting: ['连接与调度', 'Connection and routing', '接続とルーティング'],
+  requestBehavior: ['请求行为', 'Request behavior', 'リクエスト動作'],
   inherit: ['继承 / 默认', 'Inherit / default', '継承 / 既定'],
   configure: ['自定义', 'Configure', '設定する'],
   enabled: ['启用', 'Enabled', '有効'],

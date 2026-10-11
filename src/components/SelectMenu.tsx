@@ -1,4 +1,5 @@
 import {
+  Fragment,
   useCallback,
   useEffect,
   useId,
@@ -8,10 +9,12 @@ import {
   type KeyboardEvent,
 } from 'react';
 import { Check, ChevronDown } from 'lucide-react';
+import './SelectMenu.css';
 
 export type SelectMenuOption = {
   value: string;
   label: string;
+  group?: string;
 };
 
 type MenuLayout = {
@@ -187,10 +190,15 @@ export function SelectMenu({
             {options.map((option, index) => {
               const isSelected = option.value === value;
               return (
+                <Fragment key={option.value || option.label}>
+                {option.group && option.group !== options[index - 1]?.group ? (
+                  <div className="select-menu-group-label" role="presentation">{option.group}</div>
+                ) : null}
                 <button
                   type="button"
                   role="option"
                   aria-selected={isSelected}
+                  aria-label={option.group ? `${option.group}: ${option.label}` : undefined}
                   className={`select-menu-option${isSelected ? ' selected' : ''}${index === activeIndex ? ' active' : ''}`}
                   key={option.value || option.label}
                   onMouseEnter={() => setActiveIndex(index)}
@@ -199,6 +207,7 @@ export function SelectMenu({
                   <span title={option.label}>{option.label}</span>
                   {isSelected ? <Check size={15} aria-hidden /> : null}
                 </button>
+                </Fragment>
               );
             })}
           </div>

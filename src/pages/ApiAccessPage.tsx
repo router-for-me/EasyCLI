@@ -1,4 +1,5 @@
 import { useConfirmation } from '../components/ConfirmationDialog';
+import { AdvancedSettingsGroup } from '../components/api-access/AdvancedSettingsGroup';
 import { normalizeProviderModels } from '../services/providerModels';
 import { ModelSelectionPanel } from '../components/ModelSelectionPanel';
 import { useDialogFocusTrap } from '../components/useDialogFocusTrap';
@@ -2371,6 +2372,14 @@ export function ApiProviderDialog({
         <details className="provider-advanced-settings">
           <summary>{t('apiAccess.advanced')}</summary>
           <div className="provider-advanced-fields">
+            <AdvancedSettingsGroup title={providerText('modelRules')}>
+            <label><span>{t('apiAccess.field.prefix')}</span><input value={draft.prefix ?? ''} onChange={(event) => updateTextField('prefix', event.currentTarget.value)} placeholder={t('apiAccess.prefixPlaceholder')} /></label>
+            {activeSection !== 'openai-compatibility' ? (
+              <label className="multiline-field">
+                <span>{t('apiAccess.field.excludedModels')}</span>
+                <textarea value={draft.excludedModelsText ?? ''} onChange={(event) => updateTextField('excludedModelsText', event.currentTarget.value)} rows={3} placeholder={'model-old-*\nmodel-preview'} />
+              </label>
+            ) : null}
         {activeCategory === 'openai-compatibility' ? (
           <div className="thinking-level-config">
             <div className="thinking-level-heading">
@@ -2407,25 +2416,22 @@ export function ApiProviderDialog({
             ) : <small className="thinking-level-empty">{t('apiAccess.thinking.empty')}</small>}
             </div>
         ) : null}
+            </AdvancedSettingsGroup>
+            <AdvancedSettingsGroup title={providerText('connectionRouting')}>
             <label><span>{t('apiAccess.field.priority')}</span><input type="number" step="1" value={draft.priority} onChange={(event) => updateTextField('priority', event.currentTarget.value)} placeholder={t('common.optional')} /></label>
             {!definition.openAi ? <>
               <label><span>{t('apiAccess.field.proxyUrl')}</span><input value={draft.proxyUrl ?? ''} onChange={(event) => updateTextField('proxyUrl', event.currentTarget.value)} placeholder="socks5://127.0.0.1:1080" /></label>
               <label><span>{t('apiAccess.entries.weight')}</span><input type="number" step="1" max="1000000" value={draft.weight ?? ''} placeholder="1" onChange={(event) => { const weight = event.currentTarget.value; setDraft((current) => ({ ...current, weight })); }} /></label>
-              <ProviderKeyTemplateFields section={activeSection} value={draft.templateFields ?? {}} inherited={{}} onChange={(templateFields) => setDraft((current) => ({ ...current, templateFields }))} />
             </> : null}
+            </AdvancedSettingsGroup>
+            <AdvancedSettingsGroup title={providerText('requestBehavior')}>
+            {!definition.openAi ? <ProviderKeyTemplateFields section={activeSection} value={draft.templateFields ?? {}} inherited={{}} onChange={(templateFields) => setDraft((current) => ({ ...current, templateFields }))} /> : null}
             <ProviderGroupTemplateFields section={activeSection} includeErrors={definition.openAi} value={draft.templateFields ?? {}} onChange={(templateFields) => setDraft((current) => ({ ...current, templateFields }))} />
-            <label><span>{t('apiAccess.field.prefix')}</span><input value={draft.prefix ?? ''} onChange={(event) => updateTextField('prefix', event.currentTarget.value)} placeholder={t('apiAccess.prefixPlaceholder')} /></label>
             <label className="multiline-field">
               <span>{t('apiAccess.field.headers')}</span>
               <textarea value={draft.headersText ?? ''} onChange={(event) => updateTextField('headersText', event.currentTarget.value)} rows={3} placeholder={'X-Team: production\nAuthorization: Bearer ...'} />
               <small>{providerText('headersHint')}</small>
             </label>
-            {activeSection !== 'openai-compatibility' ? (
-              <label className="multiline-field">
-                <span>{t('apiAccess.field.excludedModels')}</span>
-                <textarea value={draft.excludedModelsText ?? ''} onChange={(event) => updateTextField('excludedModelsText', event.currentTarget.value)} rows={3} placeholder={'model-old-*\nmodel-preview'} />
-              </label>
-            ) : null}
             {!grouped && activeSection === 'claude-api-key' ? (
               <div className="provider-cloak-settings">
                 <label>
@@ -2469,6 +2475,7 @@ export function ApiProviderDialog({
                 <option value="false">{t('apiAccess.cooling.enable')}</option>
               </select>
             </div>
+            </AdvancedSettingsGroup>
           </div>
         </details>
         {formError ? (

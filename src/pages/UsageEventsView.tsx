@@ -99,6 +99,7 @@ type EventColumnDef = {
 const EVENT_COLUMNS: readonly EventColumnDef[] = [
   { key: 'time', labelKey: 'usage.column.time', defaultWidth: 82, minWidth: 76, align: 'left' },
   { key: 'model', labelKey: 'usage.column.model', defaultWidth: 150, minWidth: 112, align: 'left' },
+  { key: 'source', labelKey: 'usage.column.source', defaultWidth: 128, minWidth: 104, align: 'left' },
   { key: 'provider', labelKey: 'usage.column.provider', defaultWidth: 92, minWidth: 84, align: 'left' },
   { key: 'result', labelKey: 'usage.column.result', defaultWidth: 78, minWidth: 68, align: 'left' },
   { key: 'total', labelKey: 'usage.column.tokens', defaultWidth: 112, minWidth: 100, align: 'left' },
@@ -107,12 +108,11 @@ const EVENT_COLUMNS: readonly EventColumnDef[] = [
   { key: 'speed', labelKey: 'usage.column.speed', defaultWidth: 82, minWidth: 72, align: 'left' },
   { key: 'cost', labelKey: 'usage.column.cost', defaultWidth: 96, minWidth: 86, align: 'left' },
   { key: 'key', labelKey: 'usage.column.key', defaultWidth: 112, minWidth: 96, align: 'left' },
-  { key: 'source', labelKey: 'usage.column.source', defaultWidth: 128, minWidth: 104, align: 'left' },
   { key: 'request', labelKey: 'usage.column.request', defaultWidth: 128, minWidth: 88, align: 'left' },
 ] as const;
 
 const DEFAULT_EVENT_VISIBLE_COLUMNS: readonly EventColumnKey[] = [
-  'time', 'model', 'provider', 'result', 'total', 'cache', 'latency', 'speed', 'cost',
+  'time', 'model', 'source', 'result', 'total', 'cache', 'latency', 'speed', 'cost',
 ];
 
 const EVENT_COL_WIDTHS_STORAGE_KEY = 'cpa-gui.usage-events-col-widths.v4';
@@ -143,6 +143,10 @@ export const getInitialVisibleColumns = (): EventColumnKey[] => {
           return true;
         });
         if (savedKeys.length > 0) {
+          const oldDefault = ['time', 'model', 'provider', 'result', 'total', 'cache', 'latency', 'speed', 'cost'];
+          if (savedKeys.length === oldDefault.length && savedKeys.every((key, index) => key === oldDefault[index])) {
+            return [...DEFAULT_EVENT_VISIBLE_COLUMNS];
+          }
           return savedKeys;
         }
       }
@@ -416,11 +420,16 @@ function UsageEventCell({
       );
     }
     case 'source':
+      {
+        const keyLabel = record.api_key_remark || record.api_key_display || '—';
       return (
-        <td className="usage-td-source align-left" title={record.source_display || record.source || undefined}>
-          <span className="usage-event-source">{record.source_display || record.source || '—'}</span>
+        <td className="usage-td-source align-left" title={keyLabel}>
+          <span className="usage-event-source" title={keyLabel}>
+            {keyLabel}
+          </span>
         </td>
       );
+      }
     case 'key':
       return (
         <td className="usage-stacked-cell usage-td-key align-left">

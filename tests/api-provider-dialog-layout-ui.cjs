@@ -79,6 +79,14 @@ const path = require('node:path');
       await form.locator('.provider-advanced-settings > summary').click();
       const headers = form.getByRole('textbox', { name: /Custom Headers/ });
       await headers.fill('X-Layout-Test: reachable');
+      const fieldLayout = await form.locator('.provider-settings-group .multiline-field').evaluateAll((fields) => fields.map((field) => {
+        const bounds = field.getBoundingClientRect();
+        const controls = [...field.children].map((child) => child.getBoundingClientRect());
+        return controls.every((control, index) => control.top >= bounds.top - 1
+          && control.bottom <= bounds.bottom + 1
+          && (index === 0 || control.top >= controls[index - 1].bottom - 1));
+      }));
+      assert.ok(fieldLayout.length > 0 && fieldLayout.every(Boolean), 'Multiline labels, controls and hints must fit their fields without overlapping');
       await form.getByRole('combobox', { name: 'Disable Cooldown', exact: true }).selectOption('false');
       await form.getByRole('combobox', { name: 'Cache User ID', exact: true }).selectOption('false');
       await assertDialogControls(form);

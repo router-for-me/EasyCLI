@@ -300,6 +300,8 @@ pub(crate) struct UsageQuery {
     #[serde(default)]
     source: Option<String>,
     #[serde(default)]
+    upstream: Option<String>,
+    #[serde(default)]
     api_key_hash: Option<String>,
     #[serde(default)]
     failed: Option<bool>,
@@ -483,7 +485,21 @@ pub(crate) struct UsageAnalysis {
     providers: Vec<UsageCategory>,
     sources: Vec<UsageCategory>,
     api_keys: Vec<UsageCategory>,
+    upstreams: Vec<UsageUpstream>,
 }
+
+#[derive(Serialize)]
+struct UsageUpstream {
+    #[serde(flatten)]
+    category: UsageCategory,
+    provider: String,
+    #[serde(rename = "isDefault")]
+    is_default: bool,
+}
+
+// Old records without an identity can only be grouped by route, never by a
+// raw source value that could contain an upstream or client secret.
+const USAGE_UPSTREAM_SQL: &str = "CASE WHEN TRIM(auth_index) != '' THEN 'auth:' || TRIM(auth_index) ELSE 'provider:' || TRIM(provider) END";
 
 #[derive(Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -2872,6 +2888,10 @@ fn build_usage_filter(query: &UsageQuery) -> UsageSqlFilter {
         query.provider.as_deref(),
     );
     add_text_filter(&mut clauses, &mut params, "source", query.source.as_deref());
+    if let Some(upstream) = query.upstream.as_deref().filter(|value| !value.is_empty()) {
+        clauses.push(format!("({USAGE_UPSTREAM_SQL}) = ?"));
+        params.push(SqlValue::Text(upstream.to_string()));
+    }
     add_text_filter(
         &mut clauses,
         &mut params,
@@ -4012,19 +4032,68 @@ fn normalized_model_tail(value: &str) -> String {
         .to_ascii_lowercase()
 }
 
+#[derive(Deserialize, Default)]
+struct UsageCredentialNotes {
+    #[serde(default)]
+    files: Vec<UsageCredentialNote>,
+}
+
+#[derive(Deserialize)]
+struct UsageCredentialNote {
+    #[serde(default)]
+    auth_index: String,
+    #[serde(default)]
+    note: String,
+}
+
+impl UsageCredentialNotes {
+    fn into_map(self) -> HashMap<String, String> {
+        self.files.into_iter().filter_map(|file| {
+            let index = file.auth_index.trim();
+            let note = file.note.trim();
+            (!index.is_empty() && !note.is_empty())
+                .then(|| (index.to_string(), note.to_string()))
+        }).collect()
+    }
+}
+
+async fn fetch_usage_credential_notes(config: &GuiConfigFile) -> HashMap<String, String> {
+    // Notes are optional enrichment: offline usage history must remain readable.
+    let fetch = async {
+        let response = management_http_client().ok()?
+            .get(management_endpoint(config, "credentials").ok()?)
+            .header("Authorization", management_authorization(config).ok()?)
+            .timeout(Duration::from_secs(3))
+            .send().await.ok()?.error_for_status().ok()?;
+        response.json::<UsageCredentialNotes>().await.ok()
+    };
+    fetch.await.unwrap_or_default().into_map()
+}
+
 #[tauri::command]
 pub(crate) async fn get_usage_analysis(
     query: UsageQuery,
     gui_config_state: tauri::State<'_, GuiConfigState>,
 ) -> Result<UsageAnalysis, String> {
     let config = gui_config_state.snapshot()?;
-    run_usage_task(move || load_usage_analysis(&open_usage_database()?, &query, &config)).await
+    let notes = fetch_usage_credential_notes(&config).await;
+    run_usage_task(move || load_usage_analysis_with_notes(&open_usage_database()?, &query, &config, &notes)).await
 }
 
+#[cfg(test)]
 fn load_usage_analysis(
     connection: &Connection,
     query: &UsageQuery,
     config: &GuiConfigFile,
+) -> Result<UsageAnalysis, String> {
+    load_usage_analysis_with_notes(connection, query, config, &HashMap::new())
+}
+
+fn load_usage_analysis_with_notes(
+    connection: &Connection,
+    query: &UsageQuery,
+    config: &GuiConfigFile,
+    notes: &HashMap<String, String>,
 ) -> Result<UsageAnalysis, String> {
     let filter = build_usage_filter(query);
     let sql = format!(
@@ -4037,9 +4106,9 @@ fn load_usage_analysis(
             MAX(TRIM(api_key_remark)), MAX(TRIM(api_key_display)),
             COUNT(*),
             COALESCE(SUM(CASE WHEN failed != 0 AND canceled = 0 THEN 1 ELSE 0 END), 0),
-            COALESCE(SUM(total_tokens), 0)
+            COALESCE(SUM(total_tokens), 0), TRIM(auth_index)
         FROM usage_events{}
-        GROUP BY 1, 2, 3, 4
+        GROUP BY 1, 2, 3, 4, 10
         "#,
         filter.clause
     );
@@ -4051,11 +4120,37 @@ fn load_usage_analysis(
         .map_err(|error| format!("Failed to query usage analytics: {error}"))?;
     let mut categories: [HashMap<String, UsageCategory>; 4] = Default::default();
     let mut key_labels = HashMap::<String, (String, String)>::new();
+    let mut source_labels = HashMap::<String, String>::new();
+    let mut source_notes = HashMap::<String, Option<String>>::new();
     let read_result = (|| -> rusqlite::Result<()> {
         while let Some(row) = rows.next()? {
             let requests = from_sql_i64(row.get(6)?);
             let failures = from_sql_i64(row.get(7)?);
             let tokens = from_sql_i64(row.get(8)?);
+            let provider: String = row.get(1)?;
+            let source: String = row.get(2)?;
+            let auth_index: String = row.get(9)?;
+            if let Some(note) = notes.get(&auth_index) {
+                // Historical indexes can disappear after reimporting a file.
+                // Only conflicting known notes make a source ambiguous.
+                source_notes.entry(source.clone())
+                    .and_modify(|current| {
+                        if current.as_ref() != Some(note) {
+                            *current = None;
+                        }
+                    })
+                    .or_insert_with(|| Some(note.clone()));
+            }
+            let label = usage_source_display(config, &provider, &source);
+            source_labels.entry(source.clone())
+                .and_modify(|current| {
+                    // A source may represent several credentials; avoid assigning
+                    // one credential's note to an ambiguous aggregate.
+                    if *current != label {
+                        *current = usage_source_display(config, "", &source);
+                    }
+                })
+                .or_insert(label);
             for (index, group) in categories.iter_mut().enumerate() {
                 let key: String = row.get(index)?;
                 if index == 3 {
@@ -4086,14 +4181,22 @@ fn load_usage_analysis(
     let sources = sources
         .into_iter()
         .map(|mut category| {
-            category.label = usage_source_display(config, "", &category.key);
+            if let Some(Some(note)) = source_notes.get(&category.key) {
+                category.label = note.clone();
+            } else if let Some(label) = source_labels.get(&category.key) {
+                category.label = label.clone();
+            }
             category
         })
         .collect();
+    let current_key_labels = usage_api_key_labels(config);
     let api_keys = api_keys
         .into_iter()
         .map(|mut category| {
-            let (remark, display) = key_labels.remove(&category.key).unwrap_or_default();
+            let (remark, display) = current_key_labels
+                .get(&category.key)
+                .cloned()
+                .unwrap_or_else(|| key_labels.remove(&category.key).unwrap_or_default());
             category.label = api_key_category_label(remark, display);
             category
         })
@@ -4103,7 +4206,47 @@ fn load_usage_analysis(
         providers,
         sources,
         api_keys,
+        upstreams: load_usage_upstreams(connection, query, config)?,
     })
+}
+
+fn usage_upstream_label(config: &GuiConfigFile, provider: &str, source: &str, auth_index: &str) -> String {
+    let provider_label = if provider.trim().is_empty() { "Unknown Provider" } else { provider.trim() };
+    if auth_index.trim().is_empty() {
+        return provider_label.to_string();
+    }
+    let label = if source.trim().is_empty() || config.api_keys.iter().any(|entry| entry.key == source) {
+        provider_label.to_string()
+    } else {
+        usage_source_display(config, provider, source)
+    };
+    // The identity suffix distinguishes credentials with the same remark and
+    // stays identical in the table, analytics and filter options.
+    let suffix: String = auth_index.chars().rev().take(6).collect::<Vec<_>>().into_iter().rev().collect();
+    format!("{label} · {suffix}")
+}
+
+fn load_usage_upstreams(connection: &Connection, query: &UsageQuery, config: &GuiConfigFile) -> Result<Vec<UsageUpstream>, String> {
+    let filter = build_usage_filter(query);
+    let sql = format!("SELECT {USAGE_UPSTREAM_SQL}, MAX(provider), MAX(source), MAX(TRIM(auth_index)), COUNT(*), SUM(CASE WHEN failed != 0 AND canceled = 0 THEN 1 ELSE 0 END), SUM(total_tokens) FROM usage_events{} GROUP BY 1 ORDER BY 7 DESC, 1", filter.clause);
+    let mut statement = connection.prepare(&sql).map_err(|error| format!("Failed to prepare upstream query: {error}"))?;
+    let rows = statement.query_map(params_from_iter(filter.params.iter()), |row| {
+        let provider: String = row.get(1)?;
+        let source: String = row.get(2)?;
+        let auth_index: String = row.get(3)?;
+        Ok(UsageUpstream {
+            category: UsageCategory {
+                key: row.get(0)?,
+                label: usage_upstream_label(config, &provider, &source, &auth_index),
+                requests: from_sql_i64(row.get(4)?),
+                failures: from_sql_i64(row.get(5)?),
+                tokens: from_sql_i64(row.get(6)?),
+            },
+            provider,
+            is_default: auth_index.trim().is_empty(),
+        })
+    }).map_err(|error| format!("Failed to query upstreams: {error}"))?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(|error| format!("Failed to read upstreams: {error}"))
 }
 
 fn sorted_usage_categories(categories: HashMap<String, UsageCategory>) -> Vec<UsageCategory> {
@@ -4332,13 +4475,23 @@ pub(crate) async fn get_usage_events(
     gui_config_state: tauri::State<'_, GuiConfigState>,
 ) -> Result<UsageEventPage, String> {
     let config = gui_config_state.snapshot()?;
-    run_usage_task(move || load_usage_events(&open_usage_database()?, &query, &config)).await
+    let notes = fetch_usage_credential_notes(&config).await;
+    run_usage_task(move || load_usage_events_with_notes(&open_usage_database()?, &query, &config, &notes)).await
 }
 
 fn load_usage_events(
     connection: &Connection,
     query: &UsageQuery,
     config: &GuiConfigFile,
+) -> Result<UsageEventPage, String> {
+    load_usage_events_with_notes(connection, query, config, &HashMap::new())
+}
+
+fn load_usage_events_with_notes(
+    connection: &Connection,
+    query: &UsageQuery,
+    config: &GuiConfigFile,
+    notes: &HashMap<String, String>,
 ) -> Result<UsageEventPage, String> {
     let filter = build_usage_filter(query);
     let total_sql = format!("SELECT COUNT(*) FROM usage_events{}", filter.clause);
@@ -4384,8 +4537,14 @@ fn load_usage_events(
         .collect::<Result<Vec<_>, _>>()
         .map_err(|error| format!("Failed to read SQLite usage events: {error}"))?;
     let prices = load_model_prices(connection)?;
+    let current_key_labels = usage_api_key_labels(config);
     for item in &mut items {
-        item.source_display = usage_source_display(config, &item.provider, &item.source);
+        if let Some((remark, display)) = current_key_labels.get(&item.api_key_hash) {
+            item.api_key_remark = remark.clone();
+            item.api_key_display = display.clone();
+        }
+        item.source_display = notes.get(item.auth_index.trim()).cloned()
+            .unwrap_or_else(|| usage_upstream_label(config, &item.provider, &item.source, &item.auth_index));
         item.cost = usage_record_cost(item, &prices);
     }
     Ok(UsageEventPage {
@@ -4579,6 +4738,19 @@ fn mask_api_key(value: &str) -> String {
         .rev()
         .collect::<String>();
     format!("{start}••••{end}")
+}
+
+fn usage_api_key_labels(config: &GuiConfigFile) -> HashMap<String, (String, String)> {
+    config
+        .api_keys
+        .iter()
+        .map(|entry| {
+            (
+                hash_text(&entry.key),
+                (entry.remark.trim().to_string(), mask_api_key(&entry.key)),
+            )
+        })
+        .collect()
 }
 
 fn api_key_category_label(remark: String, display: String) -> String {
@@ -5223,6 +5395,85 @@ mod tests {
     }
 
     #[test]
+    fn upstream_filter_uses_exact_identity_and_keeps_legacy_routes_separate() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        initialize_usage_schema(&connection).unwrap();
+        let config = GuiConfigFile::default();
+        let mut records = Vec::new();
+        for (index, (auth, provider)) in [("AccountA", "codex"), ("accounta", "codex"), ("", "claude"), ("", "gemini")].into_iter().enumerate() {
+            let mut record = sample_record(&format!("upstream-{index}"), "2026-10-11T00:00:00Z", "model");
+            record.auth_index = auth.to_string();
+            record.provider = provider.to_string();
+            record.source = "sk-shared-upstream-secret-for-test".to_string();
+            records.push(record);
+        }
+        insert_usage_records(&mut connection, &records).unwrap();
+        let all = load_usage_analysis(&connection, &UsageQuery::default(), &config).unwrap();
+        assert_eq!(all.upstreams.len(), 4);
+        for upstream in all.upstreams {
+            let query = UsageQuery { upstream: Some(upstream.category.key.clone()), ..Default::default() };
+            let page = load_usage_events(&connection, &query, &config).unwrap();
+            let overview = load_usage_overview(&connection, &query).unwrap();
+            assert_eq!(page.total, 1);
+            assert_eq!(overview.total_requests, 1);
+            assert_eq!(page.items[0].source_display, upstream.category.label);
+            assert!(!upstream.category.key.contains("secret"));
+            assert!(!upstream.category.label.contains("secret"));
+        }
+        let missing = UsageQuery { upstream: Some("auth:unknown".to_string()), ..Default::default() };
+        assert_eq!(load_usage_events(&connection, &missing, &config).unwrap().total, 0);
+    }
+
+    #[test]
+    fn usage_key_labels_follow_current_remarks_without_changing_identity_or_totals() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        initialize_usage_schema(&connection).unwrap();
+        let key = "test-client-key-for-usage-labels";
+        let mut config = GuiConfigFile::default();
+        config.api_keys = vec![crate::GuiApiKeyEntry {
+            key: key.to_string(),
+            remark: "Codex".to_string(),
+        }];
+        let mut old = sample_record("old-label", "2026-10-10T00:00:00Z", "model");
+        old.api_key_hash = hash_text(key);
+        old.api_key_remark = "ZCODE".to_string();
+        let mut recent = old.clone();
+        recent.id = "new-label".to_string();
+        recent.request_id = "new-label".to_string();
+        recent.timestamp = "2026-10-11T00:00:00Z".to_string();
+        recent.api_key_remark = "Zcode".to_string();
+        insert_usage_records(&mut connection, &[old, recent]).unwrap();
+        let query = UsageQuery {
+            api_key_hash: Some(hash_text(key)),
+            ..Default::default()
+        };
+        for remark in ["Codex", "Renamed", ""] {
+            config.api_keys[0].remark = remark.to_string();
+            let analysis = load_usage_analysis(&connection, &query, &config).unwrap();
+            let events = load_usage_events(&connection, &query, &config).unwrap();
+            assert_eq!(analysis.api_keys.len(), 1);
+            let category = &analysis.api_keys[0];
+            assert_eq!(category.key, hash_text(key));
+            assert_eq!(category.requests, 2);
+            assert_eq!(
+                category.label,
+                if remark.is_empty() { mask_api_key(key) } else { remark.to_string() }
+            );
+            assert_eq!(events.total, 2);
+            assert!(events.items.iter().all(|item|
+                item.api_key_remark == remark && item.api_key_display == mask_api_key(key)
+            ));
+        }
+        // Deleted keys keep historical labels; reading does not rewrite stored records.
+        config.api_keys.clear();
+        let analysis = load_usage_analysis(&connection, &query, &config).unwrap();
+        assert_eq!(analysis.api_keys[0].label, "Zcode");
+        let events = load_usage_events(&connection, &query, &config).unwrap();
+        assert_eq!(events.items[0].api_key_remark, "Zcode");
+        assert_eq!(events.items[1].api_key_remark, "ZCODE");
+    }
+
+    #[test]
     fn api_key_category_uses_either_remark_or_masked_key() {
         assert_eq!(
             api_key_category_label("Production".to_string(), "12••••".to_string()),
@@ -5232,6 +5483,85 @@ mod tests {
             api_key_category_label(String::new(), "123456".to_string()),
             "12••••"
         );
+    }
+
+    #[tokio::test]
+    async fn usage_credential_notes_use_v8_credentials_route() {
+        use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::TcpListener};
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let mut config = GuiConfigFile::default();
+        config.host = "127.0.0.1".into();
+        config.port = listener.local_addr().unwrap().port();
+        config.management_secret_key = "test-management-key".into();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            let mut buffer = [0; 1024];
+            while !request.windows(4).any(|part| part == b"\r\n\r\n") {
+                let count = stream.read(&mut buffer).await.unwrap();
+                assert!(count > 0);
+                request.extend_from_slice(&buffer[..count]);
+            }
+            assert!(request.starts_with(b"GET /v8/management/credentials HTTP/1.1\r\n"));
+            let body = r#"{"files":[{"auth_index":"grok-file","note":"Credential note"}]}"#;
+            let response = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body);
+            stream.write_all(response.as_bytes()).await.unwrap();
+        });
+        let notes = fetch_usage_credential_notes(&config).await;
+        server.await.unwrap();
+        assert_eq!(notes.get("grok-file").map(String::as_str), Some("Credential note"));
+    }
+
+    #[test]
+    fn usage_source_notes_and_request_key_notes_stay_independent() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        initialize_usage_schema(&connection).unwrap();
+        let mut config = GuiConfigFile::default();
+        config.api_keys = vec![crate::GuiApiKeyEntry {
+            key: "client-key".into(), remark: "Client note".into(),
+        }];
+        for (section, remark) in [("xai-api-key", "Grok API note"), ("codex-api-key", "Other API note")] {
+            config.api_access_remarks.push(crate::GuiApiAccessRemark {
+                provider_section: section.into(), api_key_hash: hash_text("sk-upstream-test"),
+                record_hash: String::new(), remark: remark.into(),
+            });
+        }
+        let notes: UsageCredentialNotes = serde_json::from_value(serde_json::json!({
+            "files": [{"auth_index": "grok-file", "note": " Grok credential note "},
+                      {"auth_index": "blank", "note": "  "}]
+        })).unwrap();
+        let notes = notes.into_map();
+        assert!(!notes.contains_key("blank"));
+        let mut oauth = sample_record("notes-oauth", "2026-08-27T00:00:00Z", "grok");
+        oauth.provider = "grok".into();
+        oauth.source = "account@example.com".into();
+        oauth.auth_index = "grok-file".into();
+        oauth.api_key_hash = hash_text("client-key");
+        let mut api = oauth.clone();
+        api.id = "notes-api".into();
+        api.source = "sk-upstream-test".into();
+        api.auth_index = "grok-api".into();
+        let mut historical = oauth.clone();
+        historical.id = "notes-historical".into();
+        historical.auth_index = "retired-grok-file".into();
+        insert_usage_records(&mut connection, &[oauth, api, historical]).unwrap();
+        let query = UsageQuery::default();
+        let analysis = load_usage_analysis_with_notes(&connection, &query, &config, &notes).unwrap();
+        assert_eq!(analysis.sources.iter().find(|c| c.key == "account@example.com").unwrap().label, "Grok credential note");
+        assert_eq!(analysis.sources.iter().find(|c| c.key == "sk-upstream-test").unwrap().label, "Grok API note");
+        assert_eq!(analysis.api_keys[0].label, "Client note");
+        let events = load_usage_events_with_notes(&connection, &query, &config, &notes).unwrap();
+        assert!(events.items.iter().all(|item| item.api_key_remark == "Client note"));
+        assert_eq!(events.items.iter().find(|item| item.auth_index == "grok-file").unwrap().source_display, "Grok credential note");
+        let updated = HashMap::from([("grok-file".into(), "Updated note".into())]);
+        let analysis = load_usage_analysis_with_notes(&connection, &query, &config, &updated).unwrap();
+        assert_eq!(analysis.sources.iter().find(|c| c.key == "account@example.com").unwrap().label, "Updated note");
+        let conflicting = HashMap::from([
+            ("grok-file".into(), "First note".into()),
+            ("retired-grok-file".into(), "Different note".into()),
+        ]);
+        let analysis = load_usage_analysis_with_notes(&connection, &query, &config, &conflicting).unwrap();
+        assert_eq!(analysis.sources.iter().find(|c| c.key == "account@example.com").unwrap().label, "account@example.com");
     }
 
     #[test]
