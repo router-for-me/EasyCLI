@@ -1,0 +1,4 @@
+.fixture-scroll { margin: 60px 24px 0 80px; height: 280px; overflow: auto; }
+.fixture-container { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; contain: layout; transform: translateZ(0); --bg-card: rgb(23, 45, 67); }
+.fixture-container .select-menu { overflow: hidden; }
+.fixture-spacer { height: 800px; grid-column: 1 / -1; }

@@ -8,6 +8,7 @@ import {
   useState,
   type KeyboardEvent,
 } from 'react';
+import { createPortal } from 'react-dom';
 import { Check, ChevronDown } from 'lucide-react';
 import './SelectMenu.css';
 
@@ -25,6 +26,9 @@ type MenuLayout = {
 };
 
 const measureMenu = (menu: HTMLDivElement) => {
+  const list = menu.querySelector<HTMLDivElement>('.select-menu-list');
+  const scrollTop = list?.scrollTop ?? 0;
+  const scrollLeft = list?.scrollLeft ?? 0;
   const menuStyle = menu.getAttribute('style');
   const optionButtons = [...menu.querySelectorAll<HTMLButtonElement>('.select-menu-option')];
   const optionStyles = optionButtons.map((option) => option.getAttribute('style'));
@@ -46,6 +50,11 @@ const measureMenu = (menu: HTMLDivElement) => {
     if (style === null) option.removeAttribute('style');
     else option.setAttribute('style', style);
   });
+  // Measuring the unconstrained list can clamp its scroll offsets to zero.
+  if (list) {
+    list.scrollTop = scrollTop;
+    list.scrollLeft = scrollLeft;
+  }
   return { width: Math.ceil(rect.width), height: Math.ceil(rect.height) };
 };
 
@@ -74,6 +83,13 @@ export function SelectMenu({
     const root = rootRef.current;
     const menu = menuRef.current;
     if (!root) return;
+    // The portal must retain the page's locally scoped theme variables.
+    if (menu) {
+      const style = getComputedStyle(root);
+      for (const name of style) {
+        if (name.startsWith('--')) menu.style.setProperty(name, style.getPropertyValue(name));
+      }
+    }
     const rect = root.getBoundingClientRect();
     const edgeGap = 12;
     const triggerGap = 6;
@@ -102,22 +118,30 @@ export function SelectMenu({
       return undefined;
     }
     updateLayout();
+    const handleScroll = (event: Event) => {
+      if (event.target instanceof Node && menuRef.current?.contains(event.target)) return;
+      updateLayout();
+    };
     window.addEventListener('resize', updateLayout);
-    window.addEventListener('scroll', updateLayout, true);
+    window.addEventListener('scroll', handleScroll, true);
     return () => {
       window.removeEventListener('resize', updateLayout);
-      window.removeEventListener('scroll', updateLayout, true);
+      window.removeEventListener('scroll', handleScroll, true);
     };
   }, [open, updateLayout]);
 
   useEffect(() => {
     if (!open) return undefined;
-    const close = (event: MouseEvent) => {
+    const close = (event: Event) => {
       const target = event.target as Node;
       if (!rootRef.current?.contains(target) && !menuRef.current?.contains(target)) setOpen(false);
     };
     document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
+    document.addEventListener('focusin', close);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      document.removeEventListener('focusin', close);
+    };
   }, [open]);
 
   useEffect(() => {
@@ -159,11 +183,7 @@ export function SelectMenu({
   };
 
   return (
-    <div className={`select-menu ${open ? 'open' : ''}`} ref={rootRef}
-      onBlur={(event) => {
-        const next = event.relatedTarget as Node | null;
-        if (!event.currentTarget.contains(next) && !menuRef.current?.contains(next)) setOpen(false);
-      }}>
+    <div className={`select-menu ${open ? 'open' : ''}`} ref={rootRef}>
       <button
         type="button"
         className="select-menu-trigger"
@@ -178,7 +198,7 @@ export function SelectMenu({
         <strong title={selected?.label}>{selected?.label ?? ''}</strong>
         <ChevronDown size={16} aria-hidden />
       </button>
-      {open ? (
+      {open ? createPortal(
         <div
           ref={menuRef}
           className="select-menu-dropdown"
@@ -211,7 +231,8 @@ export function SelectMenu({
               );
             })}
           </div>
-        </div>
+        </div>,
+        document.body,
       ) : null}
     </div>
   );
