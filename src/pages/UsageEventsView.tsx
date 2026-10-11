@@ -2,7 +2,8 @@ import { usagePreferences } from '../services/usagePreferences';
 import { Fragment, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { save } from '@tauri-apps/plugin-dialog';
-import { ArrowDown, ArrowUp, Brain, ChevronLeft, ChevronRight, Columns3, Database, DatabaseZap, Download, RotateCcw, TriangleAlert, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Brain, ChevronLeft, ChevronRight, Columns3, Copy, Database, DatabaseZap, Download, RotateCcw, TriangleAlert, X } from 'lucide-react';
+import { FloatingNotice, useAppNotice } from '../appNotice';
 import { getCurrentLocale, useI18n } from '../i18n';
 import type { MessageKey } from '../i18n/resources';
 import { formatCacheReadRate, formatGenerationSpeed } from '../services/usageMetrics';
@@ -310,7 +311,14 @@ function usageResultDetail(record: UsageRecord) {
     .join(' · ');
 }
 
-function UsageResultCell({ record }: { record: UsageRecord }) {
+function CopyErrorButton({ detail, onCopy }: { detail: string; onCopy: (detail: string) => void }) {
+  const { t } = useI18n();
+  return <button type="button" className="icon-button quiet usage-error-copy"
+    title={t('usage.events.copyError')} aria-label={t('usage.events.copyError')}
+    onClick={() => onCopy(detail)}><Copy size={13} aria-hidden="true" /></button>;
+}
+
+function UsageResultCell({ record, onCopyError }: { record: UsageRecord; onCopyError: (detail: string) => void }) {
   const { t } = useI18n();
   const state = record.canceled ? 'canceled' : record.failed ? 'failed' : 'success';
   const detail = usageResultDetail(record);
@@ -320,7 +328,12 @@ function UsageResultCell({ record }: { record: UsageRecord }) {
         <span className="usage-result-dot" />
         {t(`usage.result.${state}`)}
       </span>
-      {detail ? <small className={state === 'success' ? undefined : 'usage-result-detail'} title={detail}>{detail}</small> : null}
+      {detail ? (
+        <div className={`usage-result-detail-line${state === 'success' ? '' : ' usage-result-detail'}`}>
+          <small title={detail}>{detail}</small>
+          <CopyErrorButton detail={detail} onCopy={onCopyError} />
+        </div>
+      ) : null}
     </td>
   );
 }
@@ -331,12 +344,14 @@ function UsageEventCell({
   noRemarkLabel,
   showDate,
   compact,
+  onCopyError,
 }: {
   record: UsageRecord;
   columnKey: EventColumnKey;
   noRemarkLabel: string;
   showDate?: boolean;
   compact?: boolean;
+  onCopyError: (detail: string) => void;
 }) {
   const { t, formatDate } = useI18n();
 
@@ -445,7 +460,7 @@ function UsageEventCell({
         </td>
       );
     case 'result':
-      return <UsageResultCell record={record} />;
+      return <UsageResultCell record={record} onCopyError={onCopyError} />;
     case 'latency': {
       const latencyTone = durationTone(record.latency_ms);
       const ttftTone = durationTone(record.ttft_ms);
@@ -503,6 +518,15 @@ export function EventsView({
   const [draftVisibleColumnKeys, setDraftVisibleColumnKeys] = useState<EventColumnKey[]>(visibleColumnKeys);
   const [resizingCol, setResizingCol] = useState<EventColumnKey | null>(null);
   const [exporting, setExporting] = useState(false);
+  const copyFeedback = useAppNotice();
+  const copyError = async (detail: string) => {
+    try {
+      await navigator.clipboard.writeText(detail);
+      copyFeedback.showNotice({ key: 'usage.events.errorCopied' });
+    } catch {
+      copyFeedback.showNotice({ key: 'common.copyFailed' }, 'error');
+    }
+  };
 
   const columnDialogRef = useDialogFocusTrap<HTMLElement>({
     active: columnSettingsOpen,
@@ -712,6 +736,7 @@ export function EventsView({
 
   return (
     <section className={`panel usage-events-panel usage-request-log${isCompactDefault ? ' usage-events-compact' : ''}${collapseErrors ? '' : ' usage-events-errors-expanded'}`} aria-label={t('usage.events.title')} aria-busy={loading}>
+      <FloatingNotice key={copyFeedback.revision} notice={copyFeedback.notice} onDismiss={copyFeedback.clearNotice} />
       {loading && events.items.length === 0 ? <div className="usage-empty" role="status"><Database size={20} aria-hidden="true" /><span>{t('usage.loading')}</span></div> : events.items.length ? (
         <div ref={tableWrapRef} className="usage-table-wrap" tabIndex={0} role="region" aria-label={t('usage.events.title')}>
           <table
@@ -773,13 +798,14 @@ export function EventsView({
                           noRemarkLabel={noRemarkLabel}
                           showDate={showDate}
                           compact={isCompactDefault}
+                          onCopyError={(detail) => void copyError(detail)}
                         />
                       ))}
                     </tr>
                     {!collapseErrors && detail ? (
                       <tr className="usage-event-error-row">
                         <td colSpan={visibleColumns.length}>
-                          <div className="usage-event-error-message">{detail}</div>
+                          <div className="usage-event-error-message">{detail}<CopyErrorButton detail={detail} onCopy={(value) => void copyError(value)} /></div>
                         </td>
                       </tr>
                     ) : null}

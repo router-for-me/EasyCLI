@@ -1102,6 +1102,8 @@ export const zhCN = {
   'authFiles.deleted': '凭证文件已删除',
   'common.copy': '复制',
   'common.copyFailed': '复制失败',
+  'usage.events.copyError': '复制完整报错信息',
+  'usage.events.errorCopied': '报错信息已复制',
   'authFiles.title': '凭证文件',
   'authFiles.summary': '{files} 个文件 · {disabled} 个停用',
   'common.refresh': '刷新',

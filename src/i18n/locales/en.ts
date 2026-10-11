@@ -1103,6 +1103,8 @@ export const en: Record<MessageKey, string> = {
   'authFiles.deleted': 'Authentication file deleted',
   'common.copy': 'Copy',
   'common.copyFailed': 'Copy failed',
+  'usage.events.copyError': 'Copy full error details',
+  'usage.events.errorCopied': 'Error details copied',
   'authFiles.title': 'Authentication Files',
   'authFiles.summary': '{files} files · {disabled} disabled',
   'common.refresh': 'Refresh',
