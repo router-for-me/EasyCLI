@@ -1,4 +1,5 @@
 .immersive-window {
+  --window-titlebar-height: 34px;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -9,21 +10,26 @@
 
 .window-titlebar {
   position: relative;
-  z-index: 11000; /* Native-like controls stay usable above application dialogs. */
+  /*
+   * Below every modal backdrop (lowest is 50) on purpose: native <dialog> modals render in the top
+   * layer and cover the titlebar anyway, so div-based modals do the same for consistency. Otherwise
+   * a tall dialog's own close button can sit underneath the window close button.
+   */
+  z-index: 40;
   background: var(--theme-faf9f5);
   display: flex;
-  flex: 0 0 34px;
+  flex: 0 0 var(--window-titlebar-height);
   min-width: 0;
   color: var(--text-tertiary);
   user-select: none;
 }
 
+/* Dragging and double-click maximize are handled by Tauri's data-tauri-drag-region script. */
 .window-drag-region {
   flex: 1;
   min-width: 0;
 }
 
-.window-drag-region[data-tauri-drag-region] { app-region: drag; }
 .immersive-window[data-focused='false'] .window-controls { color: var(--text-disabled); }
 .window-error { align-self: center; font-size: 11px; color: var(--error-color); }
 .window-controls { display: flex; flex-shrink: 0; }
@@ -31,7 +37,7 @@
   display: grid;
   place-items: center;
   width: 46px;
-  height: 34px;
+  height: var(--window-titlebar-height);
   min-height: 0;
   padding: 0;
   border: 0;
@@ -50,17 +56,27 @@
 .window-controls .window-close:active { background: #a82317; color: #fff; }
 .window-content { flex: 1; min-height: 0; overflow: hidden; }
 
+/* Beginner mode has no sidebar and sizes itself to 100vh; fit it below the titlebar instead. */
+.immersive-window .app-shell.app-shell-easy-mode,
+.immersive-window .app-shell-easy-mode .workspace {
+  min-height: 100%;
+}
+
 /* The sidebar starts at the window edge; only the workspace reserves titlebar space. */
 @media (min-width: 901px) {
   .immersive-window:has(.sidebar) .window-titlebar {
     position: absolute;
     top: 0;
     right: 0;
-    left: 264px;
-    height: 34px;
+    left: var(--app-sidebar-width);
+    height: var(--window-titlebar-height);
   }
   .immersive-window .sidebar { height: 100%; }
-  .immersive-window:has(.sidebar) .workspace { padding-top: 34px; }
+  /* Margin rather than padding so the scrollport (and its scrollbar) starts below the titlebar. */
+  .immersive-window:has(.sidebar) .workspace {
+    height: calc(100% - var(--window-titlebar-height));
+    margin-top: var(--window-titlebar-height);
+  }
 }
 @media (max-width: 900px) {
   .immersive-window:has(.sidebar) .window-titlebar { background: var(--sidebar-bg); }

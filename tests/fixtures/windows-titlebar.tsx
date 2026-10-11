@@ -19,7 +19,6 @@ Object.assign(window, { isTauri: true, titlebarTest: state });
 mockWindows('main');
 mockIPC((command, args) => {
   state.calls.push(command);
-  if (command === 'detect_core_platform') return { os: new URLSearchParams(location.search).get('os') || 'windows' };
   if (command === 'plugin:event|listen') {
     state.listeners.set(args!.event as string, args!.handler as number);
     return state.listeners.size;

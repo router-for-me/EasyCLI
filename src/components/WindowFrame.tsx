@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { invoke, isTauri } from '@tauri-apps/api/core';
+import { isTauri } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { Copy, Minus, Square, X } from 'lucide-react';
 import { useI18n } from '../i18n';
@@ -9,21 +9,22 @@ import './WindowFrame.css';
 const preview = import.meta.env.DEV
   && new URLSearchParams(window.location.search).get('windowPreview') === 'windows';
 
+/**
+ * Must agree with the `#[cfg(target_os = "windows")]` branch in `main.rs` that removes the native
+ * decorations. The check is synchronous and cannot fail, so the window never ends up without any
+ * controls, and the titlebar is present on the first render (no layout shift). WebView2 always
+ * reports "Windows NT" in its user agent.
+ */
+function isNativeWindowsShell() {
+  return isTauri() && !document.body.dataset.browserMock && /\bWindows NT\b/.test(navigator.userAgent);
+}
+
 export function WindowFrame({ children }: { children: ReactNode }) {
   const { t } = useI18n();
-  const [enabled, setEnabled] = useState(preview);
+  const [enabled] = useState(() => preview || isNativeWindowsShell());
   const [maximized, setMaximized] = useState(false);
   const [focused, setFocused] = useState(true);
   const [error, setError] = useState(false);
-
-  useEffect(() => {
-    if (preview || !isTauri() || document.body.dataset.browserMock) return;
-    let disposed = false;
-    void invoke<{ os: string }>('detect_core_platform').then(({ os }) => {
-      if (!disposed) setEnabled(os === 'windows');
-    }).catch(() => setError(true));
-    return () => { disposed = true; };
-  }, []);
 
   useEffect(() => {
     if (!enabled || preview) return;
@@ -42,7 +43,12 @@ export function WindowFrame({ children }: { children: ReactNode }) {
         if (!disposed) setMaximized(value);
       } catch { if (!disposed) setError(true); }
     };
-    register(appWindow.onResized(() => { void refresh(); }));
+    // Resize events fire continuously while dragging the border; query at most once per frame.
+    let frame = 0;
+    register(appWindow.onResized(() => {
+      if (frame) return;
+      frame = requestAnimationFrame(() => { frame = 0; void refresh(); });
+    }));
     register(appWindow.onFocusChanged(({ payload }) => setFocused(payload)));
     void refresh();
     void appWindow.isFocused().then(value => {
@@ -50,6 +56,7 @@ export function WindowFrame({ children }: { children: ReactNode }) {
     }).catch(() => { if (!disposed) setError(true); });
     return () => {
       disposed = true;
+      cancelAnimationFrame(frame);
       unlisteners.forEach(unlisten => unlisten());
     };
   }, [enabled]);
