@@ -1,5 +1,8 @@
+- ソフトウェアについてご質問やご提案がある場合は、[Discord](https://discord.gg/PxvX4D9kgs) または [GitHub Issues](https://github.com/router-for-me/EasyCLIProxyAPI/issues) からお知らせください。できるだけ早く対応します。
+
 ## 新機能
 
+- 「モデルとリクエスト」で Antigravity のシステムプロンプトの機密語リストが空の場合、ページを開くか更新すると `Claude`、`GPT-5`、`GPT-6`、`Codex`、`Anthropic` が事前入力されます。「保存」をクリックすると適用されます。既存の空でないリストは変更されません。
 - リクエスト記録のエラー詳細にコピーボタンを追加しました。折りたたみ表示と展開表示のどちらでもコピーでき、問題の調査や報告に利用できます。
 
 ## 改善

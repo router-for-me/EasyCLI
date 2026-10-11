@@ -1,5 +1,8 @@
+- 關於軟體，如果您有任何問題或建議，請透過 [QQ 群組](https://qm.qq.com/q/3queDaIG) 或 [GitHub Issues](https://github.com/router-for-me/EasyCLIProxyAPI/issues) 提交，我們會盡快處理。
+
 ## 新增
 
+- 「模型與請求」中的 Antigravity 系統提示詞敏感詞清單為空時，開啟或重新整理頁面會預填 `Claude`、`GPT-5`、`GPT-6`、`Codex`、`Anthropic`，按下「儲存」後生效；既有非空清單保持不變。
 - 請求記錄新增錯誤詳情複製按鈕，收合與展開狀態下皆可一鍵複製，方便排查問題與提交回饋。
 
 ## 優化
