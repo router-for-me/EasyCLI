@@ -393,14 +393,6 @@ pub(crate) fn build_pi_provider_settings(
     Ok(rendered)
 }
 
-pub(crate) fn inspect_pi_provider_status(
-    home: &Path,
-    port: u16,
-    api_key: &str,
-) -> AgentConfigStatus {
-    inspect_pi_provider_status_with_executable(home, port, api_key, None)
-}
-
 pub(crate) fn inspect_pi_provider_status_with_executable(
     home: &Path,
     port: u16,
@@ -1052,31 +1044,12 @@ fn hermes_managed_provider(root: &serde_yaml::Value) -> Option<&serde_yaml::Valu
     })
 }
 
-pub(crate) fn inspect_agent_config(
-    client: AgentClient,
-    home: &Path,
-    port: u16,
-    api_key: &str,
-) -> AgentConfigStatus {
-    inspect_agent_config_with_executable(client, home, port, api_key, None)
-}
-
 pub(crate) fn manual_desktop_path(path: Option<&Path>) -> Option<&Path> {
     path.filter(|path| {
         path.is_file()
             || (cfg!(target_os = "macos") && path.is_dir()
                 && path.extension().is_some_and(|extension| extension == "app"))
     })
-}
-
-pub(crate) fn inspect_agent_config_with_executable(
-    client: AgentClient,
-    home: &Path,
-    port: u16,
-    api_key: &str,
-    executable_override: Option<&Path>,
-) -> AgentConfigStatus {
-    inspect_agent_config_with_executables(client, home, port, api_key, executable_override, None)
 }
 
 pub(crate) fn inspect_agent_config_with_executables(

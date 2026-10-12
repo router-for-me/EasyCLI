@@ -108,20 +108,6 @@ pub(crate) fn validate_strong_management_secret_key(secret_key: &str) -> Result<
     Ok(())
 }
 
-pub(crate) fn management_secret_requires_rotation(secret_key: &str) -> bool {
-    let secret_key = secret_key.trim();
-    // Empty is an intentional disabled Management API, including after restart.
-    !secret_key.is_empty() && validate_strong_management_secret_key(secret_key).is_err()
-}
-
-pub(crate) fn ensure_strong_management_secret(config: &mut GuiConfigFile) -> Result<bool, String> {
-    if !management_secret_requires_rotation(&config.management_secret_key) {
-        return Ok(false);
-    }
-    config.management_secret_key = LEGACY_DEFAULT_MANAGEMENT_SECRET_KEY.to_string();
-    Ok(true)
-}
-
 // A hashed kernel value cannot supply a request credential. If the GUI saved
 // an empty key while the kernel still has an enabled key, recover both sides
 // to the same usable credential. A disabled kernel stays disabled.
@@ -826,6 +812,7 @@ pub(crate) fn consume_software_write(path: &Path) -> bool {
         .is_some_and(|expected_hash| expected_hash == hash)
 }
 
+#[cfg(test)]
 pub(crate) fn write_yaml_if_changed(path: &Path, content: &str) -> Result<bool, String> {
     if fs::read_to_string(path).ok().as_deref() == Some(content) {
         return Ok(false);

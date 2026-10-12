@@ -661,22 +661,22 @@ fn codex_status_requires_a_valid_catalog_containing_the_default_model() {
     )
     .unwrap();
 
-    let missing = inspect_agent_config(AgentClient::Codex, &home, 8317, DEFAULT_API_KEY);
+    let missing = inspect_agent_config_with_executables(AgentClient::Codex, &home, 8317, DEFAULT_API_KEY, None, None);
     assert!(!missing.configured);
     assert!(!missing.config_valid);
 
     fs::write(&catalog_path, "not json").unwrap();
-    let damaged = inspect_agent_config(AgentClient::Codex, &home, 8317, DEFAULT_API_KEY);
+    let damaged = inspect_agent_config_with_executables(AgentClient::Codex, &home, 8317, DEFAULT_API_KEY, None, None);
     assert!(!damaged.configured);
     assert!(!damaged.config_valid);
 
     fs::write(&catalog_path, test_codex_models(&["other-model"])).unwrap();
-    let wrong_model = inspect_agent_config(AgentClient::Codex, &home, 8317, DEFAULT_API_KEY);
+    let wrong_model = inspect_agent_config_with_executables(AgentClient::Codex, &home, 8317, DEFAULT_API_KEY, None, None);
     assert!(!wrong_model.configured);
     assert!(!wrong_model.config_valid);
 
     fs::write(&catalog_path, test_codex_models(&["gpt-test"])).unwrap();
-    let valid = inspect_agent_config(AgentClient::Codex, &home, 8317, DEFAULT_API_KEY);
+    let valid = inspect_agent_config_with_executables(AgentClient::Codex, &home, 8317, DEFAULT_API_KEY, None, None);
     assert!(valid.configured);
     assert!(valid.config_valid);
     fs::remove_dir_all(home).unwrap();
