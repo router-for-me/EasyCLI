@@ -4479,14 +4479,6 @@ pub(crate) async fn get_usage_events(
     run_usage_task(move || load_usage_events_with_notes(&open_usage_database()?, &query, &config, &notes)).await
 }
 
-fn load_usage_events(
-    connection: &Connection,
-    query: &UsageQuery,
-    config: &GuiConfigFile,
-) -> Result<UsageEventPage, String> {
-    load_usage_events_with_notes(connection, query, config, &HashMap::new())
-}
-
 fn load_usage_events_with_notes(
     connection: &Connection,
     query: &UsageQuery,
@@ -4788,6 +4780,14 @@ fn usage_source_display(config: &GuiConfigFile, provider: &str, source: &str) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn load_usage_events(
+        connection: &Connection,
+        query: &UsageQuery,
+        config: &GuiConfigFile,
+    ) -> Result<UsageEventPage, String> {
+        load_usage_events_with_notes(connection, query, config, &HashMap::new())
+    }
 
     #[tokio::test]
     async fn redis_usage_queue_falls_back_to_legacy_key_and_reuses_selection() {

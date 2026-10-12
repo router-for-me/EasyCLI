@@ -935,13 +935,13 @@ fn pi_config_file_allows_cpa_connection_without_detected_cli() {
     let paths = config_paths("pi", &home.0).unwrap();
     save(&paths[0], "{}\n");
 
-    let before = inspect_pi_provider_status(&home.0, 8317, "test-key");
+    let before = inspect_pi_provider_status_with_executable(&home.0, 8317, "test-key", None);
     assert!(before.config_exists);
     assert!(!before.plugin_installed);
 
     configure_pi_provider_without_cli_inner(&home.0, 8317, "test-key", "gpt-one").unwrap();
 
-    let connected = inspect_pi_provider_status(&home.0, 8317, "test-key");
+    let connected = inspect_pi_provider_status_with_executable(&home.0, 8317, "test-key", None);
     assert!(connected.configured);
     assert!(connected.plugin_installed);
     assert_eq!(connected.current_model.as_deref(), Some("gpt-one"));

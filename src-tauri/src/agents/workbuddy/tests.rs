@@ -186,7 +186,7 @@ fn workbuddy_config_file_allows_cpa_connection_without_detected_application() {
     let home = Home::new();
     home.save(&json!({}));
 
-    let status = inspect_agent_config(AgentClient::WorkBuddy, &home.0, 8317, "test-key");
+    let status = inspect_agent_config_with_executables(AgentClient::WorkBuddy, &home.0, 8317, "test-key", None, None);
     assert!(!status.installed);
     assert!(status.config_exists);
     assert!(status.config_valid);
@@ -201,7 +201,7 @@ fn workbuddy_config_file_allows_cpa_connection_without_detected_application() {
     .is_ok());
 
     home.apply("gpt-one").unwrap();
-    let connected = inspect_agent_config(AgentClient::WorkBuddy, &home.0, 8317, "test-key");
+    let connected = inspect_agent_config_with_executables(AgentClient::WorkBuddy, &home.0, 8317, "test-key", None, None);
     assert!(!connected.installed);
     assert!(connected.configured);
     assert_eq!(connected.current_model.as_deref(), Some("gpt-one"));

@@ -1501,7 +1501,7 @@ mod tests {
             assert!(!cli_target.detail.contains("Custom Desktop.exe"));
         }
         for client in [AgentClient::ClaudeDesktop, AgentClient::ZCode, AgentClient::WorkBuddy] {
-            let status = inspect_agent_config_with_executable(client, &root, 8317, "test-key", Some(&desktop));
+            let status = inspect_agent_config_with_executables(client, &root, 8317, "test-key", Some(&desktop), None);
             assert!(status.installed, "{}", client.name());
             assert_eq!(status.launch_targets.len(), 1);
             assert_eq!(status.launch_targets[0].id, "app");
