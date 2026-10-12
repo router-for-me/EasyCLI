@@ -488,9 +488,14 @@ textarea:focus-visible {
   outline-offset: 2px;
 }
 
+/* Shared with the Windows titlebar in components/WindowFrame.css, which lives outside .app-shell. */
+:root {
+  --app-sidebar-width: 264px;
+}
+
 .app-shell {
   display: grid;
-  grid-template-columns: 264px minmax(0, 1fr);
+  grid-template-columns: var(--app-sidebar-width) minmax(0, 1fr);
   height: 100%;
   min-height: 0;
   overflow: hidden;
