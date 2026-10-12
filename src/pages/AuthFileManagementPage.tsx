@@ -118,7 +118,7 @@ const fileName = authFileName;
 
 const isRuntimeOnly = isRuntimeOnlyAuthFile;
 
-export function AuthFileManagementPage() {
+export function AuthFileManagementPage({ initialProvider }: { initialProvider?: string } = {}) {
   const { t } = useI18n();
   const now = useQuotaClock();
   const { askConfirmation, confirmationDialog } = useConfirmation();
@@ -132,7 +132,9 @@ export function AuthFileManagementPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(() => new Set());
-  const [providerFilter, setProviderFilter] = useState('all');
+  const [providerFilter, setProviderFilter] = useState(() => (
+    initialProvider ? providerName({ provider: initialProvider }) : 'all'
+  ));
   const [statusFilter, setStatusFilter] = useState<'all' | 'enabled' | 'disabled' | 'runtime'>('all');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);

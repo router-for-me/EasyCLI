@@ -351,9 +351,14 @@ body, html, #root {
   justify-self: end;
 }
 
-.oauth-login-page > .oauth-grid {
+.oauth-login-page > .oauth-intro {
   grid-column: 1 / -1;
   grid-row: 2;
+}
+
+.oauth-login-page > .oauth-grid {
+  grid-column: 1 / -1;
+  grid-row: 3;
 }
 
 @container workspace (max-width: 760px) {
@@ -367,9 +372,178 @@ body, html, #root {
     justify-self: stretch;
   }
 
-  .oauth-login-page > .oauth-grid {
+  .oauth-login-page > .oauth-intro {
     grid-row: 3;
   }
+
+  .oauth-login-page > .oauth-grid {
+    grid-row: 4;
+  }
+
+  .oauth-intro {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .oauth-intro .oauth-intro-action {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}
+
+.oauth-intro {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 4px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--primary-color) 22%, var(--border-color));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--primary-color) 6%, var(--bg-card));
+}
+
+.oauth-intro-icon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--primary-color) 14%, transparent);
+  color: var(--primary-color);
+}
+
+.oauth-intro-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.oauth-intro-text strong {
+  color: var(--text-primary);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
+}
+
+.oauth-intro-text p {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-size: var(--font-size-meta);
+  line-height: 1.5;
+}
+
+.oauth-intro .oauth-intro-action {
+  white-space: nowrap;
+}
+
+.oauth-card .provider-title-row .oauth-account-count {
+  display: inline-flex;
+  width: auto;
+  max-width: 100%;
+  align-items: center;
+  gap: 4px;
+  margin-top: 5px;
+  padding: 2px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--bg-tertiary);
+  color: var(--text-tertiary);
+  font: inherit;
+  font-size: var(--font-size-meta);
+  line-height: 1.5;
+}
+
+button.oauth-account-count {
+  cursor: pointer;
+}
+
+.oauth-card .provider-title-row .oauth-account-count.has-accounts {
+  border-color: var(--success-badge-border);
+  background: var(--success-badge-bg);
+  color: var(--success-badge-text);
+  font-weight: var(--font-weight-semibold);
+}
+
+.oauth-card .provider-title-row button.oauth-account-count:not(:disabled):hover {
+  border-color: var(--success-color);
+}
+
+button.oauth-account-count:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+.oauth-account-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.oauth-account-list li {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 3px 9px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: var(--font-size-meta);
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.oauth-account-list li.disabled {
+  color: var(--text-tertiary);
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+.oauth-account-list li.more {
+  border-style: dashed;
+  background: transparent;
+  color: var(--text-tertiary);
+}
+
+.oauth-flow-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: var(--font-size-meta);
+  line-height: 1.5;
+}
+
+.oauth-flow-status > svg {
+  flex: none;
+  margin-top: 2px;
+}
+
+.oauth-flow-status.waiting {
+  border-color: color-mix(in srgb, var(--primary-color) 30%, var(--border-color));
+  background: color-mix(in srgb, var(--primary-color) 7%, var(--bg-card));
+  color: var(--primary-color);
+}
+
+.oauth-flow-status.success {
+  border-color: var(--success-badge-border);
+  background: var(--success-badge-bg);
+  color: var(--success-badge-text);
+}
+
+.oauth-flow-status.error {
+  border-color: color-mix(in srgb, var(--danger-color) 35%, var(--border-color));
+  background: color-mix(in srgb, var(--danger-color) 8%, var(--bg-card));
+  color: var(--danger-color);
+  overflow-wrap: anywhere;
+}
+
+.oauth-card.is-waiting {
+  border-color: color-mix(in srgb, var(--primary-color) 45%, var(--border-color));
 }
 
 

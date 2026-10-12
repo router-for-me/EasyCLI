@@ -3,6 +3,7 @@ import {
   authFileCooldownResetIndex,
   changedOAuthAuthFileNames,
   dedupeAuthFiles,
+  groupOAuthAccountsByProvider,
   isOAuthCredentialFile,
   normalizeAuthFilePriorityInput,
   normalizeOAuthProvider,
@@ -218,5 +219,26 @@ describe('authentication file priority', () => {
       { name: 'muse-new.json', provider: 'meta', modtime: 2 },
       { name: 'muse-priority.json', provider: 'muse', modtime: 2, priority: 4 },
     ], 'muse')).toEqual(['muse-existing.json', 'muse-new.json']);
+  });
+});
+
+describe('OAuth login account summary', () => {
+  it('groups saved OAuth files by normalized provider and skips runtime or API key entries', () => {
+    const grouped = groupOAuthAccountsByProvider([
+      { name: 'codex-a.json', provider: 'codex', email: 'a@example.com' },
+      { name: 'codex-b.json', provider: 'openai', email: 'b@example.com', disabled: true },
+      { name: 'claude-a.json', type: 'anthropic', label: 'Work' },
+      { name: 'kimi.json', provider: 'kimi' },
+      { name: 'codex-runtime.json', provider: 'codex', runtime_only: true },
+      { name: 'codex-key.json', provider: 'codex', account_type: 'api_key' },
+      { name: 'codex-a.json', provider: 'codex', email: 'a@example.com', runtime_only: true },
+    ]);
+
+    expect(grouped.get('codex')).toEqual([
+      { name: 'codex-a.json', label: 'a@example.com', disabled: false },
+      { name: 'codex-b.json', label: 'b@example.com', disabled: true },
+    ]);
+    expect(grouped.get('claude')).toEqual([{ name: 'claude-a.json', label: 'Work', disabled: false }]);
+    expect(grouped.get('kimi')).toEqual([{ name: 'kimi.json', label: 'kimi.json', disabled: false }]);
   });
 });
