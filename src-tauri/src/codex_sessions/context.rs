@@ -1290,7 +1290,8 @@ fn tracked_copies(records: &[Value]) -> Vec<TrackedCopy> {
 }
 
 /// Groups identified copies by (item id, turn); id-less mirrors still match by
-/// text and then order within the turn.
+/// identical text within the turn. Order alone cannot distinguish an injected
+/// context message from a mirror of an actual user message.
 fn group_tracked_copies(copies: Vec<TrackedCopy>) -> Vec<TrackedGroup> {
     let mut groups: Vec<TrackedGroup> = Vec::new();
     let mut group_index_by_key: HashMap<(String, String), usize> = HashMap::new();
@@ -1318,7 +1319,6 @@ fn group_tracked_copies(copies: Vec<TrackedCopy>) -> Vec<TrackedGroup> {
 
     for orphan in orphans {
         let mut text_match: Option<usize> = None;
-        let mut order_match: Option<usize> = None;
         for (index, group) in groups.iter().enumerate() {
             if group.kind != orphan.kind {
                 continue;
@@ -1341,11 +1341,8 @@ fn group_tracked_copies(copies: Vec<TrackedCopy>) -> Vec<TrackedGroup> {
                 text_match = Some(index);
                 break;
             }
-            if order_match.is_none() {
-                order_match = Some(index);
-            }
         }
-        match text_match.or(order_match) {
+        match text_match {
             Some(index) => groups[index].copies.push(orphan),
             None => {
                 let kind = orphan.kind;
@@ -5186,6 +5183,91 @@ mod tests {
             let next = validate_raw_jsonl(std::str::from_utf8(&saved).unwrap(), "s").unwrap();
             assert_eq!(next[6].1["payload"]["last_agent_message"], json!("B"));
         }
+        #[test]
+        fn unmatched_context_does_not_modify_another_message_or_its_projection() {
+            for context_first in [true, false] {
+                for edit_context in [true, false] {
+                    for deleted in [true, false] {
+                        let response = |text: &str| json!({"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":text}]}});
+                        let mut original = vec![meta(), start("t1", 1)];
+                        let texts = if context_first {
+                            ["extra context", "actual message"]
+                        } else {
+                            ["actual message", "extra context"]
+                        };
+                        original.extend(texts.map(response));
+                        original.push(json!({"type":"event_msg","payload":{"type":"item_completed","turn_id":"t1","item":{"type":"UserMessage","id":"real","content":[{"type":"text","text":"actual message"}]}}}));
+                        let selected = if edit_context == context_first { 2 } else { 3 };
+                        let untouched = original[if selected == 2 { 3 } else { 2 }].clone();
+                        let mut request = req();
+                        request.message_updates = Some(vec![CodexSessionMessageUpdate {
+                            line_number: selected,
+                            role: None,
+                            content: (!deleted).then(|| "edited".into()),
+                            deleted: Some(deleted),
+                        }]);
+                        let (saved, plan) = build_updated_rollout(
+                            &serialize_jsonl(&original, "\n").unwrap(),
+                            "s",
+                            &request,
+                        )
+                        .unwrap();
+                        let records =
+                            validate_raw_jsonl(std::str::from_utf8(&saved).unwrap(), "s").unwrap();
+                        assert!(records
+                            .iter()
+                            .any(|(_, record)| record["payload"] == untouched["payload"]));
+                        let canonical = records
+                            .iter()
+                            .find(|(_, record)| record["payload"]["type"] == "item_completed");
+                        if edit_context {
+                            assert_eq!(canonical.unwrap().1["payload"], original[4]["payload"]);
+                            assert!(plan.updated_items.is_empty());
+                            assert!(plan.deleted_item_keys.is_empty());
+                        } else if deleted {
+                            assert!(canonical.is_none());
+                            assert!(plan
+                                .deleted_item_keys
+                                .contains(&("real".into(), "t1".into())));
+                        } else {
+                            assert_eq!(
+                                canonical.unwrap().1["payload"]["item"]["content"][0]["text"],
+                                "edited"
+                            );
+                            assert_eq!(plan.updated_items.len(), 1);
+                            assert_eq!(plan.updated_items[0].item_id, "real");
+                        }
+                        let path = db("unmatched-context-projection");
+                        let connection = Connection::open(&path).unwrap();
+                        let raw = json!({"id":"real","type":"userMessage","content":[{"type":"text","text":"actual message"}]}).to_string();
+                        connection.execute("INSERT INTO thread_items VALUES ('s','t1','real',4,1,?1,'userMessage',0,1,1)", [&raw]).unwrap();
+                        drop(connection);
+                        sync_thread_history_projection_databases(std::slice::from_ref(&path), "s", &plan)
+                            .unwrap();
+                        let connection = Connection::open(&path).unwrap();
+                        let projected: Option<String> = connection
+                            .query_row(
+                                "SELECT item_json FROM thread_items WHERE item_id='real'",
+                                [],
+                                |row| row.get(0),
+                            )
+                            .optional()
+                            .unwrap();
+                        if edit_context {
+                            assert_eq!(projected.as_deref(), Some(raw.as_str()));
+                        } else if deleted {
+                            assert!(projected.is_none());
+                        } else {
+                            let item: Value = serde_json::from_str(&projected.unwrap()).unwrap();
+                            assert_eq!(extract_content_text(&item["content"]), "edited");
+                        }
+                        drop(connection);
+                        fs::remove_dir_all(path.parent().unwrap()).unwrap();
+                    }
+                }
+            }
+        }
+
         fn db(test_name: &str) -> PathBuf {
             let root = super::test_root(test_name);
             std::fs::create_dir_all(&root).unwrap();
@@ -5807,6 +5889,8 @@ mod tests {
             for text in ["edited", "中文🙂\nsecond line"] {
                 let id = dynamic_session_id();
                 let mut original = canonical_user_records(&id);
+                // Different text representations require an explicit shared identity.
+                original[2]["metadata"] = json!({"retained_source":{"id":{"message_id":"user","turn_id":"turn"}}});
                 let image = json!({"type":"image","image_url":"https://example.invalid/image.png"});
                 original[3]["payload"]["item"]["content"] = json!([
                     {"type":"text","text":"old","text_elements":[{"byte_range":{"start":0,"end":3}}]},

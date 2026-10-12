@@ -31,6 +31,8 @@ mod provider_health;
 ))]
 mod tray;
 mod usage;
+#[cfg(target_os = "windows")]
+mod windows_frame;
 
 #[cfg(test)]
 use configuration_watcher::nearest_existing_watch_directory;
@@ -2544,6 +2546,7 @@ fn main() {
             // `app.windows` array (JSON Merge Patch) and duplicate the main window config.
             #[cfg(target_os = "windows")]
             if let Some(window) = app.get_webview_window("main") {
+                windows_frame::install(&window)?;
                 window.set_decorations(false)?;
             }
             if let Err(error) = network_proxy::refresh(app.state::<GuiConfigState>().inner()) {
