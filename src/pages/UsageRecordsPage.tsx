@@ -16,6 +16,7 @@ import {
   X,
 } from 'lucide-react';
 import { getCurrentLocale, useI18n } from '../i18n';
+import { usePrivacyMask } from '../privacy';
 import { MessageNotice, FloatingNotice, useAppNotice } from '../appNotice';
 import { calculateTokenComposition } from '../services/usageMetrics';
 import { formatDuration, formatUsageNumber } from '../services/usageNumber';
@@ -251,6 +252,7 @@ const filterOptions = (items: UsageCategory[]) => items.filter((item) => item.ke
 
 export function UsageRecordsPage() {
   const { t } = useI18n();
+  const privacy = usePrivacyMask();
   const [activeTab, setActiveTab] = useState<UsageTab>(loadTab);
   const [range, setRange] = useState<UsageRange>(loadRange);
   const [customStart, setCustomStart] = useState('');
@@ -518,7 +520,7 @@ export function UsageRecordsPage() {
               value={source}
               ariaLabel={t('usage.filter.source')}
               onChange={(value) => changeFilter(setSource, value)}
-              options={[{ value: '', label: t('usage.filter.allSources') }, ...sourceOptions.map((item) => ({ value: item.key, label: item.label }))]}
+              options={[{ value: '', label: t('usage.filter.allSources') }, ...sourceOptions.map((item) => ({ value: item.key, label: privacy.text(item.label) }))]}
             />
           </div>
           <div className="usage-filter-item">

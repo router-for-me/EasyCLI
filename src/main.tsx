@@ -6,10 +6,11 @@ import App from './App';
 import { I18nProvider } from './i18n';
 import { initializeTheme, initializeThemePreferences } from './theme';
 import { initializeUsagePreferences } from './services/usagePreferences';
+import { initializePrivacyMode } from './privacy';
 import './styles/index.css';
 
 async function bootstrap() {
-  await Promise.all([initializeUsagePreferences(), initializeThemePreferences()]);
+  await Promise.all([initializeUsagePreferences(), initializeThemePreferences(), initializePrivacyMode()]);
   if (import.meta.env.DEV && !isTauri()) {
     const { installBrowserMock } = await import('./mocks/browserMock');
     installBrowserMock();

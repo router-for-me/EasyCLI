@@ -1,6 +1,8 @@
 import { useMemo, useSyncExternalStore } from 'react';
 import { ChevronDown, CircleHelp, Clock3, Info, LoaderCircle, PauseCircle, RotateCcw, ShieldAlert } from 'lucide-react';
 import { useI18n } from '../i18n';
+import { usePrivacyMask } from '../privacy';
+import { authFileIdentities } from '../services/authFiles';
 import {
   authFileHealth,
   cooldownReasonKey,
@@ -61,7 +63,10 @@ function TimedHealthStatus(props: HealthProps) {
 
 function HealthStatus({ file, snapshot, nowMs, resetting = false, resetDisabled = false, onReset, compact = false }: HealthProps & { nowMs: number }) {
   const { t, formatNumber, formatDate } = useI18n();
-  const health = authFileHealth(file);
+  const privacy = usePrivacyMask();
+  const rawHealth = authFileHealth(file);
+  // Core status messages can quote the account that the upstream rejected.
+  const health = { ...rawHealth, message: rawHealth.message && privacy.text(rawHealth.message, authFileIdentities(file)) };
   const cooldown = summarizeAuthFileCooldowns(snapshot, nowMs);
   const hasTimers = cooldown.rows.length > 0;
   const healthy = health.label === 'authFiles.health.active';

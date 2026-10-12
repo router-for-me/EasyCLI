@@ -57,6 +57,7 @@ import {
 } from '../services/quotaCache';
 import {
   authFileName,
+  authFileIdentities,
   authFileCooldownResetIndex,
   dedupeAuthFiles,
   isOAuthCredentialFile,
@@ -85,6 +86,7 @@ import {
   type OAuthModelTarget,
 } from '../services/oauthModelSettings';
 import { getCurrentLocale, translate, useI18n } from '../i18n';
+import { usePrivacyMask } from '../privacy';
 
 type AuthFile = Record<string, unknown>;
 
@@ -120,6 +122,7 @@ const isRuntimeOnly = isRuntimeOnlyAuthFile;
 
 export function AuthFileManagementPage({ initialProvider }: { initialProvider?: string } = {}) {
   const { t } = useI18n();
+  const privacy = usePrivacyMask();
   const now = useQuotaClock();
   const { askConfirmation, confirmationDialog } = useConfirmation();
   const [fileSnapshot, setFileSnapshot] = useState<{
@@ -150,6 +153,10 @@ export function AuthFileManagementPage({ initialProvider }: { initialProvider?: 
   const [oauthModelSettings, setOauthModelSettings] = useState<OAuthModelSettings | null>(null);
   const [oauthExcludedRulesText, setOauthExcludedRulesText] = useState('');
   const [modelViewName, setModelViewName] = useState<string | null>(null);
+  // Display-only names; requests, filters and copy keep the raw file name.
+  const shownName = privacy.credentialName;
+  const shownNameFor = (name: string) =>
+    privacy.text(name, authFileIdentities(files.find((file) => fileName(file) === name) ?? {}));
   const [oauthModelSearch, setOauthModelSearch] = useState('');
   const [oauthModelLoading, setOauthModelLoading] = useState(false);
   const [oauthModelSaving, setOauthModelSaving] = useState(false);
@@ -198,7 +205,7 @@ export function AuthFileManagementPage({ initialProvider }: { initialProvider?: 
     const authIndex = authFileCooldownResetIndex(file);
     if (!authIndex || busy || loading || cooldownResetPendingRef.current.has(authIndex)
       || !normalizeAuthFileCooldowns(file.cooldowns, receivedAtMs, observedAt)?.records?.length) return;
-    const name = fileName(file);
+    const name = shownName(file);
     cooldownResetPendingRef.current.add(authIndex);
     try {
       const confirmed = await askConfirmation({
@@ -303,7 +310,7 @@ export function AuthFileManagementPage({ initialProvider }: { initialProvider?: 
     try {
       await saveOAuthModelSettings(settings, oauthExcludedRules);
       showNotice(settings.target.scope === 'credential'
-        ? { key: 'authFiles.models.credentialUpdated', variables: { name: settings.target.name } }
+        ? { key: 'authFiles.models.credentialUpdated', variables: { name: shownNameFor(settings.target.name) } }
         : { key: 'authFiles.models.updated', variables: { provider: settings.target.label } });
       oauthModelSaveRef.current = false;
       closeOauthModels();
@@ -424,7 +431,7 @@ export function AuthFileManagementPage({ initialProvider }: { initialProvider?: 
       setError(t('authFiles.runtimeDeleteError'));
       return;
     }
-    if (!await askConfirmation({ title: t('common.delete'), message: t('authFiles.deleteConfirm', { name }), confirmText: t('common.delete'), variant: 'danger' })) return;
+    if (!await askConfirmation({ title: t('common.delete'), message: t('authFiles.deleteConfirm', { name: shownName(file) }), confirmText: t('common.delete'), variant: 'danger' })) return;
     setBusy(true);
     setError('');
     try {
@@ -529,8 +536,10 @@ export function AuthFileManagementPage({ initialProvider }: { initialProvider?: 
               const icon = providerIcons[providerKey(file)] ?? geminiIcon;
               const disabled = readBoolean(file, 'disabled');
               const priority = parseAuthFilePriority(file.priority) ?? 0;
-              const identity = readString(file, 'email', 'project_id', 'label');
-              const note = readString(file, 'note');
+              const identities = authFileIdentities(file);
+              const identity = privacy.text(readString(file, 'email', 'project_id', 'label'), identities);
+              const displayName = privacy.text(name, identities);
+              const note = privacy.text(readString(file, 'note'), identities);
               const quota = quotas[quotaKey(file)] ?? idleQuota();
               const quotaProvider = quotaProviderForFile(file);
               const metadata = providerKey(file) === 'codex' ? codexMetadataFor(file) : undefined;
@@ -547,13 +556,13 @@ export function AuthFileManagementPage({ initialProvider }: { initialProvider?: 
               const cooldownResetIndex = authFileCooldownResetIndex(file);
               const resettingCooldown = Boolean(cooldownResetIndex && cooldownResetting.has(cooldownResetIndex));
               return (
-                <article className={`auth-file-card ${disabled ? 'is-disabled' : ''}`} key={key} role="listitem" aria-label={identity || name}>
+                <article className={`auth-file-card ${disabled ? 'is-disabled' : ''}`} key={key} role="listitem" aria-label={identity || displayName}>
                   <div className="auth-credential-row">
                   <header className={`auth-card-header auth-list-cell ${identity ? '' : 'filename-only'}`}>
                     <img src={icon} alt="" data-provider={providerKey(file)} className={providerKey(file) === 'devin' ? 'provider-logo devin-logo' : 'provider-logo'} />
                     <div className="auth-card-identity">
-                      <strong title={identity || name}>{identity || name}</strong>
-                      <span className="auth-card-filename" title={name}>{identity ? name : providerName(file)}</span>
+                      <strong title={identity || displayName}>{identity || displayName}</strong>
+                      <span className="auth-card-filename" title={displayName}>{identity ? displayName : providerName(file)}</span>
                       {isRuntimeOnly(file) ? <span className="auth-card-provider">{t('authFiles.runtime')}</span> : null}
                     </div>
                   </header>
@@ -569,7 +578,7 @@ export function AuthFileManagementPage({ initialProvider }: { initialProvider?: 
                   <div className="auth-list-cell auth-list-usage" data-label={t('authFiles.usage.title')}><AuthFileUsageSummary file={file} /></div>
                   <div className="auth-list-cell auth-list-quota" data-label={t('authFiles.list.quota')}>
                     {quotaProvider ? <AuthFileQuotaPanel compact dense quota={quota} file={file} disabled={busy || disabled} onRefresh={() => void refreshQuota(file)} onReset={quotaProvider === 'codex' || quotaProvider === 'claude' ? () => void resetQuota(file, quota) : undefined} /> : <span className="auth-list-muted">{t('authFiles.list.noQuota')}</span>}
-                    <QuotaActionFeedback quota={quota} name={name} />
+                    <QuotaActionFeedback quota={quota} name={displayName} />
                   </div>
                   <footer className="auth-card-actions auth-list-cell" data-label={t('authFiles.list.actions')}>
                     <div className="auth-list-icon-actions">
@@ -580,7 +589,7 @@ export function AuthFileManagementPage({ initialProvider }: { initialProvider?: 
                       <button type="button" className="auth-list-action danger" onClick={() => void deleteFile(file)} disabled={busy || resettingCooldown || isRuntimeOnly(file)} title={t('common.delete')}>{t('common.delete')}</button>
                     </div>
                     <div className="auth-list-main-actions">
-                      <button type="button" className={`${disabled ? 'primary-button' : 'secondary-button'} compact-button auth-card-toggle`} role="switch" aria-checked={!disabled} aria-label={`${t(disabled ? 'common.enable' : 'common.disable')} ${identity || name}`} onClick={() => void toggleStatus(file)} disabled={busy || resettingCooldown || !isOAuthCredentialFile(file)} title={t(isOAuthCredentialFile(file) ? disabled ? 'common.enable' : 'common.disable' : 'authFiles.fileOnly')}>{t(disabled ? 'common.enable' : 'common.disable')}</button>
+                      <button type="button" className={`${disabled ? 'primary-button' : 'secondary-button'} compact-button auth-card-toggle`} role="switch" aria-checked={!disabled} aria-label={`${t(disabled ? 'common.enable' : 'common.disable')} ${identity || displayName}`} onClick={() => void toggleStatus(file)} disabled={busy || resettingCooldown || !isOAuthCredentialFile(file)} title={t(isOAuthCredentialFile(file) ? disabled ? 'common.enable' : 'common.disable' : 'authFiles.fileOnly')}>{t(disabled ? 'common.enable' : 'common.disable')}</button>
                       <button type="button" className="auth-list-details-button" onClick={() => toggleDetails(key)} aria-expanded={expanded} aria-controls={detailsId}>{t(expanded ? 'authFiles.list.collapse' : 'authFiles.list.details')}</button>
                     </div>
                   </footer>
@@ -592,7 +601,7 @@ export function AuthFileManagementPage({ initialProvider }: { initialProvider?: 
                     {!showCooldown ? <AuthFileHealthStatus file={file} receivedAtMs={receivedAtMs} observedAt={observedAt} /> : null}
                     <AuthFileRequestStatus file={file} summary />
                     <div className="auth-card-meta">
-                      <strong title={name}>{name}</strong>
+                      <strong title={displayName}>{displayName}</strong>
                       <span>{t('authFiles.priority.button', { priority })}</span>
                       {expiryMs !== undefined ? <span>{t('authFiles.list.expiry', { time: formatDate(new Date(expiryMs).toISOString()) })}</span> : null}
                       <span>{t('authFiles.list.size')} · {readNumber(file, 'size') === null ? t('authFiles.unknownSize') : `${Math.ceil((readNumber(file, 'size') ?? 0) / 1024)} KB`}</span>
@@ -617,13 +626,13 @@ export function AuthFileManagementPage({ initialProvider }: { initialProvider?: 
       </section>
       {runtimeCount > 0 ? <p className="page-footnote">{t('authFiles.runtimeFootnote', { count: runtimeCount })}</p> : null}
 
-      {settingsName ? <AuthFileSettingsDialog key={settingsName} name={settingsName} provider={providerKey(files.find((file) => fileName(file) === settingsName) ?? {})} onClose={() => setSettingsName(null)} onSaved={() => {
-        showNotice({ key: 'authFiles.settings.updated', variables: { name: settingsName } });
+      {settingsName ? <AuthFileSettingsDialog key={settingsName} name={settingsName} displayName={shownNameFor(settingsName)} provider={providerKey(files.find((file) => fileName(file) === settingsName) ?? {})} onClose={() => setSettingsName(null)} onSaved={() => {
+        showNotice({ key: 'authFiles.settings.updated', variables: { name: shownNameFor(settingsName) } });
         setSettingsName(null);
         void loadFiles(false);
       }} /> : null}
 
-      {modelViewName ? <AuthFileModelsDialog name={modelViewName} onClose={() => setModelViewName(null)} /> : null}
+      {modelViewName ? <AuthFileModelsDialog name={modelViewName} displayName={shownNameFor(modelViewName)} onClose={() => setModelViewName(null)} /> : null}
 
       {oauthModelTarget ? (
         <div className="model-discovery-backdrop" onMouseDown={(event) => event.currentTarget === event.target && !oauthModelSaving && closeOauthModels()}>
@@ -632,7 +641,7 @@ export function AuthFileManagementPage({ initialProvider }: { initialProvider?: 
               <div>
                 <h2 id="oauth-model-title">{t(oauthModelTarget.scope === 'credential' ? 'authFiles.models.title' : 'authFiles.models.globalButton')}</h2>
                 {oauthModelTarget.scope === 'credential' ? (
-                  <span className="auth-model-target" title={oauthModelTarget.name}>{oauthModelTarget.name}</span>
+                  <span className="auth-model-target" title={shownNameFor(oauthModelTarget.name)}>{shownNameFor(oauthModelTarget.name)}</span>
                 ) : (
                   <label className="auth-model-provider">
                     <span>{t('authFiles.models.provider')}</span>

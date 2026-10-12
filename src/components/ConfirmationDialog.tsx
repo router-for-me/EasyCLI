@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, X } from 'lucide-react';
 import { useI18n } from '../i18n';
+import { usePrivacyMask } from '../privacy';
 
 export type ConfirmationOptions = {
   title: string;
@@ -16,6 +17,7 @@ type ConfirmationDialogProps = ConfirmationOptions & { onDecision: (confirmed: b
 
 export function ConfirmationDialog({ title, message, confirmText, warning, details, variant = 'primary', onDecision }: ConfirmationDialogProps) {
   const { t } = useI18n();
+  const privacy = usePrivacyMask();
   const titleId = useId();
   const descriptionId = useId();
   const dialogRef = useRef<HTMLElement>(null);
@@ -62,9 +64,9 @@ export function ConfirmationDialog({ title, message, confirmText, warning, detai
           <div><AlertTriangle size={20} aria-hidden="true" /><h2 id={titleId}>{title}</h2></div>
           <button type="button" className="icon-button quiet" onClick={() => onDecision(false)} title={t('common.close')} aria-label={t('common.close')}><X size={18} aria-hidden="true" /></button>
         </div>
-        <p id={descriptionId}>{message}</p>
-        {details?.length ? <dl className="app-confirm-details">{details.map((detail) => <div key={detail.label}><dt>{detail.label}</dt><dd>{detail.value}</dd></div>)}</dl> : null}
-        {warning ? <p className="app-confirm-warning">{warning}</p> : null}
+        <p id={descriptionId}>{privacy.text(message)}</p>
+        {details?.length ? <dl className="app-confirm-details">{details.map((detail) => <div key={detail.label}><dt>{detail.label}</dt><dd>{privacy.text(detail.value)}</dd></div>)}</dl> : null}
+        {warning ? <p className="app-confirm-warning">{privacy.text(warning)}</p> : null}
         <div className="config-dialog-actions two-actions">
           <button ref={cancelRef} type="button" className="secondary-button" onClick={() => onDecision(false)}>{t('common.cancel')}</button>
           <button type="button" className={variant === 'danger' ? 'danger-button' : 'primary-button'} onClick={() => onDecision(true)}>{confirmText ?? t('common.confirm')}</button>
