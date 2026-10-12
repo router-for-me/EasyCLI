@@ -44,7 +44,7 @@ import { PluginsPage } from './pages/PluginsPage';
 import { languageOptions, useI18n } from './i18n';
 import { AppUpdateDialog, AppUpdateProvider, useAppUpdate } from './appUpdate';
 import { appUpdateIndicatorState } from './appUpdateModel';
-import { canOpenAppPage, isAlwaysAvailablePage } from './navigation';
+import { canOpenAppPage, isAlwaysAvailablePage, requestAppNavigation } from './navigation';
 import { useThemePreference } from './theme';
 import { usePrivacyMode } from './privacy';
 import { useDialogFocusTrap } from './components/useDialogFocusTrap';
@@ -278,8 +278,8 @@ function AppContent() {
     if (!canOpenAppPage(pageId, coreReady)) {
       return;
     }
-    setActive(pageId);
-  }, [coreReady]);
+    if (pageId !== active) requestAppNavigation(() => setActive(pageId));
+  }, [active, coreReady]);
 
   useEffect(() => {
     const handleNavigate = (event: Event) => {

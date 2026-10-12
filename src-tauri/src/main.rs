@@ -2821,7 +2821,10 @@ fn main() {
             codex_sessions::delete_codex_sessions,
             codex_sessions::repair_codex_session_metadata,
             codex_sessions::preview_codex_session_index_cleanup,
-            codex_sessions::apply_codex_session_index_cleanup
+            codex_sessions::apply_codex_session_index_cleanup,
+            codex_sessions::context::get_codex_session_context,
+            codex_sessions::context::save_codex_session_context,
+            codex_sessions::context::open_codex_session_rollout
         ])
         .build(tauri::generate_context!())
         .expect("failed to build app");

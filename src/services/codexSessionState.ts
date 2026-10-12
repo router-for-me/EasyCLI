@@ -87,3 +87,73 @@ export function retainVisibleCodexSessionIds(
   const visibleIds = new Set(sessions.map((session) => session.id));
   return new Set(Array.from(selectedIds).filter((id) => visibleIds.has(id)));
 }
+
+export type CodexSessionMessageItem = {
+  id: string;
+  lineNumber: number;
+  role: 'user' | 'assistant' | 'system' | 'tool' | 'turn_context' | 'reasoning' | string;
+  timestamp: string | null;
+  content: string;
+  rawType: string;
+  model: string | null;
+  callId: string | null;
+  signatureStripped?: boolean;
+};
+
+export type CodexSessionContextStats = {
+  totalLines: number;
+  messageCount: number;
+  userMessageCount: number;
+  assistantMessageCount: number;
+  toolCount: number;
+  reasoningCount?: number;
+  fileSizeBytes: number;
+};
+
+export type CodexSessionContextDetail = {
+  id: string;
+  title: string;
+  cwd: string;
+  modelProvider: string;
+  model: string | null;
+  archived: boolean;
+  updatedAtMs: number | null;
+  rolloutPath: string | null;
+  databasePath: string | null;
+  messages: CodexSessionMessageItem[];
+  stats: CodexSessionContextStats;
+  rawJsonl: string | null;
+  rawJsonlAvailable: boolean;
+  rolloutSha256: string | null;
+};
+
+export type CodexSessionMessageUpdate = {
+  lineNumber: number;
+  role?: string;
+  content?: string;
+  deleted?: boolean;
+};
+
+export type CodexSessionNewMessage = {
+  role: string;
+  content: string;
+};
+
+export type SaveCodexSessionContextRequest = {
+  sessionId: string;
+  expectedRolloutSha256?: string;
+  title?: string;
+  cwd?: string;
+  modelProvider?: string;
+  model?: string;
+  archived?: boolean;
+  messageUpdates?: CodexSessionMessageUpdate[];
+  newMessages?: CodexSessionNewMessage[];
+};
+
+export type SaveCodexSessionContextResult = {
+  success: boolean;
+  sessionId: string;
+  backupPath: string | null;
+  message: string;
+};

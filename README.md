@@ -136,6 +136,12 @@ previous configuration.
 
 Antigravity CLI connects through CPA's Gemini-compatible API. Launch the CLI from CPA to supply its endpoint and API key for that process. Running `agy` directly requires setting those environment variables yourself.
 
+Codex **Session Management → Edit Context (Experimental)** reads messages only after a session is selected.
+Listing and pagination query SQLite, the session index and directory metadata without opening or prefetching rollouts.
+Unindexed sessions are discovered by their standard rollout filenames; missing workspace and provider details load when the editor opens.
+Metadata is collapsed by default, with message-role filters retained. Close the target session before saving; saves modify real local history and create backups.
+Manually renamed files without a session ID in their filename or a database path are not discovered by scanning their contents.
+
 ## Additional Capabilities
 
 - Manage core settings, API keys, remote management credentials, and routing strategy.

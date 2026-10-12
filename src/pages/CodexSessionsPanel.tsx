@@ -1,4 +1,5 @@
 import { MessageNotice } from '../appNotice';
+import { CodexSessionContextEditor } from './CodexSessionContextEditor';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -7,6 +8,7 @@ import {
   ArrowRight,
   Archive,
   Database,
+  FileText,
   LoaderCircle,
   RefreshCw,
   ScanSearch,
@@ -61,6 +63,7 @@ export function CodexSessionsPanel() {
   const [selectionMode, setSelectionMode] = useState(() => sessionViewCache.selectionMode);
   const [selectedIds, setSelectedIds] = useState(() => new Set(sessionViewCache.selectedIds));
   const [deleteConfirmation, setDeleteConfirmation] = useState<DeleteConfirmation | null>(null);
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [cleanupPreview, setCleanupPreview] = useState<SessionIndexCleanupPreview | null>(null);
   const [cleanupSelectedIds, setCleanupSelectedIds] = useState<Set<string>>(() => new Set());
   const [repairProgress, setRepairProgress] = useState<CodexSessionRepairProgress>({
@@ -311,6 +314,16 @@ export function CodexSessionsPanel() {
     | 'agents.sessions.progress.updatingDatabase'
     | 'agents.sessions.progress.complete');
 
+  if (editingSessionId) {
+    return (
+      <CodexSessionContextEditor
+        sessionId={editingSessionId}
+        onBack={() => setEditingSessionId(null)}
+        onSessionUpdated={() => void loadPage(currentOffset, true)}
+      />
+    );
+  }
+
   return (
     <div className="codex-sessions-page">
       <section className="codex-session-overview">
@@ -456,15 +469,27 @@ export function CodexSessionsPanel() {
                   <small>{session.modelProvider || t('agents.sessions.noProvider')}</small>
                   <time>{session.updatedAtMs ? formatDate(session.updatedAtMs, { dateStyle: 'medium', timeStyle: 'short' }) : t('agents.sessions.noTime')}</time>
                 </div>
-                <button
-                  type="button"
-                  className="danger-button compact-button codex-session-delete-button"
-                  disabled={busy}
-                  onClick={() => requestDelete([session])}
-                >
-                  <Trash2 size={14} />
-                  {t('common.delete')}
-                </button>
+                <div className="codex-session-actions">
+                  <button
+                    type="button"
+                    className="secondary-button compact-button codex-session-context-button"
+                    disabled={busy}
+                    onClick={() => setEditingSessionId(session.id)}
+                    title={t('agents.sessions.editContext')}
+                  >
+                    <FileText size={14} />
+                    <span>{t('agents.sessions.editContext')}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="danger-button compact-button codex-session-delete-button"
+                    disabled={busy}
+                    onClick={() => requestDelete([session])}
+                  >
+                    <Trash2 size={14} />
+                    {t('common.delete')}
+                  </button>
+                </div>
               </article>
             ))}
           </div>
