@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useReducer, useRef, useState } from 'rea
 import { NoticePortal } from './components/NoticePortal';
 import { AlertCircle, CheckCircle2, Info, X } from 'lucide-react';
 import { useI18n } from './i18n';
+import { usePrivacyMask } from './privacy';
 import type { MessageKey } from './i18n/resources';
 import {
   appNoticeReducer,
@@ -54,10 +55,12 @@ export function InlineNotice({
   className = '',
 }: InlineNoticeProps) {
   const { t } = useI18n();
+  const privacy = usePrivacyMask();
 
-  const message = notice
+  // Notices often echo credential names or backend errors that contain them.
+  const message = privacy.text(notice
     ? typeof notice.message === 'string' ? notice.message : t(notice.message.key, notice.message.variables)
-    : '';
+    : '');
 
   if (!notice || !message.trim()) {
     return null;

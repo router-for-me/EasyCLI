@@ -235,10 +235,10 @@ describe('OAuth login account summary', () => {
     ]);
 
     expect(grouped.get('codex')).toEqual([
-      { name: 'codex-a.json', label: 'a@example.com', disabled: false },
-      { name: 'codex-b.json', label: 'b@example.com', disabled: true },
+      { name: 'codex-a.json', label: 'a@example.com', disabled: false, identities: ['a@example.com'] },
+      { name: 'codex-b.json', label: 'b@example.com', disabled: true, identities: ['b@example.com'] },
     ]);
-    expect(grouped.get('claude')).toEqual([{ name: 'claude-a.json', label: 'Work', disabled: false }]);
-    expect(grouped.get('kimi')).toEqual([{ name: 'kimi.json', label: 'kimi.json', disabled: false }]);
+    expect(grouped.get('claude')).toEqual([{ name: 'claude-a.json', label: 'Work', disabled: false, identities: [] }]);
+    expect(grouped.get('kimi')).toEqual([{ name: 'kimi.json', label: 'kimi.json', disabled: false, identities: [] }]);
   });
 });

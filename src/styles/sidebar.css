@@ -447,6 +447,43 @@
   color: var(--sidebar-text-strong);
 }
 
+/* Privacy: a single toggle beside the theme control; accent while masking. */
+
+.sidebar-utility-actions {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 4px;
+}
+
+.sidebar-privacy-toggle {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--sidebar-icon);
+  transition: background-color 150ms ease, color 150ms ease, transform 120ms var(--sidebar-ease-out);
+}
+
+@media (hover: hover) {
+  .sidebar-privacy-toggle:hover {
+    background: var(--sidebar-hover-bg);
+    color: var(--sidebar-text-strong);
+  }
+}
+
+.sidebar-privacy-toggle:active {
+  transform: scale(0.92);
+}
+
+.sidebar-privacy-toggle.active {
+  color: var(--ui-accent);
+}
+
 /* ---------- Motion & contrast preferences ---------- */
 
 @media (prefers-reduced-motion: reduce) {
@@ -458,7 +495,8 @@
     animation-name: sidebar-fade-in;
   }
 
-  .sidebar-theme-selector button:active {
+  .sidebar-theme-selector button:active,
+  .sidebar-privacy-toggle:active {
     transform: none;
   }
 }

@@ -5,6 +5,7 @@ import { save } from '@tauri-apps/plugin-dialog';
 import { ArrowDown, ArrowUp, Brain, ChevronLeft, ChevronRight, Columns3, Copy, Database, DatabaseZap, Download, RotateCcw, TriangleAlert, X } from 'lucide-react';
 import { FloatingNotice, useAppNotice } from '../appNotice';
 import { getCurrentLocale, useI18n } from '../i18n';
+import { usePrivacyMask } from '../privacy';
 import type { MessageKey } from '../i18n/resources';
 import { formatCacheReadRate, formatGenerationSpeed } from '../services/usageMetrics';
 import { formatDuration, formatUsageNumber } from '../services/usageNumber';
@@ -324,17 +325,19 @@ function CopyErrorButton({ detail, onCopy }: { detail: string; onCopy: (detail: 
 
 function UsageResultCell({ record, onCopyError }: { record: UsageRecord; onCopyError: (detail: string) => void }) {
   const { t } = useI18n();
+  const privacy = usePrivacyMask();
   const state = record.canceled ? 'canceled' : record.failed ? 'failed' : 'success';
   const detail = usageResultDetail(record);
+  const shownDetail = privacy.text(detail);
   return (
-    <td className="usage-result-cell align-left" title={detail || t(`usage.result.${state}`)}>
+    <td className="usage-result-cell align-left" title={shownDetail || t(`usage.result.${state}`)}>
       <span className={`usage-result ${state}`}>
         <span className="usage-result-dot" />
         {t(`usage.result.${state}`)}
       </span>
       {detail ? (
         <div className={`usage-result-detail-line${state === 'success' ? '' : ' usage-result-detail'}`}>
-          <small title={detail}>{detail}</small>
+          <small title={shownDetail}>{shownDetail}</small>
           <CopyErrorButton detail={detail} onCopy={onCopyError} />
         </div>
       ) : null}
@@ -358,6 +361,7 @@ function UsageEventCell({
   onCopyError: (detail: string) => void;
 }) {
   const { t, formatDate } = useI18n();
+  const privacy = usePrivacyMask();
 
   switch (columnKey) {
     case 'time':
@@ -421,7 +425,7 @@ function UsageEventCell({
     }
     case 'source':
       {
-        const keyLabel = record.api_key_remark || record.api_key_display || '—';
+        const keyLabel = privacy.text(record.api_key_remark || record.api_key_display || '—');
       return (
         <td className="usage-td-source align-left" title={keyLabel}>
           <span className="usage-event-source" title={keyLabel}>
@@ -434,7 +438,7 @@ function UsageEventCell({
       return (
         <td className="usage-stacked-cell usage-td-key align-left">
           <strong title={record.api_key_display || undefined}>{record.api_key_display || '—'}</strong>
-          <small title={record.api_key_remark}>{record.api_key_remark || noRemarkLabel}</small>
+          <small title={privacy.text(record.api_key_remark)}>{privacy.text(record.api_key_remark) || noRemarkLabel}</small>
         </td>
       );
     case 'cache':
@@ -518,6 +522,7 @@ export function EventsView({
   loading?: boolean;
 }) {
   const { t } = useI18n();
+  const privacy = usePrivacyMask();
   const [widths, setWidths] = useState<Record<EventColumnKey, number>>(getInitialColumnWidths);
   const widthsRef = useRef(widths);
   const [visibleColumnKeys, setVisibleColumnKeys] = useState<EventColumnKey[]>(getInitialVisibleColumns);
@@ -814,7 +819,7 @@ export function EventsView({
                     {!collapseErrors && detail ? (
                       <tr className="usage-event-error-row">
                         <td colSpan={visibleColumns.length}>
-                          <div className="usage-event-error-message">{detail}<CopyErrorButton detail={detail} onCopy={(value) => void copyError(value)} /></div>
+                          <div className="usage-event-error-message">{privacy.text(detail)}<CopyErrorButton detail={detail} onCopy={(value) => void copyError(value)} /></div>
                         </td>
                       </tr>
                     ) : null}

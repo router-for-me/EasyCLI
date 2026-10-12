@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Check, LoaderCircle, Upload, X } from 'lucide-react';
 import vertexIcon from '../assets/icons/vertex.svg';
 import { useI18n } from '../i18n';
+import { usePrivacyMask } from '../privacy';
 import { importVertexCredential, type VertexImportResult } from '../services/vertexImport';
 import { useDialogFocusTrap } from '../components/useDialogFocusTrap';
 import './VertexLoginCard.css';
@@ -34,6 +35,7 @@ export function VertexLoginCard() {
 
 function VertexImportDialog({ onClose }: { onClose: () => void }) {
   const { t } = useI18n();
+  const privacy = usePrivacyMask();
   const [file, setFile] = useState<File | null>(null);
   const [location, setLocation] = useState('');
   const [loading, setLoading] = useState(false);
@@ -99,14 +101,14 @@ function VertexImportDialog({ onClose }: { onClose: () => void }) {
             onChange={event => { setLocation(event.currentTarget.value); setError(''); setResult(null); }} />
           <small>{t('oauth.vertex.locationHint')}</small>
         </label>
-        {error ? <p role="alert" className="vertex-login-error">{error}</p> : null}
+        {error ? <p role="alert" className="vertex-login-error">{privacy.text(error)}</p> : null}
         {result ? <div role="status" className="vertex-login-result">
           <p><Check size={16} aria-hidden="true" />{t('oauth.vertex.success')}</p>
           <dl>
-            <dt>{t('oauth.vertex.project')}</dt><dd>{result.projectId}</dd>
-            <dt>{t('oauth.vertex.email')}</dt><dd>{result.email}</dd>
+            <dt>{t('oauth.vertex.project')}</dt><dd>{privacy.identifier(result.projectId)}</dd>
+            <dt>{t('oauth.vertex.email')}</dt><dd>{privacy.identifier(result.email)}</dd>
             <dt>{t('oauth.vertex.location')}</dt><dd>{result.location}</dd>
-            <dt>{t('oauth.vertex.authFile')}</dt><dd>{result.authFile}</dd>
+            <dt>{t('oauth.vertex.authFile')}</dt><dd>{privacy.text(result.authFile, [result.projectId, result.email])}</dd>
           </dl>
         </div> : null}
       </div>

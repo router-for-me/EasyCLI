@@ -21,6 +21,7 @@ mod network_proxy;
 mod native_i18n;
 mod oauth_browser;
 mod plugins;
+mod privacy_mode;
 mod progress;
 mod provider_health;
 #[cfg(any(
@@ -2685,6 +2686,8 @@ fn main() {
             desktop_theme::get_linux_system_theme,
             desktop_theme::get_theme_preference,
             desktop_theme::save_theme_preference,
+            privacy_mode::get_privacy_mode,
+            privacy_mode::save_privacy_mode,
             health_check,
             detect_core_platform,
             get_core_status,

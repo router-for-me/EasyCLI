@@ -10,6 +10,8 @@ export type MessageVariables = Record<string, string | number>;
 export const zhTW: Record<MessageKey, string> = {
   ...createTraditionalMessages(zhCN),
   'oauth.vertex.title': 'Vertex JSON 登入',
+  'app.privacy.enable': '開啟隱私模式，隱藏帳號信箱等身分資訊',
+  'app.privacy.disable': '關閉隱私模式，顯示完整帳號資訊',
   'oauth.vertex.locationPlaceholder': 'us-central1',
   'oauth.vertex.cardHint': '透過匯入 Google 服務帳號 JSON 登入 Vertex AI。',
   'oauth.vertex.chooseFile': '選擇檔案',

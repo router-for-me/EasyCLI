@@ -8,6 +8,8 @@ import {
   Check,
   ChevronsUpDown,
   ExternalLink,
+  Eye,
+  EyeOff,
   Gauge,
   History,
   House,
@@ -44,6 +46,7 @@ import { AppUpdateDialog, AppUpdateProvider, useAppUpdate } from './appUpdate';
 import { appUpdateIndicatorState } from './appUpdateModel';
 import { canOpenAppPage, isAlwaysAvailablePage } from './navigation';
 import { useThemePreference } from './theme';
+import { usePrivacyMode } from './privacy';
 import { useDialogFocusTrap } from './components/useDialogFocusTrap';
 
 const QQ_CONTACT_URL = 'https://qm.qq.com/q/3queDaIG';
@@ -160,6 +163,7 @@ function AppContent() {
   const [active, setActive] = useState<PageId>('home');
   const [languageMenuOpen, setLanguageMenuOpen] = useState(false);
   const [theme, setTheme] = useThemePreference();
+  const [privacyMode, setPrivacyMode] = usePrivacyMode();
   const [windowsClosePrompt, setWindowsClosePrompt] = useState<WindowsClosePrompt | null>(null);
   const closeDialogRef = useDialogFocusTrap<HTMLElement>({
     active: Boolean(windowsClosePrompt),
@@ -467,6 +471,19 @@ function AppContent() {
                   ) : null}
                 </div>
 
+                <div className="sidebar-utility-actions">
+                <button
+                  type="button"
+                  className={`sidebar-privacy-toggle${privacyMode ? ' active' : ''}`}
+                  aria-pressed={privacyMode}
+                  aria-label={t('app.privacy.label')}
+                  title={t(privacyMode ? 'app.privacy.disable' : 'app.privacy.enable')}
+                  onClick={() => setPrivacyMode(!privacyMode)}
+                >
+                  {privacyMode
+                    ? <EyeOff size={14} strokeWidth={1.75} aria-hidden="true" />
+                    : <Eye size={14} strokeWidth={1.75} aria-hidden="true" />}
+                </button>
                 <div
                   className="sidebar-theme-selector"
                   role="group"
@@ -485,6 +502,7 @@ function AppContent() {
                       <ThemeIcon size={14} strokeWidth={1.75} aria-hidden="true" />
                     </button>
                   ))}
+                </div>
                 </div>
               </div>
             </div>
