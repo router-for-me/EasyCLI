@@ -26,7 +26,7 @@ const base = process.env.DEVIN_TEST_BASE_URL || 'http://127.0.0.1:1421';
     assert.equal((await calls()).filter(call => call.cmd === 'submit_oauth_callback').length, 0);
     await card().getByRole('textbox').fill('http://127.0.0.1:8317/callback?state=attempt-1&code=code');
     await click('Submit Callback');
-    await card().getByText('New account added and saved to Authentication Files.', { exact: true }).waitFor();
+    await card().getByText('Authorization successful. Credentials saved to Authentication Files.', { exact: true }).waitFor();
     assert.equal(await card().getByRole('textbox').count(), 0);
 
     await open();
@@ -38,7 +38,7 @@ const base = process.env.DEVIN_TEST_BASE_URL || 'http://127.0.0.1:1421';
     await page.waitForFunction(() => window.devinFixture.attempts === 2);
     await page.evaluate(() => window.devinFixture.releaseStatus());
     await page.waitForTimeout(150);
-    assert.equal(await card().getByText('New account added and saved to Authentication Files.', { exact: true }).count(), 0);
+    assert.equal(await card().getByText('Authorization successful. Credentials saved to Authentication Files.', { exact: true }).count(), 0);
     assert.ok(await card().getByRole('textbox').isVisible());
     assert.ok((await calls()).some(call => call.cmd === 'management_request' && call.args.request.path === '/oauth/session' && call.args.request.query.state === 'attempt-1'));
     await page.evaluate(() => { window.devinFixture.cancelError = true; });

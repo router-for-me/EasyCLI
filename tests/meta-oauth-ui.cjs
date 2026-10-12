@@ -52,7 +52,7 @@ const base = process.env.META_OAUTH_TEST_BASE_URL || process.env.DEVIN_TEST_BASE
     // Complete the flow and confirm the newly written credential is assigned priority zero.
     await waitForStatusCall();
     await page.evaluate(() => { window.metaFixture.status = 'ok'; });
-    await card.getByText('New account added and saved to Authentication Files.', { exact: true }).waitFor();
+    await card.getByText('Authorization successful. Credentials saved to Authentication Files.', { exact: true }).waitFor();
     assert.ok((await fixture()).priorityPatches.some(patch => patch.name === 'meta-oauth-1.json' && patch.priority === 0));
     assert.equal(await card.getByText('META-CODE-1', { exact: true }).count(), 0, 'success clears the device code');
 
@@ -71,7 +71,7 @@ const base = process.env.META_OAUTH_TEST_BASE_URL || process.env.DEVIN_TEST_BASE
     assert.equal(await refreshed.getByText('META-CODE-1', { exact: true }).count(), 0);
     await page.evaluate(() => { if (window.metaFixture.releaseStatus) window.metaFixture.releaseStatus(); });
     await page.waitForTimeout(100);
-    assert.equal(await refreshed.getByText('New account added and saved to Authentication Files.', { exact: true }).count(), 0, 'stale attempt must not complete refreshed login');
+    assert.equal(await refreshed.getByText('Authorization successful. Credentials saved to Authentication Files.', { exact: true }).count(), 0, 'stale attempt must not complete refreshed login');
     assert.ok(await refreshed.getByText('META-CODE-2', { exact: true }).isVisible());
 
     // Error state can be retried and a later success still clears its device code.
@@ -87,7 +87,7 @@ const base = process.env.META_OAUTH_TEST_BASE_URL || process.env.DEVIN_TEST_BASE
     await retry.getByText('META-CODE-2', { exact: true }).waitFor();
     await page.waitForFunction(() => window.metaFixture.statusCalls > 1);
     await page.evaluate(() => { window.metaFixture.status = 'ok'; });
-    await retry.getByText('New account added and saved to Authentication Files.', { exact: true }).waitFor();
+    await retry.getByText('Authorization successful. Credentials saved to Authentication Files.', { exact: true }).waitFor();
 
     // Easy mode uses the same Meta flow and keeps the browser selection explicit.
     await open('view=easy&locale=en&openError=1');
