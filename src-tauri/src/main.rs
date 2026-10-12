@@ -2536,6 +2536,15 @@ fn main() {
 
     let app = app
         .setup(move |app| {
+            // Configure before showing the initially hidden window to avoid a native titlebar flash.
+            // Other platforms retain their native window decorations. The frontend replacement
+            // (src/components/WindowFrame.tsx) uses the same platform condition synchronously.
+            // This stays a runtime call because tauri.windows.conf.json would replace the whole
+            // `app.windows` array (JSON Merge Patch) and duplicate the main window config.
+            #[cfg(target_os = "windows")]
+            if let Some(window) = app.get_webview_window("main") {
+                window.set_decorations(false)?;
+            }
             if let Err(error) = network_proxy::refresh(app.state::<GuiConfigState>().inner()) {
                 eprintln!("Failed to read startup proxy settings: {error}");
             }
