@@ -23,6 +23,7 @@ import devinIcon from '../assets/icons/devin.svg';
 import kimiIcon from '../assets/icons/kimi-light.svg';
 import metaIcon from '../assets/icons/meta.svg';
 import { useI18n } from '../i18n';
+import { usePrivacyMask } from '../privacy';
 import { FloatingNotice, useAppNotice } from '../appNotice';
 import { oauthSubpages, type OAuthSubpage } from '../oauthNavigation';
 import {
@@ -196,6 +197,7 @@ export function OAuthManagementPage() {
 
 export function OAuthLoginPage({ onOpenAuthFiles }: { onOpenAuthFiles?: (provider?: string) => void } = {}) {
   const { t } = useI18n();
+  const privacy = usePrivacyMask();
   const [accounts, setAccounts] = useState<Map<string, OAuthAccountSummary[]> | null>(null);
   const [states, setStates] = useState<Partial<Record<OAuthProviderId, OAuthProviderState>>>(
     cachedOAuthProviderStates,
@@ -637,11 +639,14 @@ export function OAuthLoginPage({ onOpenAuthFiles }: { onOpenAuthFiles?: (provide
               <div className="oauth-card-body">
                 {hasAccounts ? (
                   <ul className="oauth-account-list" aria-label={t('oauth.accounts.listLabel', { provider: provider.name })}>
-                    {providerAccounts.slice(0, OAUTH_ACCOUNT_PREVIEW_LIMIT).map((account) => (
-                      <li key={account.name} className={account.disabled ? 'disabled' : undefined} title={account.disabled ? `${account.label} · ${t('oauth.accounts.disabled')}` : account.label}>
-                        {account.label}
-                      </li>
-                    ))}
+                    {providerAccounts.slice(0, OAUTH_ACCOUNT_PREVIEW_LIMIT).map((account) => {
+                      const label = privacy.text(account.label, account.identities);
+                      return (
+                        <li key={account.name} className={account.disabled ? 'disabled' : undefined} title={account.disabled ? `${label} · ${t('oauth.accounts.disabled')}` : label}>
+                          {label}
+                        </li>
+                      );
+                    })}
                     {providerAccounts.length > OAUTH_ACCOUNT_PREVIEW_LIMIT ? (
                       <li className="more">{t('oauth.accounts.more', { count: providerAccounts.length - OAUTH_ACCOUNT_PREVIEW_LIMIT })}</li>
                     ) : null}
@@ -660,7 +665,7 @@ export function OAuthLoginPage({ onOpenAuthFiles }: { onOpenAuthFiles?: (provide
                 ) : state.status === 'error' ? (
                   <div className="oauth-flow-status error" role="alert">
                     <CircleAlert size={15} aria-hidden="true" />
-                    <span>{t('oauth.flow.error', { error: state.error || t('oauth.authFailed') })}</span>
+                    <span>{t('oauth.flow.error', { error: privacy.text(state.error || t('oauth.authFailed')) })}</span>
                   </div>
                 ) : null}
                 <p className="oauth-hint">{t(provider.id === 'devin' ? 'oauth.devinHint' : provider.id === 'meta' ? 'oauth.metaHint' : 'oauth.hint')}</p>

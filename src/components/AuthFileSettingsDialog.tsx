@@ -9,8 +9,10 @@ import './AuthFileSettingsDialog.css';
 import { CredentialAdvancedFields, CredentialHeadersEditor, credentialProviderKey } from './CredentialAdvancedFields';
 import { modelSearchText, type ModelOption } from '../services/modelService';
 
-export function AuthFileSettingsDialog({ name, provider = '', onClose, onSaved }: {
+export function AuthFileSettingsDialog({ name, displayName = name, provider = '', onClose, onSaved }: {
   name: string;
+  /** Privacy-masked name for display; `name` stays the request key. */
+  displayName?: string;
   provider?: string;
   onClose: () => void;
   onSaved: () => void;
@@ -136,7 +138,7 @@ export function AuthFileSettingsDialog({ name, provider = '', onClose, onSaved }
       }}>
       <form onSubmit={(event) => { event.preventDefault(); void save(); }}>
         <header className="credential-settings-heading">
-          <div><h2 id={`${id}-title`}><Settings2 size={20} />{t('authFiles.settings.title')}</h2><p>{name}</p></div>
+          <div><h2 id={`${id}-title`}><Settings2 size={20} />{t('authFiles.settings.title')}</h2><p>{displayName}</p></div>
           <button type="button" className="icon-button quiet" disabled={saving} onClick={close} aria-label={t('common.close')}><X size={18} /></button>
         </header>
         <div className="credential-settings-body" aria-busy={loading}>

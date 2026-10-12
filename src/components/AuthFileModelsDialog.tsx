@@ -8,10 +8,12 @@ import { useDialogFocusTrap } from './useDialogFocusTrap';
 
 type AuthFileModelsDialogProps = {
   name: string;
+  /** Privacy-masked name for display; `name` stays the request key. */
+  displayName?: string;
   onClose: () => void;
 };
 
-export function AuthFileModelsDialog({ name, onClose }: AuthFileModelsDialogProps) {
+export function AuthFileModelsDialog({ name, displayName = name, onClose }: AuthFileModelsDialogProps) {
   const { t } = useI18n();
   const [models, setModels] = useState<OAuthModelDefinition[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,7 +53,7 @@ export function AuthFileModelsDialog({ name, onClose }: AuthFileModelsDialogProp
         <div className="model-discovery-header">
           <div>
             <h2 id="auth-model-view-title">{t('authFiles.models.viewTitle')}</h2>
-            <span className="auth-model-target">{name}</span>
+            <span className="auth-model-target">{displayName}</span>
             <span>{t('authFiles.models.viewDescription')}</span>
           </div>
           <button type="button" className="icon-button quiet" onClick={onClose} title={t('common.close')} aria-label={t('common.close')}><X size={18} aria-hidden="true" /></button>
