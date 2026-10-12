@@ -42,3 +42,20 @@ export const settingsMessages = {
   nativeRouting: text('凭据选择与会话', 'Credential selection & sessions', '認証情報の選択とセッション'),
   nativeRetry: text('重试与冷却', 'Retries & cooldowns', '再試行とクールダウン'),
 } satisfies Record<string, TemplateText>;
+
+// The settings page is mounted only while active, so another page hands over the
+// field to open once instead of dispatching an event nobody is listening to yet.
+let requestedSettingPath: string | null = null;
+export const openSettingField = (path: readonly string[]) => {
+  requestedSettingPath = path.join('.');
+  window.dispatchEvent(new CustomEvent('app:navigate', { detail: 'config' }));
+};
+export const takeRequestedSettingField = () => {
+  const path = requestedSettingPath;
+  requestedSettingPath = null;
+  for (const category of settingsCategories) for (const group of settingsTemplateGroups[category.id]) {
+    const index = group.fields.findIndex(field => field.path.join('.') === path);
+    if (index >= 0) return { category: category.id, target: `config-group-${group.id}`, field: `template-field-${group.id}-${index}` };
+  }
+  return null;
+};

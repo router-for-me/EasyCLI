@@ -48,7 +48,7 @@ import { SettingsHelp } from '../components/SettingsHelp';
 import { templateMessages, templateText } from '../i18n/templateConfig';
 import {
   settingsCategories, settingsTemplateGroups,
-  allSettingsTemplateGroups, settingsMessages, type SettingsCategory,
+  allSettingsTemplateGroups, settingsMessages, takeRequestedSettingField, type SettingsCategory,
 } from '../services/settingsNavigation';
 
 type CoreConfigSettings = {
@@ -1050,6 +1050,10 @@ export function ConfigPanelPage() {
     activateConfigSubpage(destination.category);
     setPendingDestination(destination);
   };
+  useEffect(() => {
+    const destination = takeRequestedSettingField();
+    if (destination) navigateToSetting(destination);
+  }, []);
   const nativeDirty = {
     keys: false, management: Boolean(managementSecretDraft || managementSecretConfirm),
     network: networkSettingsDirty, tls: tlsSettingsDirty, routing: sessionRoutingDirty,

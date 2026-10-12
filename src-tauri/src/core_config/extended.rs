@@ -69,6 +69,7 @@ const PATHS: &[(&str, &str)] = &[
     ("server/discovery", "discovery"),
     ("server/tls", "tls"),
     ("server/commercial-mode", "commercial-mode"),
+    ("server/github-token", "github-token"),
     ("management", "remote-management"),
     ("credentials/concurrency", "credential-concurrency"),
     ("credentials/in-flight", "credential-in-flight"),
@@ -316,6 +317,7 @@ const OBJECT_PATHS: &[&str] = &[
     "oauth/providers/xai",
 ];
 const FIELD_GROUPS: &[(&str, &str, &str)] = &[
+    ("server", "string", "github-token"),
     ("management", "bool", "allow-remote disable-control-panel disable-auto-update-panel"),
     ("management", "string", "base-url panel-github-repository"),
     ("credentials/concurrency", "string", "cpa-heartbeat-timeout cpa-cancel-bound reclaim-grace cleanup-interval release-flush-interval release-max-backoff busy-retry-min busy-retry-max"),
@@ -1513,6 +1515,60 @@ client: {codex: {optimize-multi-agent-v2: false}}
     }
 
     #[test]
+    fn extended_github_token_is_writable_in_native_and_legacy_layouts() {
+        let native = "config-version: 8\nserver: {port: 8317}\n";
+        let (rendered, result) = prepare_patch(
+            native,
+            &[change(
+                native,
+                "server/github-token",
+                json!("github-secret"),
+                false,
+            )],
+        )
+        .unwrap();
+        assert_eq!(result.config["server"]["github-token"], "github-secret");
+        let document: serde_norway::Value = serde_norway::from_str(&rendered).unwrap();
+        assert_eq!(document["server"]["github-token"], "github-secret");
+        assert_eq!(document["server"]["port"], 8317);
+
+        let configured =
+            "config-version: 8\nserver: {github-token: kept-secret}\nplugins: {enabled: false}\n";
+        let (rendered, _) = prepare_patch(
+            configured,
+            &[change(configured, "plugins/enabled", json!(true), false)],
+        )
+        .unwrap();
+        let document: serde_norway::Value = serde_norway::from_str(&rendered).unwrap();
+        assert_eq!(document["server"]["github-token"], "kept-secret");
+
+        let legacy = "port: 8317\ngithub-token: old-secret\n";
+        let view = extended_config_view(&serde_norway::from_str(legacy).unwrap()).unwrap();
+        assert_eq!(view["server"]["github-token"], "old-secret");
+        let (rendered, _) = prepare_patch(
+            legacy,
+            &[change(
+                legacy,
+                "server/github-token",
+                json!("new-secret"),
+                false,
+            )],
+        )
+        .unwrap();
+        let document: serde_norway::Value = serde_norway::from_str(&rendered).unwrap();
+        assert_eq!(document["github-token"], "new-secret");
+        assert!(document.get("server").is_none());
+
+        let (rendered, _) = prepare_patch(
+            legacy,
+            &[change(legacy, "server/github-token", Json::Null, true)],
+        )
+        .unwrap();
+        let document: serde_norway::Value = serde_norway::from_str(&rendered).unwrap();
+        assert!(document.get("github-token").is_none());
+    }
+
+    #[test]
     fn extended_restart_hint_distinguishes_live_updates_from_startup_settings() {
         let content = "config-version: 8\n";
         for (path, value) in [
@@ -1523,6 +1579,7 @@ client: {codex: {optimize-multi-agent-v2: false}}
             ("observability/pprof/addr", json!("127.0.0.1:9316")),
             ("plugins/dir", json!("custom-plugins")),
             ("plugins/enabled", json!(true)),
+            ("server/github-token", json!("github-secret")),
         ] {
             let (_, result) =
                 prepare_patch(content, &[change(content, path, value, false)]).unwrap();

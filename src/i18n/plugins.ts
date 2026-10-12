@@ -69,6 +69,8 @@ const messages = {
   openExternal: ['在浏览器打开', 'Open in browser', 'ブラウザーで開く'],
   sourceErrors: ['部分来源读取失败', 'Some sources could not be loaded', '一部のソースを読み込めませんでした'],
   refreshFailed: ['操作已完成，但刷新失败，请重试刷新。', 'The operation completed, but refreshing failed. Retry the refresh.', '操作は完了しましたが、再読み込みに失敗しました。再試行してください。'],
+  rateLimitHint: ['GitHub API 请求次数已达上限，配置 GitHub 访问令牌可提高额度。', 'GitHub API rate limit reached. A GitHub access token raises the limit.', 'GitHub API のリクエスト上限に達しました。GitHub アクセストークンを設定すると上限が緩和されます。'],
+  configureToken: ['配置访问令牌', 'Configure token', 'トークンを設定'],
 } as const;
 
 export function pluginText(key: keyof typeof messages, locale: AppLocale = getCurrentLocale()): string {
