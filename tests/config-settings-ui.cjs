@@ -21,6 +21,7 @@ const viewports = [{ width: 640, height: 600 }, { width: 964, height: 700 }, { w
         configFile: false,
         root: path.resolve(__dirname, '..'),
         plugins: [react()],
+        optimizeDeps: { entries: ['index.html'] },
         logLevel: 'error',
         server: { host: '127.0.0.1', port: 1421, strictPort: false },
       });
@@ -249,7 +250,7 @@ const viewports = [{ width: 640, height: 600 }, { width: 964, height: 700 }, { w
 
         await tab('routing');
         assert.equal(await page.locator('#config-routing-section-title').isVisible(), true);
-        assert.equal(await page.locator('#config-retry-section-title').isVisible(), true);
+        assert.equal(await page.locator('#config-retry-section-title').isVisible(), false);
         await templateVisible('routing-advanced');
         await templateVisible('extensions-concurrency');
         if (viewport.width >= 964) {
@@ -257,13 +258,14 @@ const viewports = [{ width: 640, height: 600 }, { width: 964, height: 700 }, { w
           const ttl = await page.locator('#config-input-config-network-sessionTtl').boundingBox();
           assert.ok(toggle.width > 0 && ttl.width > 0, `${label}: controls remain visible inside their card`);
           assert.ok(ttl.width <= 200, `${label}: duration input stays compact`);
-          const retryInput = await page.locator('#config-input-config-network-requestRetry').boundingBox();
-          assert.ok(retryInput.width <= 160, `${label}: retry count stays compact`);
         }
         await templateVisible('extensions-plugins', false);
         await noOverflow('routing and stability');
+        await tab('requests');
+        assert.equal(await retrySection.isVisible(), true);
         if (viewport.width >= 964) {
           const value = await page.locator('#config-input-config-network-requestRetry').boundingBox();
+          assert.ok(value.width <= 160, `${label}: retry count stays compact`);
           const caption = await page.locator('label[for="config-input-config-network-requestRetry"]').boundingBox();
           assert.ok(Math.abs(value.y + value.height / 2 - caption.y - caption.height / 2) <= 2,
             `${label}: compact numeric settings keep labels next to their values`);
@@ -272,6 +274,7 @@ const viewports = [{ width: 640, height: 600 }, { width: 964, height: 700 }, { w
               `${label}: paired routing cards should not create excessive vertical whitespace`);
           }
         }
+        await tab('routing');
         await page.locator('.template-config-card:visible').last().scrollIntoViewIfNeeded();
         await settle();
         const pinnedCategory = await page.locator('#config-subpage-tab-routing').evaluate(element => {
@@ -387,7 +390,7 @@ const viewports = [{ width: 640, height: 600 }, { width: 964, height: 700 }, { w
         await noOverflow('search results');
         await reachable(results.getByRole('button').first(), 'search result');
         await results.getByRole('button', { name: locale === 'en' ? /Retries & cooldowns/ : /重试与冷却/ }).first().click();
-        assert.equal(await page.locator('#config-subpage-tab-routing').getAttribute('aria-selected'), 'true');
+        assert.equal(await page.locator('#config-subpage-tab-requests').getAttribute('aria-selected'), 'true');
         await reachable(page.locator('#config-retry-section-title'), 'search target');
         await search.fill(locale === 'en' ? 'Sensitive Words' : '敏感词');
         await results.getByRole('button').first().waitFor();
@@ -472,20 +475,32 @@ const viewports = [{ width: 640, height: 600 }, { width: 964, height: 700 }, { w
           const remoteManagement = page.locator('#template-management-0');
           await remoteManagement.check();
           assert.equal(await hasDirtyMarker('general'), true, `${label}: template drafts mark their category`);
-          await tab('routing');
+          await tab('requests');
           const retryInput = retrySection.locator('input[type="text"]').first();
           await retryInput.fill('5');
-          assert.equal(await hasDirtyMarker('routing'), true, `${label}: core drafts mark their category`);
+          const cooling = page.getByRole('switch', { name: locale === 'en' ? 'Enable cooldowns' : '启用冷却', exact: true });
+          assert.equal(await cooling.isChecked(), true, 'existing false disable-cooling means enabled');
+          await cooling.uncheck();
+          assert.equal(await hasDirtyMarker('requests'), true, `${label}: core drafts mark their category`);
           await tab('software');
-          assert.equal(await hasDirtyMarker('routing'), true, `${label}: dirty category remains marked while inactive`);
-          await tab('routing');
+          assert.equal(await hasDirtyMarker('requests'), true, `${label}: dirty category remains marked while inactive`);
+          await tab('requests');
           assert.equal(await retryInput.inputValue(), '5', `${label}: changing categories preserves core drafts`);
           const retrySave = retrySection.getByRole('button', { name: locale === 'en' ? /Save/ : /保存/ });
           await retrySave.click();
           await page.waitForFunction(button => {
             return button?.disabled && !/正在保存|保存中|saving/i.test(button.textContent);
           }, await retrySave.elementHandle());
-          assert.equal(await hasDirtyMarker('routing'), false, `${label}: saving clears the category marker`);
+          assert.equal(await hasDirtyMarker('requests'), false, `${label}: saving clears the category marker`);
+          await tab('software');
+          await tab('requests');
+          assert.equal(await cooling.isChecked(), false, 'saved disable-cooling true means switch off');
+          await cooling.check();
+          await retrySave.click();
+          await page.waitForFunction(button => button?.disabled && !/正在保存|保存中|saving/i.test(button.textContent), await retrySave.elementHandle());
+          await tab('software');
+          await tab('requests');
+          assert.equal(await cooling.isChecked(), true, 'manually enabled cooling survives saving');
           await tab('general');
           assert.equal(await remoteManagement.isChecked(), true, `${label}: saving another category preserves template drafts`);
           assert.equal(await hasDirtyMarker('general'), true);

@@ -1729,6 +1729,33 @@ fn core_config_reads_retry_fields_and_uses_core_defaults() {
 }
 
 #[test]
+fn cooling_defaults_only_fill_missing_settings() {
+    assert!(GuiConfigFile::default().disable_cooling);
+    let gui: GuiConfigFile = toml::from_str("disable-cooling = false").unwrap();
+    assert!(!gui.disable_cooling);
+    let template = "config-version: 8\nserver: {port: 8317}\nrouting:\n  cooldown: {disable-cooling: false}\n";
+    for (current, expected) in [
+        (None, true),
+        (Some("port: 8317\n"), true),
+        (Some("config-version: 8\nrouting: {strategy: round-robin}\n"), true),
+        (Some("disable-cooling: false\n"), false),
+        (Some("disable-cooling: true\n"), true),
+        (Some("config-version: 8\nrouting: {cooldown: {disable-cooling: false}}\n"), false),
+        (Some("config-version: 8\nrouting: {cooldown: {disable-cooling: true}}\n"), true),
+    ] {
+        let config = GuiConfigFile { disable_cooling: !expected, ..GuiConfigFile::default() };
+        // A new file uses the GUI's explicit choice; existing files use their
+        // own choice, or the default when the field is absent.
+        let config = if current.is_none() { GuiConfigFile::default() } else { config };
+        let rendered = merge_core_config_yaml(template, current, &config).unwrap();
+        let value = serde_norway::from_str(&rendered).unwrap();
+        assert_eq!(core_config_settings_from_value(&value).unwrap().disable_cooling, expected);
+        let second = merge_core_config_yaml(template, Some(&rendered), &config).unwrap();
+        assert_eq!(second, rendered);
+    }
+}
+
+#[test]
 fn managed_session_settings_use_canonical_yaml_and_preserve_unrelated_content() {
     let input = "# global proxy\nproxy-url: old\n# routing options\nrouting:\n  strategy: round-robin\n  sessionAffinity: false\n  sessionAffinityTTL: 10m\n# unrelated option\nunrelated-option: true\ndebug: true\n";
     let config = GuiConfigFile {

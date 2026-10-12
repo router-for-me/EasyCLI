@@ -378,7 +378,7 @@
   .config-page .config-settings-content { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   /* Plan complete rows rather than sizing cards by their number of fields. */
   .config-page .config-settings-content :is(.config-settings-cards > section, .template-config-card, #config-native-aliases, #config-native-sensitive-words) { grid-column: 1 / -1; }
-  .config-page .config-settings-content :is(#config-native-network, #config-native-tls, #config-native-routing, #config-native-retry, #config-group-codex-client, #config-group-multimedia, #config-group-oauth-codex, #config-group-oauth-others) { grid-column: auto; }
+  .config-page .config-settings-content :is(#config-native-network, #config-native-tls, #config-group-codex-client, #config-group-multimedia, #config-group-oauth-codex, #config-group-oauth-others) { grid-column: auto; }
 }
 /* Equal-height peers keep their content at the top and actions on one baseline. */
 .config-page .config-settings-cards > section:not([hidden]):not(#config-native-keys),
@@ -408,11 +408,12 @@
   .config-page .config-settings-content .config-proxy-system-toggle { flex-wrap: wrap; }
 }
 
-/* Three related short cards form a complete row when each has room to breathe. */
+/* Related cards form complete pairs when each has room to breathe. */
 @media (min-width: 1560px) {
   .config-page .config-settings-content { grid-template-columns: repeat(6, minmax(0, 1fr)); }
   .config-page .config-settings-content :is(#config-native-network, #config-native-tls, #config-group-oauth-codex, #config-group-oauth-others) { grid-column: span 3; }
-  .config-page .config-settings-content :is(#config-native-routing, #config-native-retry, #config-group-routing-advanced, #config-group-request-behavior, #config-group-codex-client, #config-group-multimedia) { grid-column: span 2; }
+  .config-page .config-settings-content :is(#config-native-routing, #config-group-routing-advanced, #config-native-retry, #config-group-request-behavior) { grid-column: span 3; }
+  .config-page .config-settings-content :is(#config-group-codex-client, #config-group-multimedia) { grid-column: span 3; }
 }
 /* A single-purpose page has one centered workspace instead of an empty grid cell. */
 .config-page .config-settings-content #config-native-software { width: min(100%, 1000px); justify-self: center; }

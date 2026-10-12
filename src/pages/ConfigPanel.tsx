@@ -1,3 +1,4 @@
+import { CoolingToggle } from '../components/settings/CoolingToggle';
 import { FormEvent, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -263,7 +264,7 @@ export function ConfigPanelPage() {
   const [proxyOverrideDraft, setProxyOverrideDraft] = useState(false);
   const [sessionAffinityDraft, setSessionAffinityDraft] = useState(false);
   const [sessionTtlDraft, setSessionTtlDraft] = useState('');
-  const [disableCoolingDraft, setDisableCoolingDraft] = useState(false);
+  const [disableCoolingDraft, setDisableCoolingDraft] = useState(true);
   const [requestRetryDraft, setRequestRetryDraft] = useState('3');
   const [maxRetryCredentialsDraft, setMaxRetryCredentialsDraft] = useState('0');
   const [maxRetryIntervalDraft, setMaxRetryIntervalDraft] = useState('30');
@@ -1061,7 +1062,7 @@ export function ConfigPanelPage() {
     { category: 'general', target: 'config-native-network', title: st('nativeNetwork'), context: '', keywords: [t('config.network.port'), t('config.network.listenHost'), t('config.network.proxyUrl'), t('config.network.systemProxy'), 'server host port proxy URL 8317 127.0.0.1 0.0.0.0 监听 地址 系统代理'].join(' ') },
     { category: 'general', target: 'config-native-tls', title: t('config.tls.enable'), context: '', keywords: [t('config.tls.cert'), t('config.tls.key'), 'TLS HTTPS cert key certificate 证书 私钥 加密'].join(' ') },
     { category: 'routing', target: 'config-native-routing', title: st('nativeRouting'), context: '', keywords: [t('config.network.sessionAffinity'), t('config.network.sessionTtl'), t('config.routing.title'), 'session affinity ttl routing strategy round-robin 会话 粘性 加权 轮询'].join(' ') },
-    { category: 'routing', target: 'config-native-retry', title: st('nativeRetry'), context: '', keywords: [t('config.network.disableCooling'), t('config.network.requestRetry'), t('config.network.maxRetryCredentials'), t('config.network.maxRetryInterval'), t('config.network.streamingBootstrapRetries'), 'retry retries cooldown 重试 冷却 流式 失败 fallback'].join(' ') },
+    { category: 'requests', target: 'config-native-retry', title: st('nativeRetry'), context: '', keywords: [t('config.network.enableCooling'), t('config.network.disableCooling'), t('config.network.requestRetry'), t('config.network.maxRetryCredentials'), t('config.network.maxRetryInterval'), t('config.network.streamingBootstrapRetries'), 'retry retries cooldown 重试 冷却 流式 失败 fallback'].join(' ') },
     { category: 'diagnostics', target: 'config-native-logging', title: t('config.diagnostics.title'), context: '', keywords: [t('config.diagnostics.debug.title'), t('config.diagnostics.commercial.title'), t('config.diagnostics.fileLogging.title'), t('config.diagnostics.usage.title'), t('config.diagnostics.maxSize.title'), t('config.diagnostics.errorFiles.title'), t('config.diagnostics.redisRetention.title'), 'debug commercial-mode logging logs usage statistics redis retention 日志 调试 商业模式 用量 统计 留存 文件 容量'].join(' ') },
     { category: 'software', target: 'config-native-software', title: t('config.software.title'), context: '', keywords: [t('config.software.autostart'), t('config.software.startCoreOnLaunch'), t('config.software.silentStart'), t('config.software.closeBehavior'), t('config.software.defaultTerminal'), 'startup autostart silent tray close terminal 软件 自启动 启动 静默 托盘 关闭 终端'].join(' ') },
     { category: 'aliases', target: 'config-native-aliases', title: t('app.nav.thinkingAliases'), context: '', keywords: 'thinking reasoning speed aliases effort 思考 推理 速度 别名 模型' },
@@ -1070,8 +1071,8 @@ export function ConfigPanelPage() {
   const nativeCategoryDirty: Record<ConfigSubpage, boolean> = {
     general: nativeDirty.management || networkSettingsDirty || tlsSettingsDirty,
     aliases: false,
-    routing: sessionRoutingDirty || retrySettingsDirty,
-    requests: sensitiveWordsDirty,
+    routing: sessionRoutingDirty,
+    requests: sensitiveWordsDirty || retrySettingsDirty,
     diagnostics: loggingSettingsDirty,
     oauth: false,
     extensions: false,
@@ -1683,7 +1684,7 @@ export function ConfigPanelPage() {
                 {busyAction === 'routing' ? t('common.saving') : t('common.save')}
               </button></div>
         </section>
-<section id="config-native-retry" tabIndex={-1} hidden={searching || activeSubpage !== 'routing'}
+<section id="config-native-retry" tabIndex={-1} hidden={searching || activeSubpage !== 'requests'}
             className="config-network-section"
             aria-labelledby="config-retry-section-title"
           >
@@ -1697,26 +1698,11 @@ export function ConfigPanelPage() {
             </div>
             {renderFeedback(retryFeedback)}
             <div className="config-network-grid">
-              <div className="config-network-field config-network-toggle">
-                <div>
-                  <span className="config-field-label"><span>{t('config.network.disableCooling')}</span><SettingsHelp label={t('config.network.disableCooling')}>{t('config.network.disableCoolingHint')}</SettingsHelp></span>
-
-                </div>
-                <label className="switch-control" title={t('config.network.disableCooling')}>
-                  <input
-                    type="checkbox"
-                    role="switch"
-                    aria-label={t('config.network.disableCooling')}
-                    checked={disableCoolingDraft}
-                    disabled={controlsDisabled}
-                    onChange={(event) => {
-                      markDraftDirty('disableCooling');
-                      setDisableCoolingDraft(event.currentTarget.checked);
-                    }}
-                  />
-                  <span className="switch-track" />
-                </label>
-              </div>
+              <CoolingToggle disabledCooling={disableCoolingDraft} disabled={controlsDisabled}
+                onChange={(value) => {
+                  markDraftDirty('disableCooling');
+                  setDisableCoolingDraft(value);
+                }} />
 
               <div className="config-network-field">
                 <span className="config-field-label"><label htmlFor="config-input-config-network-requestRetry">{t('config.network.requestRetry')}</label><SettingsHelp label={t('config.network.requestRetry')}>{templateText(templateMessages.retryHint, locale)}</SettingsHelp></span>

@@ -1074,6 +1074,8 @@ export const zhCN = {
   'config.network.sessionAffinityHint': '同一会话优先复用已选择的凭据',
   'config.network.sessionTtl': '会话粘性 TTL',
   'config.network.sessionTtlHint': '例如 1h；留空使用内核默认值',
+  'config.network.enableCooling': '启用冷却',
+  'config.network.enableCoolingHint': '请求失败后暂时跳过相关凭证或模型。缺少配置时默认关闭；凭证或提供商的单独设置优先。',
   'config.network.disableCooling': '禁用冷却',
   'config.network.disableCoolingHint': '全局禁用认证凭据和模型的冷却调度',
   'config.network.requestRetry': '请求重试次数',

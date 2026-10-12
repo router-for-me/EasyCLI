@@ -327,6 +327,13 @@ pub(crate) fn merge_core_config_yaml(
     // Old mirrored values may be stale after a kernel upgrade. Only an explicit
     // software-side opt-out should disable statistics when starting the kernel.
     let mut startup_config = config.clone();
+    // Preserve an explicit kernel choice, including false (cooling enabled).
+    // Read the existing file before template migration can inject defaults.
+    if let Some(current) = current {
+        let document: serde_norway::Value = serde_norway::from_str(current)
+            .map_err(|error| format!("Failed to parse kernel configuration: {error}"))?;
+        startup_config.disable_cooling = core_config_settings_from_value(&document)?.disable_cooling;
+    }
     startup_config.usage_statistics_enabled = config.usage_statistics_disabled != Some(true);
     let managed = apply_gui_managed_settings(&base, &startup_config)?;
     sanitize_unsupported_provider_disabled_yaml(&managed)

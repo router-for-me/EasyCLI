@@ -1044,6 +1044,8 @@ export const jaOverrides = {
   'config.network.sessionAffinityHint': '同じセッションでは以前選択した認証情報を優先します',
   'config.network.sessionTtl': 'セッションアフィニティ TTL',
   'config.network.sessionTtlHint': '例：1h。空欄の場合はコアのデフォルト値を使用します',
+  'config.network.enableCooling': 'クールダウンを有効化',
+  'config.network.enableCoolingHint': 'リクエスト失敗後、該当する認証情報やモデルを一時的にスキップします。未設定時は無効です。認証情報やプロバイダーの個別設定が優先されます。',
   'config.network.disableCooling': 'クールダウンを無効化',
   'config.network.disableCoolingHint': '認証情報とモデルのクールダウン制御を全体で無効にします',
   'config.network.requestRetry': 'リクエスト再試行回数',
