@@ -764,6 +764,17 @@ fn v8_migration_preserves_network_settings_over_template_defaults() {
 }
 
 #[test]
+fn v8_migration_preserves_github_token() {
+    let template = "config-version: 8\nserver: {github-token: ''}\n";
+    let migrated = migrate_legacy_core_config_to_v8(template, "github-token: legacy-token\n").unwrap();
+    let value: serde_norway::Value = serde_norway::from_str(&migrated).unwrap();
+    assert_eq!(value["server"]["github-token"], "legacy-token");
+    assert!(value.get("github-token").is_none());
+    let current = "config-version: 8\nserver: {github-token: current-token}\n";
+    assert_eq!(migrate_legacy_core_config_to_v8(template, current).unwrap(), current);
+}
+
+#[test]
 fn v8_migration_preserves_explicit_canonical_clears_and_existing_v8_files() {
     let template = "config-version: 8\nserver: {trusted-proxies: [192.0.2.1]}\n";
     let old = "trusted-proxies: [127.0.0.1]\nserver: {trusted-proxies: []}\nclaude-header-defaults: {user-agent: legacy}\nclaude: {model-level-cooling: true}\noauth: {providers: {claude: null}, model-alias: {}}\noauth-model-alias: {claude: [{name: original, alias: old-alias}]}\n";

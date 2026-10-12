@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
-import { RotateCcw, Save } from 'lucide-react';
+import { ExternalLink, Eye, EyeOff, RotateCcw, Save } from 'lucide-react';
 import { useI18n } from '../i18n';
 import { templateMessages, templateText } from '../i18n/templateConfig';
 import { useCoreRuntime, type CoreStatus } from '../coreRuntime';
@@ -20,7 +20,7 @@ export function TemplateConfigSection({ groups, visibleGroups, onDirtyGroupsChan
   visibleGroups?: readonly string[];
   onDirtyGroupsChange?: (groupIds: readonly string[]) => void;
 }) {
-  const { locale } = useI18n();
+  const { locale, t } = useI18n();
   const { status, publishStatus, refreshStatus } = useCoreRuntime();
   const [config, setConfig] = useState<Record<string, unknown> | null>(null);
   const [drafts, setDrafts] = useState<Record<string, TemplateConfigDraft>>({});
@@ -28,6 +28,7 @@ export function TemplateConfigSection({ groups, visibleGroups, onDirtyGroupsChan
   const [groupErrors, setGroupErrors] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState<Record<string, boolean>>({});
   const [restartNeeded, setRestartNeeded] = useState(false);
+  const [revealed, setRevealed] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const mounted = useRef(true);
   const revision = useRef(0);
@@ -161,10 +162,16 @@ export function TemplateConfigSection({ groups, visibleGroups, onDirtyGroupsChan
       placeholder={field.placeholder}
       onChange={(event) => onChange(field.type === 'string-list' ? event.currentTarget.value.split('\n') : event.currentTarget.value)}
       onBlur={() => { if (field.type === 'string-list' && Array.isArray(value)) { const clean = value.map(String).map((item) => item.trim()).filter(Boolean); if (JSON.stringify(clean) !== JSON.stringify(value)) onChange(clean); } }} />;
-    const input = <input {...common} className="config-network-input" type={field.type === 'number' ? 'number' : field.sensitive ? 'password' : 'text'} autoComplete={field.sensitive ? 'new-password' : undefined}
+    const input = <input {...common} className="config-network-input" type={field.type === 'number' ? 'number' : field.sensitive && !revealed[id] ? 'password' : 'text'} autoComplete={field.sensitive ? 'new-password' : undefined}
       min={field.min} max={field.max} step={field.step ?? 1} placeholder={field.placeholder} value={typeof value === 'string' || typeof value === 'number' ? value : ''}
       onChange={(event) => onChange(field.type === 'number' && event.currentTarget.value !== '' ? Number(event.currentTarget.value) : event.currentTarget.value)} />;
-    return field.directory ? <div className="template-config-directory">{input}<button type="button" className="secondary-button compact-button" disabled={disabled} onClick={() => void chooseDirectory(group, field)} aria-label={`${tr('chooseDirectory')}: ${templateText(field.label, locale)}`}>{tr('chooseDirectory')}</button></div> : input;
+    const secret = field.sensitive ? <div className="config-secret-input template-config-secret">{input}<button type="button" className="icon-button quiet" disabled={disabled} onClick={() => setRevealed((previous) => ({ ...previous, [id]: !previous[id] }))}
+      title={t(revealed[id] ? 'config.keys.hide' : 'config.keys.show')} aria-label={t(revealed[id] ? 'config.keys.hide' : 'config.keys.show')}>{revealed[id] ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}</button></div> : input;
+    if (field.link) {
+      const link = field.link;
+      return <div className="template-config-directory">{secret}<button type="button" className="secondary-button compact-button" onClick={() => void invoke('open_external_url', { url: link.url }).catch((error) => setGroupErrors((previous) => ({ ...previous, [group.id]: String(error) })))}><ExternalLink size={15} aria-hidden="true" />{templateText(link.label, locale)}</button></div>;
+    }
+    return field.directory ? <div className="template-config-directory">{secret}<button type="button" className="secondary-button compact-button" disabled={disabled} onClick={() => void chooseDirectory(group, field)} aria-label={`${tr('chooseDirectory')}: ${templateText(field.label, locale)}`}>{tr('chooseDirectory')}</button></div> : secret;
   };
 
   const visible = groups.filter((group) => !visibleGroups || visibleGroups.includes(group.id));
@@ -190,6 +197,7 @@ export function TemplateConfigSection({ groups, visibleGroups, onDirtyGroupsChan
           return <div key={key} id={`template-field-${group.id}-${index}`} data-field-type={field.type} tabIndex={-1} className={`template-config-field${field.type === 'custom' || field.type === 'json' || field.type === 'string-list' ? ' template-config-field-wide' : ''}${field.type === 'boolean' ? ' template-config-toggle' : ''}${draft ? ' template-config-field-dirty' : ''}`}>
             <div className="template-config-label">{field.type === 'custom' ? <span id={`${id}-label`}>{templateText(field.label, locale)}</span> : <label htmlFor={id}>{templateText(field.label, locale)}</label>}<div className="template-config-label-tools">{description ? <SettingsHelp label={templateText(field.label, locale)}>{description}</SettingsHelp> : null}{exists ? <button type="button" className="template-config-reset" disabled={busy !== null || !config} title={resetLabel} aria-label={resetLabel} onClick={() => changeField(group, field, null, true)}><RotateCcw size={14} aria-hidden="true" /></button> : null}</div></div>
             {field.type === 'custom' ? <details className="template-config-custom"><summary aria-labelledby={`${id}-label ${id}-edit`} aria-describedby={validation ? `${id}-error` : undefined}><span id={`${id}-edit`}>{tr('editDetails')}</span></summary><div className="template-config-control" role="group" aria-labelledby={`${id}-label`}>{control(group, field, value, id, Boolean(validation))}</div></details> : <div className="template-config-control">{control(group, field, value, id, Boolean(validation))}</div>}
+            {field.link?.hint ? <small className="template-config-link-hint">{templateText(field.link.hint, locale)}</small> : null}
             {validation ? <small id={`${id}-error`} className="template-config-error" role="alert">{templateText(validation, locale)}</small> : null}
           </div>;
         })}</div>

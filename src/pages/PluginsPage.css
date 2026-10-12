@@ -55,6 +55,7 @@
 .plugin-empty p { max-width: 600px; font-size: 13px; line-height: 1.8; margin: 0; }
 .plugin-loading { margin: 0; color: var(--text-tertiary); font-size: 13px; }
 .plugin-error { color: var(--error-color); overflow-wrap: anywhere; line-height: 1.7; }
+.plugin-rate-limit-hint { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin-top: 8px; color: var(--text-secondary); }
 .plugin-source-errors { border: 1px solid var(--border-color); padding: 14px; border-radius: 8px; color: var(--amber-text); font-size: 13px; overflow-wrap: anywhere; }
 .plugin-settings { background: var(--bg-card); padding: 24px; border: 1px solid var(--border-color); border-radius: 12px; }
 .plugin-settings fieldset { border: 0; padding: 0; min-width: 0; display: grid; gap: 22px; margin: 0 0 24px; }

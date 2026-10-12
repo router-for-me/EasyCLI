@@ -13,6 +13,7 @@ export type TemplateConfigField = {
   step?: number;
   placeholder?: string;
   sensitive?: boolean;
+  link?: { url: string; label: TemplateText; hint?: TemplateText };
   directory?: boolean;
   rows?: number;
   restart?: boolean;
