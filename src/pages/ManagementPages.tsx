@@ -1,12 +1,19 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
+  ChevronRight,
   Check,
+  CircleAlert,
+  CircleCheck,
   Copy,
   ExternalLink,
+  FileKey,
+  Info,
   LoaderCircle,
   LogIn,
+  Plus,
   RefreshCw,
+  UserRound,
 } from 'lucide-react';
 import antigravityIcon from '../assets/icons/antigravity.svg';
 import claudeIcon from '../assets/icons/claude.svg';
@@ -20,19 +27,18 @@ import { FloatingNotice, useAppNotice } from '../appNotice';
 import { oauthSubpages, type OAuthSubpage } from '../oauthNavigation';
 import {
   changedOAuthAuthFileNames,
+  groupOAuthAccountsByProvider,
   snapshotAuthFiles,
   type AuthFileSnapshot,
+  type OAuthAccountSummary,
 } from '../services/authFiles';
 import { managementApi, responseList } from '../services/managementApi';
-import {
-  createOAuthLoginSuccessCache,
-  shouldShowOAuthLoginStatus,
-} from '../services/oauthLoginState';
+import { createOAuthLoginSuccessCache } from '../services/oauthLoginState';
 import { AuthFileManagementPage } from './AuthFileManagementPage';
 import { validateDevinCallback } from '../services/devinOAuth';
 import { handleHorizontalTabKey } from '../components/tabKeyboardNavigation';
 import { PluginOAuthProviders } from './PluginOAuthProviders';
-import { notifyPluginResourcesChanged } from '../services/pluginResources';
+import { notifyPluginResourcesChanged, PLUGIN_RESOURCES_REFRESH_EVENT } from '../services/pluginResources';
 import { VertexLoginCard } from './VertexLoginCard';
 
 type OAuthProviderId = 'codex' | 'claude' | 'antigravity' | 'kimi' | 'xai' | 'devin' | 'meta';
@@ -94,6 +100,7 @@ const XAI_CALLBACK_URL = 'http://127.0.0.1:56121/callback';
 const OAUTH_POLL_INTERVAL_MS = 3000;
 const OAUTH_BROWSER_STORAGE_KEY = 'easy-cli-proxy-api.oauth-browser.v3';
 const NO_AUTO_OPEN_BROWSER_ID = 'none';
+const OAUTH_ACCOUNT_PREVIEW_LIMIT = 3;
 const oauthLoginSuccessCache = createOAuthLoginSuccessCache<OAuthProviderId>();
 
 const resolveOAuthBrowserSelection = (
@@ -125,6 +132,11 @@ const cachedOAuthProviderStates = (): Partial<Record<OAuthProviderId, OAuthProvi
 export function OAuthManagementPage() {
   const { t } = useI18n();
   const [activeSubpage, setActiveSubpage] = useState<OAuthSubpage>('login');
+  const [authFilesProvider, setAuthFilesProvider] = useState<string | undefined>();
+  const openAuthFiles = useCallback((provider?: string) => {
+    setAuthFilesProvider(provider);
+    setActiveSubpage('authFiles');
+  }, []);
   const subpageIds = oauthSubpages.map((subpage) => subpage.id);
   const handleTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, subpage: OAuthSubpage) => {
     handleHorizontalTabKey(
@@ -155,7 +167,10 @@ export function OAuthManagementPage() {
               aria-selected={active}
               aria-controls="oauth-subpage-panel"
               tabIndex={active ? 0 : -1}
-              onClick={() => setActiveSubpage(subpage.id)}
+              onClick={() => {
+                setAuthFilesProvider(undefined);
+                setActiveSubpage(subpage.id);
+              }}
               onKeyDown={(event) => handleTabKeyDown(event, subpage.id)}
             >
               {t(subpage.labelKey)}
@@ -170,15 +185,18 @@ export function OAuthManagementPage() {
         role="tabpanel"
         aria-labelledby={`oauth-subpage-tab-${activeSubpage}`}
       >
-        {activeSubpage === 'login' ? <OAuthLoginPage /> : null}
-        {activeSubpage === 'authFiles' ? <AuthFileManagementPage /> : null}
+        {activeSubpage === 'login' ? <OAuthLoginPage onOpenAuthFiles={openAuthFiles} /> : null}
+        {activeSubpage === 'authFiles' ? (
+          <AuthFileManagementPage key={authFilesProvider ?? 'all'} initialProvider={authFilesProvider} />
+        ) : null}
       </div>
     </section>
   );
 }
 
-export function OAuthLoginPage() {
+export function OAuthLoginPage({ onOpenAuthFiles }: { onOpenAuthFiles?: (provider?: string) => void } = {}) {
   const { t } = useI18n();
+  const [accounts, setAccounts] = useState<Map<string, OAuthAccountSummary[]> | null>(null);
   const [states, setStates] = useState<Partial<Record<OAuthProviderId, OAuthProviderState>>>(
     cachedOAuthProviderStates,
   );
@@ -212,6 +230,24 @@ export function OAuthLoginPage() {
       });
     return () => { active = false; };
   }, []);
+
+  const loadAccounts = useCallback(async () => {
+    try {
+      const payload = await managementApi.get('/credentials');
+      setAccounts(groupOAuthAccountsByProvider(responseList(payload, 'files')));
+    } catch (error) {
+      // Counts are informational; keep the login cards usable while the core is unavailable.
+      console.warn('Failed to load saved OAuth accounts', error);
+      setAccounts(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadAccounts();
+    const refresh = () => void loadAccounts();
+    window.addEventListener(PLUGIN_RESOURCES_REFRESH_EVENT, refresh);
+    return () => window.removeEventListener(PLUGIN_RESOURCES_REFRESH_EVENT, refresh);
+  }, [loadAccounts]);
 
   useEffect(() => {
     try {
@@ -301,6 +337,7 @@ export function OAuthLoginPage() {
             }
             if (!isCurrent()) return;
             completeProviderAuth(provider);
+            void loadAccounts();
             showNotice(
               priorityError
                 ? t('oauth.priorityApplyFailed', { error: priorityError })
@@ -340,7 +377,7 @@ export function OAuthLoginPage() {
         OAUTH_POLL_INTERVAL_MS,
       );
     },
-    [applyDefaultCredentialPriority, clearPollingTimer, completeProviderAuth, showNotice, t, updateProviderState],
+    [applyDefaultCredentialPriority, clearPollingTimer, completeProviderAuth, loadAccounts, showNotice, t, updateProviderState],
   );
 
   useEffect(() => {
@@ -545,29 +582,87 @@ export function OAuthLoginPage() {
       </header>
 
       <FloatingNotice key={feedback.revision} notice={feedback.notice} onDismiss={feedback.clearNotice} />
+      <aside className="oauth-intro" aria-label={t('oauth.intro.title')}>
+        <span className="oauth-intro-icon" aria-hidden="true"><Info size={18} /></span>
+        <div className="oauth-intro-text">
+          <strong>{t('oauth.intro.title')}</strong>
+          <p>{t('oauth.intro.body')}</p>
+        </div>
+        {onOpenAuthFiles ? (
+          <button type="button" className="secondary-button compact-button oauth-intro-action" onClick={() => onOpenAuthFiles()}>
+            <FileKey size={15} aria-hidden="true" />
+            {t('oauth.intro.viewFiles')}
+          </button>
+        ) : null}
+      </aside>
       <div className="oauth-grid">
         {oauthProviders.map((provider) => {
           const state = states[provider.id] ?? { status: 'idle' as const };
           const canSubmitCallback = OAUTH_CALLBACK_SUPPORTED.has(provider.id) && Boolean(state.url);
-          const loginLabel = state.status === 'success'
-            ? t('oauth.loginAnother')
-            : state.polling
-              ? t('oauth.loggingIn')
-              : t('oauth.startLogin');
+          const providerAccounts = accounts?.get(provider.id) ?? [];
+          const hasAccounts = providerAccounts.length > 0;
+          const loginLabel = state.polling
+            ? t('oauth.waitingAuthorization')
+            : hasAccounts || state.status === 'success'
+              ? t('oauth.addAccount')
+              : t('oauth.signIn');
+          const LoginIcon = hasAccounts || state.status === 'success' ? Plus : LogIn;
 
           return (
-            <section className="panel oauth-card" key={provider.id}>
+            <section className={`panel oauth-card${state.polling ? ' is-waiting' : ''}`} key={provider.id}>
               <div className="provider-title-row">
                 <img src={provider.icon} alt="" className={provider.id === 'devin' ? 'provider-logo devin-logo' : 'provider-logo'} />
                 <div>
                   <h2>{provider.name}</h2>
-                  {shouldShowOAuthLoginStatus(state.status) ? (
-                    <span className="state-pill success">{t('oauth.status.completed')}</span>
-                  ) : null}
+                  {accounts === null ? null : hasAccounts ? (
+                    <button
+                      type="button"
+                      className="oauth-account-count has-accounts"
+                      onClick={() => onOpenAuthFiles?.(provider.id)}
+                      disabled={!onOpenAuthFiles}
+                      title={t('oauth.accounts.view', { provider: provider.name })}
+                    >
+                      <UserRound size={13} aria-hidden="true" />
+                      {providerAccounts.length === 1
+                        ? t('oauth.accounts.one')
+                        : t('oauth.accounts.count', { count: providerAccounts.length })}
+                      {onOpenAuthFiles ? <ChevronRight size={13} aria-hidden="true" /> : null}
+                    </button>
+                  ) : (
+                    <span className="oauth-account-count">{t('oauth.accounts.none')}</span>
+                  )}
                 </div>
               </div>
 
               <div className="oauth-card-body">
+                {hasAccounts ? (
+                  <ul className="oauth-account-list" aria-label={t('oauth.accounts.listLabel', { provider: provider.name })}>
+                    {providerAccounts.slice(0, OAUTH_ACCOUNT_PREVIEW_LIMIT).map((account) => (
+                      <li key={account.name} className={account.disabled ? 'disabled' : undefined} title={account.disabled ? `${account.label} · ${t('oauth.accounts.disabled')}` : account.label}>
+                        {account.label}
+                      </li>
+                    ))}
+                    {providerAccounts.length > OAUTH_ACCOUNT_PREVIEW_LIMIT ? (
+                      <li className="more">{t('oauth.accounts.more', { count: providerAccounts.length - OAUTH_ACCOUNT_PREVIEW_LIMIT })}</li>
+                    ) : null}
+                  </ul>
+                ) : null}
+                {state.polling ? (
+                  <div className="oauth-flow-status waiting" role="status">
+                    <LoaderCircle size={15} className="spin" aria-hidden="true" />
+                    <span>{t('oauth.flow.waiting')}</span>
+                  </div>
+                ) : state.status === 'success' ? (
+                  <div className="oauth-flow-status success" role="status">
+                    <CircleCheck size={15} aria-hidden="true" />
+                    <span>{t('oauth.flow.success')}</span>
+                  </div>
+                ) : state.status === 'error' ? (
+                  <div className="oauth-flow-status error" role="alert">
+                    <CircleAlert size={15} aria-hidden="true" />
+                    <span>{t('oauth.flow.error', { error: state.error || t('oauth.authFailed') })}</span>
+                  </div>
+                ) : null}
                 <p className="oauth-hint">{t(provider.id === 'devin' ? 'oauth.devinHint' : provider.id === 'meta' ? 'oauth.metaHint' : 'oauth.hint')}</p>
                 {state.url ? (
                   <div className="oauth-auth-url-box">
@@ -619,7 +714,7 @@ export function OAuthLoginPage() {
 
               <div className="button-row management-card-actions">
                 <button type="button" className="primary-button" disabled={Boolean(state.polling) || browsersLoading} onClick={() => void startLogin(provider.id)}>
-                  {state.polling ? <LoaderCircle size={16} className="spin" aria-hidden="true" /> : <LogIn size={16} aria-hidden="true" />}
+                  {state.polling ? <LoaderCircle size={16} className="spin" aria-hidden="true" /> : <LoginIcon size={16} aria-hidden="true" />}
                   {loginLabel}
                 </button>
                 {state.url ? (

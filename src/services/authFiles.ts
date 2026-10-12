@@ -106,6 +106,29 @@ const authFileProvider = (file: AuthFileRecord) =>
 export const oauthModelProvidersFromAuthFiles = (files: AuthFileRecord[]): string[] =>
   [...new Set(files.filter(isOAuthCredentialFile).map(authFileProvider).filter(Boolean))].sort();
 
+export type OAuthAccountSummary = {
+  name: string;
+  label: string;
+  disabled: boolean;
+};
+
+/** Group saved OAuth credential files by provider so login cards can show existing accounts. */
+export const groupOAuthAccountsByProvider = (files: AuthFileRecord[]): Map<string, OAuthAccountSummary[]> => {
+  const grouped = new Map<string, OAuthAccountSummary[]>();
+  dedupeAuthFiles(files).filter(isOAuthCredentialFile).forEach((file) => {
+    const provider = authFileProvider(file);
+    if (!provider) return;
+    const accounts = grouped.get(provider) ?? [];
+    accounts.push({
+      name: readString(file, 'name'),
+      label: readString(file, 'email', 'account', 'label') || authFileName(file),
+      disabled: readBoolean(file, 'disabled'),
+    });
+    grouped.set(provider, accounts);
+  });
+  return grouped;
+};
+
 export const snapshotAuthFiles = (files: AuthFileRecord[]): AuthFileSnapshot => {
   const grouped = new Map<string, string[]>();
   files.forEach((file) => {
