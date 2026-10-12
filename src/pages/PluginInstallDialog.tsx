@@ -8,6 +8,7 @@ import { pluginText } from '../i18n/plugins';
 import { pluginStoreApi, type PluginStoreEntry, type PluginStoreInstallResult } from '../services/plugins';
 import { buildRepositoryURL } from '../services/pluginResources';
 import { isValidManualReleaseTag, supportsPluginVersionSelection } from '../services/pluginReleaseVersions';
+import { GitHubTokenHint, isGitHubRateLimit } from './PluginRateLimitHint';
 
 export function PluginInstallDialog({ entry, onClose, onInstalled }: {
   entry: PluginStoreEntry;
@@ -44,7 +45,7 @@ export function PluginInstallDialog({ entry, onClose, onInstalled }: {
       <div className="plugin-install-body">
         <dl className="plugin-install-origin"><dt>{pt('source')}</dt><dd>{entry.sourceName || entry.sourceId}<small>{entry.sourceUrl}</small></dd><dt>{pt('repository')}</dt><dd className="plugin-install-repository"><span>{entry.repository || '—'}</span>{repository && <button className="icon-button quiet" aria-label={pt('repository')} onClick={() => void invoke('open_external_url', { url: repository }).catch(e => setError(String(e)))}><ExternalLink size={15} /></button>}</dd></dl>
         {canSelectVersion && <label className="plugin-field">{pt('version')}<input value={version} onChange={e => setVersion(e.target.value)} disabled={busy} placeholder={entry.version || 'v1.0.0'} aria-invalid={!validVersion} />{!validVersion && <small role="alert">{pt('invalidVersion')}</small>}</label>}
-        {error && <p className="plugin-error" role="alert">{error}</p>}
+        {error && <p className="plugin-error" role="alert">{error}{isGitHubRateLimit(error) ? <GitHubTokenHint /> : null}</p>}
       </div>
       <div className="plugin-dialog-actions"><button className="secondary-button" disabled={busy} onClick={onClose}>{t('common.cancel')}</button><button className="primary-button" disabled={busy || !validVersion} onClick={() => void install()}>{busy ? t('common.loading') : action}</button></div>
     </section>

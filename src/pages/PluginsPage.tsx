@@ -11,6 +11,7 @@ import { getPluginStatus, isPluginInstalled } from '../services/pluginStatus';
 import { PluginConfigDialog } from './PluginConfigDialog';
 import { PluginInstallDialog } from './PluginInstallDialog';
 import { PluginOAuthDialog } from './PluginOAuthDialog';
+import { GitHubTokenHint, isGitHubRateLimit } from './PluginRateLimitHint';
 import { PluginSettingsPanel } from './PluginSettingsPanel';
 import './PluginsPage.css';
 
@@ -130,7 +131,7 @@ export function PluginsPage() {
 
   return <div className="plugins-page">
     <header className="plugins-heading"><div><h1>{pt('title')}</h1><p>{pt('description')}</p></div><button className="secondary-button" disabled={locked} onClick={() => void load()}><RefreshCw size={16} aria-hidden="true" />{t('common.refresh')}</button></header>
-    {error && <div className="plugin-error plugin-banner" role="alert"><span>{error}</span><button className="secondary-button" disabled={busy || loading} onClick={() => void load()}>{pt('retry')}</button></div>}
+    {error && <div className="plugin-error plugin-banner" role="alert"><span>{error}{isGitHubRateLimit(error) ? <GitHubTokenHint /> : null}</span><button className="secondary-button" disabled={busy || loading} onClick={() => void load()}>{pt('retry')}</button></div>}
     {supported === false ? <section className="plugin-empty"><Puzzle size={36} /><p>{pt('unsupported')}</p></section> : supported === null ? <section className="plugin-empty" role="status">{loading ? t('common.loading') : pt('retry')}</section> : <>
       <div className="plugin-summary"><label className="plugin-global-toggle"><input type="checkbox" checked={data?.pluginsEnabled ?? false} disabled={locked || !data} onChange={e => { const enabled = e.target.checked; void mutate(() => pluginsApi.updateSettings({ enabled }), pt('saved')); }} />{pt('global')}</label><span><Folder size={15} aria-hidden="true" />{data?.pluginsDir || pt('directory')}</span><span>{pt('installed')} <strong>{installedCount}</strong>{configOnlyCount > 0 && <> · {pt('configOnly')} <strong>{configOnlyCount}</strong></>}</span></div>
       {data && !data.pluginsEnabled && <p className="plugin-banner">{pt('disabledHint')}</p>}
@@ -170,7 +171,7 @@ export function PluginsPage() {
               <button className="icon-button quiet plugin-delete" disabled={locked} aria-label={removeLabel} title={removeLabel} onClick={() => void remove(plugin)}><Trash2 size={16} /></button>
             </div>
           </article>; })}</div> : <>
-            {store?.sourceErrors.length ? <details className="plugin-source-errors" open><summary>{pt('sourceErrors')}</summary>{store.sourceErrors.map((entry, index) => <p key={index}>{entry.sourceName || entry.sourceId || entry.sourceUrl}: {entry.message}</p>)}</details> : null}
+            {store?.sourceErrors.length ? <details className="plugin-source-errors" open><summary>{pt('sourceErrors')}</summary>{store.sourceErrors.map((entry, index) => <p key={index}>{entry.sourceName || entry.sourceId || entry.sourceUrl}: {entry.message}</p>)}{store.sourceErrors.some(entry => isGitHubRateLimit(entry.message)) ? <GitHubTokenHint /> : null}</details> : null}
             <div className="plugin-grid">{storePlugins.map(entry => <article className="plugin-card" key={entry.storeId}>
               <div className="plugin-card-title"><span className="plugin-icon"><Puzzle size={23} /></span><div><h2>{entry.name || entry.id}</h2><code>{entry.id}</code></div><span className={`plugin-badge ${isOfficialPlugin(entry) ? 'active' : 'warning'}`}>{pt(isOfficialPlugin(entry) ? 'official' : 'thirdParty')}</span></div>
               <p className="plugin-card-description">{entry.description}</p><p className="plugin-meta">{[entry.installedVersion && entry.updateAvailable ? `${entry.installedVersion} → ${entry.version}` : entry.installedVersion || entry.version, entry.author, entry.license].filter(Boolean).join(' · ')}</p><p className="plugin-meta">{pt('source')}: {entry.sourceName || entry.sourceId}</p>

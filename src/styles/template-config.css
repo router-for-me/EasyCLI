@@ -25,6 +25,8 @@
 .template-config-directory { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
 .template-config-directory > input { flex: 1 1 180px; min-width: 0; width: auto; }
 .template-config-directory > button { flex: 0 1 auto; white-space: normal; }
+.template-config-directory > .template-config-secret { flex: 1 1 180px; min-width: 0; }
+.template-config-secret > input.config-network-input { height: 38px; padding: 0 11px; }
 .template-config-custom { width: 100%; min-width: 0; border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 12px; background: var(--bg-card); box-sizing: border-box; }
 .template-config-custom > summary { cursor: pointer; color: var(--primary-color); font-size: 12px; }
 .template-config-custom[open] > summary { margin-bottom: 14px; }
@@ -35,6 +37,7 @@
 .template-config-textarea { resize: vertical; line-height: 1.6; padding: 10px 12px; font-family: inherit; }
 .template-config-control > textarea.template-config-textarea { height: auto; min-height: 86px; padding: 10px 12px; }
 .template-config-field > small { font-size: 12px; line-height: 1.6; }
+.template-config-field > .template-config-link-hint { color: var(--text-tertiary); }
 .template-config-reset { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; flex: none; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--text-tertiary); cursor: pointer; }
 .template-config-reset svg { flex: none; }
 .template-config-reset:hover:not(:disabled) { background: var(--bg-hover); color: var(--primary-color); }
