@@ -29,7 +29,7 @@ const base = process.env.META_OAUTH_TEST_BASE_URL || process.env.DEVIN_TEST_BASE
     const waitForStatusCall = () => page.waitForFunction(() => window.metaFixture.statusCalls > 0);
     const startManagement = async () => {
       const card = managementCard();
-      await card.getByRole('button', { name: /Start Sign-In|开始登录/, exact: true }).click();
+      await card.getByRole('button', { name: /^(Sign In|登录)$/ }).click();
       await card.getByText('META-CODE-1', { exact: true }).waitFor();
     };
 
@@ -52,7 +52,7 @@ const base = process.env.META_OAUTH_TEST_BASE_URL || process.env.DEVIN_TEST_BASE
     // Complete the flow and confirm the newly written credential is assigned priority zero.
     await waitForStatusCall();
     await page.evaluate(() => { window.metaFixture.status = 'ok'; });
-    await card.getByText('Completed', { exact: true }).waitFor();
+    await card.getByText('New account added and saved to Authentication Files.', { exact: true }).waitFor();
     assert.ok((await fixture()).priorityPatches.some(patch => patch.name === 'meta-oauth-1.json' && patch.priority === 0));
     assert.equal(await card.getByText('META-CODE-1', { exact: true }).count(), 0, 'success clears the device code');
 
@@ -60,7 +60,7 @@ const base = process.env.META_OAUTH_TEST_BASE_URL || process.env.DEVIN_TEST_BASE
     await open('locale=en');
     const refreshed = managementCard();
     await page.evaluate(() => { window.metaFixture.holdStatus = true; });
-    await refreshed.getByRole('button', { name: /Start Sign-In/, exact: true }).click();
+    await refreshed.getByRole('button', { name: 'Sign In', exact: true }).click();
     await refreshed.getByText('META-CODE-1', { exact: true }).waitFor();
     await page.waitForFunction(() => window.metaFixture.releaseStatus !== null);
     await refreshed.getByRole('button', { name: 'Refresh Link', exact: true }).click();
@@ -71,23 +71,23 @@ const base = process.env.META_OAUTH_TEST_BASE_URL || process.env.DEVIN_TEST_BASE
     assert.equal(await refreshed.getByText('META-CODE-1', { exact: true }).count(), 0);
     await page.evaluate(() => { if (window.metaFixture.releaseStatus) window.metaFixture.releaseStatus(); });
     await page.waitForTimeout(100);
-    assert.equal(await refreshed.getByText('Completed', { exact: true }).count(), 0, 'stale attempt must not complete refreshed login');
+    assert.equal(await refreshed.getByText('New account added and saved to Authentication Files.', { exact: true }).count(), 0, 'stale attempt must not complete refreshed login');
     assert.ok(await refreshed.getByText('META-CODE-2', { exact: true }).isVisible());
 
     // Error state can be retried and a later success still clears its device code.
     await open('locale=en');
     const retry = managementCard();
-    await retry.getByRole('button', { name: /Start Sign-In/, exact: true }).click();
+    await retry.getByRole('button', { name: 'Sign In', exact: true }).click();
     await retry.getByText('META-CODE-1', { exact: true }).waitFor();
     await waitForStatusCall();
     await page.evaluate(() => { window.metaFixture.status = 'error'; });
     await page.getByText(/sign-in failed/i).waitFor();
-    await retry.getByRole('button', { name: /Start Sign-In/, exact: true }).click();
+    await retry.getByRole('button', { name: 'Sign In', exact: true }).click();
     await page.waitForFunction(() => window.metaFixture.attempts === 2);
     await retry.getByText('META-CODE-2', { exact: true }).waitFor();
     await page.waitForFunction(() => window.metaFixture.statusCalls > 1);
     await page.evaluate(() => { window.metaFixture.status = 'ok'; });
-    await retry.getByText('Completed', { exact: true }).waitFor();
+    await retry.getByText('New account added and saved to Authentication Files.', { exact: true }).waitFor();
 
     // Easy mode uses the same Meta flow and keeps the browser selection explicit.
     await open('view=easy&locale=en&openError=1');
@@ -146,7 +146,7 @@ const base = process.env.META_OAUTH_TEST_BASE_URL || process.env.DEVIN_TEST_BASE
       await page.setViewportSize({ width, height: 900 });
       await open(`locale=zh-CN&theme=${theme}`);
       const zhCard = managementCard();
-      await zhCard.getByRole('button', { name: /开始登录/ }).click();
+      await zhCard.getByRole('button', { name: '登录', exact: true }).click();
       await zhCard.getByText('META-CODE-1', { exact: true }).waitFor();
       assert.equal(await zhCard.getByText('设备码', { exact: true }).count(), 1);
       assert.equal(await zhCard.getByRole('button', { name: '复制设备码', exact: true }).count(), 1);
