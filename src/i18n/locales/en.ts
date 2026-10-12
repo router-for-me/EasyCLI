@@ -1075,6 +1075,8 @@ export const en: Record<MessageKey, string> = {
   'config.network.sessionAffinityHint': 'Prefer the previously selected credential for the same session',
   'config.network.sessionTtl': 'Session Affinity TTL',
   'config.network.sessionTtlHint': 'For example, 1h; leave blank to use the core default',
+  'config.network.enableCooling': 'Enable cooldowns',
+  'config.network.enableCoolingHint': 'Temporarily skip affected credentials or models after request failures. Off when not configured; credential or provider overrides take precedence.',
   'config.network.disableCooling': 'Disable Cooling',
   'config.network.disableCoolingHint': 'Globally disables cooldown scheduling for credentials and models',
   'config.network.requestRetry': 'Request Retries',
