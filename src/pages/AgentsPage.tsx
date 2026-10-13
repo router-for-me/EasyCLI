@@ -1,5 +1,3 @@
-import { CopilotPluginStatus } from '../components/copilot/CopilotPluginStatus';
-import { CopilotSetupGuide, copilotSetupErrorKey } from '../components/copilot/CopilotSetupGuide';
 import { ClaudeCodeRoleRows } from '../components/claude-code/ClaudeCodeRoleRows';
 import { ClaudeCodeModelInputs } from '../components/claude-code/ClaudeCodeModelInputs';
 import { MessageNotice } from '../appNotice';
@@ -89,8 +87,6 @@ type AgentClientId =
   | 'zcode'
   | 'workbuddy'
   | 'antigravity-cli'
-  | 'copilot-cli'
-  | 'vscode-copilot'
   | 'kimi-code'
   | 'grok-build'
   | 'omp'
@@ -254,7 +250,7 @@ type AgentDefinition = {
   name: string;
   icon?: string;
   Icon?: ComponentType<{ size?: number; 'aria-hidden'?: boolean }>;
-  descriptionKey: 'agents.description.copilotCli' | 'agents.description.vscodeCopilot' | 'agents.description.claudeCode' | 'agents.description.claudeDesktop' | 'agents.description.codex' | 'agents.description.opencode' | 'agents.description.openclaw' | 'agents.description.hermes' | 'agents.description.deepseekHarness' | 'agents.description.zcode' | 'agents.description.workbuddy' | 'agents.description.antigravityCli' | 'agents.description.kimiCode' | 'agents.description.grokBuild' | 'agents.description.omp' | 'agents.description.pi';
+  descriptionKey: 'agents.description.claudeCode' | 'agents.description.claudeDesktop' | 'agents.description.codex' | 'agents.description.opencode' | 'agents.description.openclaw' | 'agents.description.hermes' | 'agents.description.deepseekHarness' | 'agents.description.zcode' | 'agents.description.workbuddy' | 'agents.description.antigravityCli' | 'agents.description.kimiCode' | 'agents.description.grokBuild' | 'agents.description.omp' | 'agents.description.pi';
 };
 
 type AgentSubpageId = 'core' | 'management' | 'sessions';
@@ -314,8 +310,6 @@ const agentDefinitions: AgentDefinition[] = [
     icon: grokIcon,
     descriptionKey: 'agents.description.grokBuild',
   },
-  { id: 'copilot-cli', name: 'Copilot CLI', Icon: Bot, descriptionKey: 'agents.description.copilotCli' },
-  { id: 'vscode-copilot', name: 'VSCode Copilot', Icon: Bot, descriptionKey: 'agents.description.vscodeCopilot' },
   { id: 'antigravity-cli', name: 'Antigravity CLI', icon: antigravityIcon, descriptionKey: 'agents.description.antigravityCli' },
   {
     id: 'workbuddy',
@@ -368,8 +362,6 @@ const agentSubpages: AgentSubpageDefinition[] = [
       'zcode',
       'workbuddy',
       'antigravity-cli',
-      'copilot-cli',
-      'vscode-copilot',
       'kimi-code',
       'omp',
       'grok-build',
@@ -1067,8 +1059,6 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
   const modificationDescription = activeStatus?.modificationState === 'invalid'
     ? t('agents.modify.invalid')
     : nativeOauth ? t('agents.nativeOAuth.activeHint')
-    : selected === 'copilot-cli' ? t('agents.modify.copilotCliHint')
-    : selected === 'vscode-copilot' ? t('agents.modify.vscodeCopilotHint')
     : selected === 'antigravity-cli' ? t('agents.modify.antigravityCliHint')
     : selected === 'workbuddy'
       ? t('agents.modify.workbuddyHint')
@@ -1595,7 +1585,7 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
 
   const launchAgent = async (target: AgentLaunchTarget | null) => {
     if (!target) return;
-    if (target.id === 'cli' || selected === 'vscode-copilot') {
+    if (target.id === 'cli') {
       openLaunchDirectoryDialog(target);
       return;
     }
@@ -1759,8 +1749,7 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
     status={modelLoading || !activeStatus ? t('agents.modify.checking')
       : activeStatus.modificationState === 'invalid' ? t('agents.modify.invalidState') : ''}
     description={modificationDescription} />;
-  const setupErrorKey = selected === 'vscode-copilot' ? copilotSetupErrorKey(configurationError) : undefined;
-  const configurationErrorMessage = (setupErrorKey ? t(setupErrorKey) : configurationError) || (!nativeOauth ? modelSelectionError || (selected === 'claude-code' ? '' : modelError) : '');
+  const configurationErrorMessage = configurationError || (!nativeOauth ? modelSelectionError || (selected === 'claude-code' ? '' : modelError) : '');
 
   const editDesktopEntries = (entries: ClaudeDesktopModelMapping[]) => {
     setModelSelectionError('');
@@ -1923,9 +1912,6 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
           </div>
           ) : null}
           <div className="agent-config-scroll-region">
-          {embedded && selected === 'vscode-copilot' && activeSubpage === 'core' && activeStatus ? (
-            <CopilotPluginStatus installed={activeStatus.pluginInstalled} version={activeStatus.pluginVersion} />
-          ) : null}
           {embedded && activeSubpage === 'core' ? (
             <div className="agent-minimal-config" id="agent-subpage-panel-core" role="tabpanel" aria-labelledby="agent-subpage-tab-core">
               <div className="agent-minimal-client-summary">
@@ -1990,7 +1976,7 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
               role="tabpanel"
               aria-labelledby="agent-subpage-tab-core"
             >
-              <div className={`agent-status-grid ${hasIndependentCliAndApp ? 'dual-install-status-grid' : isPiClient || selected === 'vscode-copilot' ? 'pi-status-grid' : ''}`}>
+              <div className={`agent-status-grid ${hasIndependentCliAndApp ? 'dual-install-status-grid' : isPiClient ? 'pi-status-grid' : ''}`}>
                 <div>
                   <span><BadgeCheck size={14} />{t('agents.installStatus')}</span>
                   <strong>{activeStatus?.installed ? t('agents.clientDetected') : t('agents.clientNotDetected')}</strong>
@@ -2035,7 +2021,6 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
                     <strong title={activeStatus?.version ?? undefined}>{activeStatus?.version ?? t('agents.notFetched')}</strong>
                   </div>
                 )}
-                {selected === 'vscode-copilot' ? <CopilotPluginStatus standalone={false} installed={Boolean(activeStatus?.pluginInstalled)} version={activeStatus?.pluginVersion ?? null} /> : null}
               </div>
 
               <MessageNotice message={activeStatus?.error || activeStatus?.warnings.join('；')} tone={activeStatus?.error ? 'error' : 'info'} />
@@ -2314,7 +2299,6 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
             </div>
           ) : null}
           {activeSubpage !== 'core' ? configurationFeedback : null}
-          {selected === 'vscode-copilot' && activeSubpage === 'core' ? <CopilotSetupGuide pending={busyAction === 'apply'} /> : null}
           <MessageNotice message={configurationErrorMessage}
             onDismiss={() => { setConfigurationError(''); setModelSelectionError(''); setModelError(''); }} />
           <MessageNotice tone="success" message={!configurationErrorMessage ? configurationNotice || clearNotice : null}

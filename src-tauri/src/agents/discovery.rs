@@ -49,7 +49,6 @@ pub(crate) fn agent_config_paths(client: AgentClient, home: &Path) -> Vec<PathBu
         }
         AgentClient::WorkBuddy => vec![workbuddy_home(home).join("models.json")],
         AgentClient::AntigravityCli => antigravity_config_paths(client, home),
-        AgentClient::CopilotCli | AgentClient::VscodeCopilot => copilot_config_paths(client, home),
         AgentClient::ZCode => vec![home.join(".zcode/v2").join(ZCODE_PROVIDER_CONFIG_FILE)],
         AgentClient::KimiCode => vec![kimi_code_home(home).join(KIMI_CODE_CONFIG_FILE)],
         AgentClient::GrokBuild => vec![grok_build_home(home).join(GROK_BUILD_CONFIG_FILE)],
@@ -1099,21 +1098,11 @@ pub(crate) fn inspect_agent_config_with_executables(
             ),
         ),
     };
-    let copilot_cli = (client == AgentClient::CopilotCli)
-        .then(|| detect_copilot_cli(home, executable_override)).flatten();
-    let executable = if client == AgentClient::CopilotCli {
-        copilot_cli.as_ref().map(|(path, _)| path.clone())
-    } else { executable_override.filter(|path| path.is_file()
+    let executable = executable_override.filter(|path| path.is_file()
         || (matches!(client, AgentClient::ClaudeDesktop | AgentClient::ZCode | AgentClient::WorkBuddy)
             && manual_desktop_path(Some(path)).is_some())).map(Path::to_path_buf)
-        .or_else(|| find_agent_executable(client, home)) };
-    let plugin_version = (client == AgentClient::VscodeCopilot).then(||
-        executable.as_deref().and_then(|path| read_vscode_copilot_version(path, home))).flatten();
-    let cli_version = if client == AgentClient::CopilotCli {
-        copilot_cli.map(|(_, version)| version)
-    } else if client == AgentClient::VscodeCopilot {
-        None
-    } else if client == AgentClient::ZCode {
+        .or_else(|| find_agent_executable(client, home));
+    let cli_version = if client == AgentClient::ZCode {
         find_named_agent_executable(home, &["zcode"])
             .filter(|path| executable.as_ref() != Some(path))
             .as_deref()
@@ -1139,7 +1128,6 @@ pub(crate) fn inspect_agent_config_with_executables(
             .or_else(|| find_deepseek_harness_desktop_application(home)))
         .flatten();
     let app_version = match client {
-        AgentClient::VscodeCopilot => executable.as_deref().and_then(|path| read_agent_version(path, home)),
         AgentClient::ClaudeDesktop => read_claude_desktop_version(home),
         AgentClient::Codex => codex_app_installation
             .as_ref()
@@ -1154,11 +1142,11 @@ pub(crate) fn inspect_agent_config_with_executables(
         AgentClient::WorkBuddy => executable.as_deref().and_then(read_workbuddy_app_version),
         _ => None,
     };
-    let version = { cli_version.clone().or_else(|| app_version.clone()).or_else(|| {
+    let version = cli_version.clone().or_else(|| app_version.clone()).or_else(|| {
         (client == AgentClient::DeepSeekHarness)
             .then(|| read_deepseek_harness_profile_version(home))
             .flatten()
-    }) };
+    });
     let app_installed = codex_app_installation.is_some()
         || opencode_desktop_application.is_some()
         || harness_desktop_application.is_some();
@@ -1168,12 +1156,12 @@ pub(crate) fn inspect_agent_config_with_executables(
         executable.is_some(),
         app_installed,
     );
-    let launch_targets = if installed { agent_launch_targets(
+    let launch_targets = agent_launch_targets(
         client,
         executable.as_deref(),
         app_version.as_deref(),
         app_installed,
-    ) } else { Vec::new() };
+    );
     let mut warnings = Vec::new();
     if !client.supported_platform() {
         warnings.push("The current platform does not support Claude Desktop 3P configuration".to_string());
@@ -1193,12 +1181,12 @@ pub(crate) fn inspect_agent_config_with_executables(
         name: client.name().to_string(),
         supported_platform: client.supported_platform(),
         installed,
-        plugin_installed: client != AgentClient::VscodeCopilot || plugin_version.is_some(),
+        plugin_installed: true,
         launch_targets,
         version,
         cli_version,
         app_version,
-        plugin_version,
+        plugin_version: None,
         config_paths: paths.iter().map(|path| path_to_string(path)).collect(),
         config_exists,
         config_valid,
@@ -1242,9 +1230,6 @@ pub(crate) fn agent_installation_detected(
     executable_found: bool,
     app_installed: bool,
 ) -> bool {
-    if client == AgentClient::CopilotCli {
-        return executable_found && version.is_some();
-    }
     executable_found
         || app_installed
         || (client == AgentClient::ClaudeDesktop && version.is_some())
@@ -1305,7 +1290,7 @@ pub(crate) fn agent_launch_targets(
                 });
             }
         }
-        AgentClient::ZCode | AgentClient::WorkBuddy | AgentClient::VscodeCopilot => {
+        AgentClient::ZCode | AgentClient::WorkBuddy => {
             if let Some(executable) = executable {
                 targets.push(AgentLaunchTarget {
                     id: "app".to_string(),
@@ -1443,7 +1428,6 @@ pub(crate) fn inspect_agent_managed_config(
             inspect_zcode_agent_config(&paths[0], port, api_key)
                 .map(|(configured, model)| (configured, model, false))
         }
-        AgentClient::CopilotCli | AgentClient::VscodeCopilot => inspect_copilot_config(client, paths, port, api_key).map(|(configured, model)| (configured, model, false)),
         AgentClient::AntigravityCli => inspect_antigravity_config(client, paths, port, api_key).map(|(configured, model)| (configured, model, false)),
         AgentClient::WorkBuddy => inspect_workbuddy_agent_config(&paths[0], port, api_key)
             .map(|(configured, model)| (configured, model, false)),
@@ -1649,7 +1633,6 @@ pub(crate) fn agent_has_managed_marker(
         AgentClient::DeepSeekHarness => deepseek_harness_has_managed_marker(paths),
         AgentClient::WorkBuddy => workbuddy_has_managed_marker(&paths[0]),
         AgentClient::AntigravityCli => antigravity_has_marker(client, paths),
-        AgentClient::CopilotCli | AgentClient::VscodeCopilot => copilot_has_marker(client, paths),
         AgentClient::ZCode => {
             let Some(path) = paths.first() else { return Ok(false); };
             if !path.is_file() { return Ok(false); }
@@ -2557,7 +2540,6 @@ pub(crate) fn find_windows_codex_app_executable(home: &Path) -> Option<PathBuf> 
 }
 
 pub(crate) fn find_agent_executable(client: AgentClient, home: &Path) -> Option<PathBuf> {
-    if client == AgentClient::CopilotCli { return detect_copilot_cli(home, None).map(|(path, _)| path); }
     if client == AgentClient::AntigravityCli { return find_antigravity_cli(home); }
     if client == AgentClient::ClaudeDesktop {
         return find_claude_desktop_executable(home);

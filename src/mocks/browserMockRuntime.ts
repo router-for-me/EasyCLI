@@ -208,8 +208,6 @@ function createAgentStatuses() {
     ['zcode', 'ZCode'],
     ['workbuddy', 'WorkBuddy'],
     ['antigravity-cli', 'Antigravity CLI'],
-    ['copilot-cli', 'Copilot CLI'],
-    ['vscode-copilot', 'VSCode Copilot'],
     ['kimi-code', 'Kimi Code'],
     ['grok-build', 'Grok Build'],
     ['omp', 'Oh My Pi'],
@@ -237,7 +235,7 @@ function createAgentStatuses() {
           { id: 'app', label: 'Desktop App', detail: 'Browser Mock desktop entry point' },
           { id: 'cli', label: 'CLI', detail: 'Browser Mock command-line entry point' },
         ]
-      : [{ id: id === 'claude-desktop' || id === 'vscode-copilot' ? 'app' : 'cli', label: 'Launch', detail: 'Browser Mock launch target' }],
+      : [{ id: id === 'claude-desktop' ? 'app' : 'cli', label: 'Launch', detail: 'Browser Mock launch target' }],
     version: `1.${index + 4}.0`,
     cliVersion: id === 'claude-desktop' ? null : `1.${index + 4}.0`,
     appVersion: id === 'claude-desktop' ? '0.12.8' : null,

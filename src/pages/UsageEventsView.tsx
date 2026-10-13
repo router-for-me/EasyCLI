@@ -101,7 +101,6 @@ const EVENT_COLUMNS: readonly EventColumnDef[] = [
   { key: 'time', labelKey: 'usage.column.time', defaultWidth: 82, minWidth: 76, align: 'left' },
   { key: 'model', labelKey: 'usage.column.model', defaultWidth: 150, minWidth: 112, align: 'left' },
   { key: 'source', labelKey: 'usage.column.source', defaultWidth: 128, minWidth: 104, align: 'left' },
-  { key: 'key', labelKey: 'usage.column.key', defaultWidth: 112, minWidth: 96, align: 'left' },
   { key: 'provider', labelKey: 'usage.column.provider', defaultWidth: 92, minWidth: 84, align: 'left' },
   { key: 'result', labelKey: 'usage.column.result', defaultWidth: 78, minWidth: 68, align: 'left' },
   { key: 'total', labelKey: 'usage.column.tokens', defaultWidth: 112, minWidth: 100, align: 'left' },
@@ -109,11 +108,12 @@ const EVENT_COLUMNS: readonly EventColumnDef[] = [
   { key: 'latency', labelKey: 'usage.column.latency', defaultWidth: 112, minWidth: 100, align: 'center' },
   { key: 'speed', labelKey: 'usage.column.speed', defaultWidth: 82, minWidth: 72, align: 'left' },
   { key: 'cost', labelKey: 'usage.column.cost', defaultWidth: 96, minWidth: 86, align: 'left' },
+  { key: 'key', labelKey: 'usage.column.key', defaultWidth: 112, minWidth: 96, align: 'left' },
   { key: 'request', labelKey: 'usage.column.request', defaultWidth: 128, minWidth: 88, align: 'left' },
 ] as const;
 
 const DEFAULT_EVENT_VISIBLE_COLUMNS: readonly EventColumnKey[] = [
-  'time', 'model', 'source', 'key', 'result', 'total', 'cache', 'latency', 'speed', 'cost',
+  'time', 'model', 'source', 'result', 'total', 'cache', 'latency', 'speed', 'cost', 'key',
 ];
 
 const EVENT_COL_WIDTHS_STORAGE_KEY = 'cpa-gui.usage-events-col-widths.v4';

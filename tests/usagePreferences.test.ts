@@ -25,7 +25,7 @@ describe('usage preferences across updates', () => {
     });
     Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: browser });
     try {
-      expect(getInitialVisibleColumns()).toEqual(['time', 'model', 'source', 'key', 'result', 'total', 'cache', 'latency', 'speed', 'cost']);
+      expect(getInitialVisibleColumns()).toEqual(['time', 'model', 'source', 'result', 'total', 'cache', 'latency', 'speed', 'cost', 'key']);
       expect(getInitialColumnWidths().provider).toBe(135);
       browser.setItem('cpa-gui.usage-events-visible-cols.v5', JSON.stringify(['time', 'provider', 'key', 'source', 'model', 'effort', 'result', 'request', 'latency', 'speed', 'total', 'cache', 'cost']));
       expect(getInitialVisibleColumns()).toEqual(['time', 'provider', 'key', 'source', 'model', 'result', 'request', 'latency', 'speed', 'total', 'cache', 'cost']);

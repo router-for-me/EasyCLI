@@ -5,12 +5,12 @@ const assert = require('node:assert/strict');
 (async () => {
   const browser = await chromium.launch({ channel: 'msedge', headless: true });
   try {
-    for (const client of ['codex', 'antigravity-cli', 'copilot-cli', 'vscode-copilot']) {
+    for (const client of ['codex', 'antigravity-cli']) {
       for (const embedded of [false, true]) {
         const page = await browser.newPage();
         const errors = [];
         page.on('pageerror', error => errors.push(String(error)));
-        const url = `${process.env.AGENT_CLIENT_TEST_URL || "http://127.0.0.1:1421"}/tests/fixtures/agent-backups.html?client=${client}${embedded ? '&embedded' : ''}`;
+        const url = `http://127.0.0.1:1421/tests/fixtures/agent-backups.html?client=${client}${embedded ? '&embedded' : ''}`;
         await page.goto(url);
         const picker = page.locator('.agent-model-trigger');
         const missing = page.getByText('当前选择已不在可用模型列表中，请刷新模型后重新选择', { exact: true });
@@ -55,6 +55,6 @@ const assert = require('node:assert/strict');
         await page.close();
       }
     }
-    console.log('PASS: Codex, Antigravity and Copilot clients preserve selections across empty/partial lists, remount, reload and recovery in both page layouts');
+    console.log('PASS: Codex and Antigravity preserve selections across empty/partial lists, remount, reload and recovery in both page layouts');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exit(1); });

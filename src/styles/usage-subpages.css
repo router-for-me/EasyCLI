@@ -217,7 +217,8 @@
 
 .usage-records-page .usage-request-log .usage-events-table td {
   height: 78px;
-  vertical-align: middle;
+  /* Align the primary line even when adjacent cells have different detail counts. */
+  vertical-align: top;
   padding: 14px 16px;
   border: 0;
   background: var(--usage-log-surface);
@@ -226,7 +227,7 @@
 }
 
 .usage-records-page .usage-request-log .usage-latency-cell {
-  vertical-align: middle;
+  vertical-align: top;
 }
 
 .usage-records-page .usage-request-log .usage-events-table .usage-event-error-row > td {
