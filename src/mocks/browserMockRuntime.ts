@@ -993,6 +993,7 @@ export function createBrowserMockRuntime(
       case 'restart_agent_app':
       case 'restart_codex_app':
       case 'restart_opencode_app':
+      case 'restart_codex_cli_daemon':
       case 'check_codex_oauth_login':
       case 'restore_codex_official_config':
       case 'create_agent_config_backup':
@@ -1553,6 +1554,7 @@ export function createBrowserMockRuntime(
       };
       case 'apply_codex_session_index_cleanup': return { prunedEntries: asArray(asObject(payload.request).threadIds).length, backupPath: 'C:\\Users\\Mock\\.codex\\backups\\index.json' };
 
+      case 'get_codex_cli_daemon_running': return true;
       case 'get_lan_ipv4': return ['192.168.100.100'];
       default:
         if (command.startsWith('plugin:window|') || command.startsWith('plugin:webview|')) return null;

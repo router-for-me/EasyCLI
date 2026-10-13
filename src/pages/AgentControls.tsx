@@ -5,17 +5,19 @@ import { useI18n } from '../i18n';
 type LaunchTarget = { id: 'app' | 'cli'; label: string; detail: string };
 
 export function AgentRunControls({
-  name, dualTargets, desktop, targets, enabled, busyAction, harness, onLaunch, onRestart, onStop, onRestartWeb, error, onErrorDismiss,
+  name, dualTargets, desktop, cliService, targets, enabled, busyAction, harness, onLaunch, onRestart, onRestartCli, onStop, onRestartWeb, error, onErrorDismiss,
 }: {
   name: string;
   dualTargets: boolean;
   desktop: boolean;
+  cliService: boolean;
   targets: LaunchTarget[];
   enabled: boolean;
   busyAction: string | null;
   harness: { running: boolean; pid: number | null; mode: string | null } | null;
   onLaunch: (target: LaunchTarget | null) => void;
   onRestart: () => void;
+  onRestartCli: () => void;
   onStop: () => void;
   onRestartWeb: () => void;
   error: string;
@@ -47,6 +49,11 @@ export function AgentRunControls({
           {t(busyAction === 'stop-deepseek' ? 'agents.deepseekLaunch.stopping' : 'agents.deepseekLaunch.stop')}
         </button> : dualTargets ? launchButton(cli, 'cli') : launchButton(targets[0] ?? null)}
       {dualTargets ? launchButton(app, 'app') : null}
+      {cliService ? <button type="button" className="secondary-button agent-launch-button"
+        onClick={onRestartCli} disabled={busy || !enabled || !cli} title={cli?.detail ?? t('agents.launch.unavailable')}>
+        {busyAction === 'restart-cli' ? <LoaderCircle size={16} className="spin" /> : <RefreshCw size={16} />}
+        {t(busyAction === 'restart-cli' ? 'agents.launch.restartingApp' : 'agents.launch.restartCli')}
+      </button> : null}
       {desktop ? <button type="button" className="secondary-button agent-launch-button"
         onClick={onRestart} disabled={busy || !enabled || !app} title={app?.detail ?? t('agents.launch.unavailable')}>
         {busyAction === 'restart-app' ? <LoaderCircle size={16} className="spin" /> : <RefreshCw size={16} />}

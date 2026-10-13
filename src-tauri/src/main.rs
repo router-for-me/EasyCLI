@@ -2747,6 +2747,8 @@ fn main() {
             restart_agent_app,
             restart_codex_app,
             restart_opencode_app,
+            get_codex_cli_daemon_running,
+            restart_codex_cli_daemon,
             get_lan_ipv4,
             save_gui_settings,
             save_network_routing_settings,
