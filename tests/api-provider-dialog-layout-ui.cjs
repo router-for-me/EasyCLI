@@ -75,6 +75,43 @@ const path = require('node:path');
       await page.setViewportSize(viewport);
       await assertViewportOverlay('.config-dialog-backdrop');
       await assertDialogControls(form);
+      const modelOptions = form.locator('.provider-model-options').first();
+      await modelOptions.locator(':scope > summary').click();
+      // Exercise the real model controls with CJK text and larger font metrics.
+      // Fixed label/control tracks used to overlap and leave too little select content height.
+      for (const fontSize of [14, 24]) {
+        const layout = await modelOptions.evaluate((element, size) => {
+          element.style.setProperty('--font-size-label', `${size}px`);
+          return [...element.querySelectorAll('.provider-template-field > label:has(select)')].map(label => {
+            const caption = label.querySelector('span');
+            const select = label.querySelector('select');
+            caption.textContent = '启用上游兼容模式 / Upstream compatibility';
+            select.options[0].textContent = '继承 / 默认';
+            const style = getComputedStyle(select);
+            const probe = document.createElement('span');
+            probe.style.cssText = 'position: absolute; white-space: nowrap;';
+            probe.style.font = style.font;
+            probe.textContent = select.selectedOptions[0].textContent;
+            document.body.append(probe);
+            const textHeight = probe.getBoundingClientRect().height;
+            probe.remove();
+            return {
+              overlap: caption.getBoundingClientRect().bottom > select.getBoundingClientRect().top + 1,
+              contentHeight: select.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom),
+              textHeight,
+            };
+          });
+        }, fontSize);
+        assert.ok(layout.length > 0 && layout.every(field => !field.overlap && field.contentHeight >= field.textHeight),
+          `Model labels and select text must fit at ${fontSize}px in a ${viewport.width}px window: ${JSON.stringify(layout)}`);
+      }
+      await modelOptions.evaluate(element => element.style.removeProperty('--font-size-label'));
+      const compatibility = modelOptions.locator('select').first();
+      for (const value of ['true', 'false', '']) {
+        await compatibility.selectOption(value);
+        assert.equal(await compatibility.inputValue(), value, 'Tri-state selection must remain usable');
+      }
+      await modelOptions.locator(':scope > summary').click();
       await form.getByLabel('Remark', { exact: true }).fill('Small-window edit');
       await form.locator('.provider-advanced-settings > summary').click();
       const headers = form.getByRole('textbox', { name: /Custom Headers/ });
