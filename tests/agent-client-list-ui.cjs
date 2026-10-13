@@ -104,7 +104,7 @@ const screenshots = path.join(os.tmpdir(), 'easycliproxy-agent-clients');
 
     // Search reaches uninstalled clients; a cancelled draft never affects navigation or storage.
     await manage().click();
-    assert.equal(await dialog().getByRole('checkbox').count(), 14);
+    assert.equal(await dialog().getByRole('checkbox').count(), 16);
     await search().fill('herMES');
     assert.equal(await dialog().getByRole('checkbox').count(), 1);
     await checkbox('Hermes Agent').check();
@@ -173,7 +173,7 @@ const screenshots = path.join(os.tmpdir(), 'easycliproxy-agent-clients');
     await open('not-installed&no-plugin&fresh');
     await waitClients(['Codex']);
     await manage().click();
-    assert.equal(await dialog().getByRole('checkbox').count(), 14);
+    assert.equal(await dialog().getByRole('checkbox').count(), 16);
     await closeAndFocus(() => cancel().click());
     await open('mixed-clients&fail-detection');
     await page.getByText(/模拟客户端检测失败/).waitFor();
@@ -192,9 +192,9 @@ const screenshots = path.join(os.tmpdir(), 'easycliproxy-agent-clients');
     // Every saved client is reachable exactly once, in the same order, without a second switcher.
     await page.setViewportSize({ width: 1368, height: 912 });
     const savedClients = ['claude-code', 'claude-desktop', 'codex', 'deepseek-harness', 'opencode', 'omp', 'pi',
-      'grok-build', 'antigravity-cli', 'workbuddy', 'zcode', 'kimi-code', 'openclaw'];
+      'grok-build', 'copilot-cli', 'vscode-copilot', 'antigravity-cli', 'workbuddy', 'zcode', 'kimi-code', 'openclaw'];
     const savedNames = ['Claude Code', 'Claude Desktop', 'Codex', 'DeepSeek Harness', 'OpenCode', 'Oh My Pi', 'Pi',
-      'Grok Build', 'Antigravity CLI', 'WorkBuddy', 'ZCode', 'Kimi Code', 'OpenClaw'];
+      'Grok Build', 'Copilot CLI', 'VSCode Copilot', 'Antigravity CLI', 'WorkBuddy', 'ZCode', 'Kimi Code', 'OpenClaw'];
     await page.evaluate(({ key, ids }) => localStorage.setItem(key, JSON.stringify(ids)), { key: storageKey, ids: savedClients });
     await page.goto(`${base}/tests/fixtures/agent-backups.html?shell&client=claude-code`, { waitUntil: 'domcontentloaded' });
     await ready();
