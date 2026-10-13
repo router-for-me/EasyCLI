@@ -71,6 +71,8 @@ pub(crate) fn inspect_agent_config_statuses_with_overrides(
         AgentStatusDetectionTarget::Client(AgentClient::ZCode),
         AgentStatusDetectionTarget::Client(AgentClient::WorkBuddy),
         AgentStatusDetectionTarget::Client(AgentClient::AntigravityCli),
+        AgentStatusDetectionTarget::Client(AgentClient::CopilotCli),
+        AgentStatusDetectionTarget::Client(AgentClient::VscodeCopilot),
         AgentStatusDetectionTarget::Client(AgentClient::KimiCode),
         AgentStatusDetectionTarget::Client(AgentClient::GrokBuild),
         AgentStatusDetectionTarget::Client(AgentClient::Omp),
@@ -907,6 +909,17 @@ pub(crate) async fn fetch_prepared_agent_models(
         } else {
             fetch_agent_models(config.port, api_key).await?
         };
+        if client == AgentClient::VscodeCopilot {
+            // The public model list may contain IDs only. Request the Codex
+            // metadata explicitly, but keep the public IDs for configuration.
+            let (runtime_models, content) = tokio::join!(
+                fetch_codex_runtime_models(config.port, api_key),
+                fetch_management_config_yaml(config),
+            );
+            let mut runtime_models = runtime_models?;
+            codex_catalog::apply_configured_context_limits(&mut runtime_models, &content?)?;
+            copilot::enrich_vscode_context_windows(&mut models, &runtime_models)?;
+        }
         if agent_uses_cpa_runtime_context_windows(client) {
             let runtime_models = fetch_codex_runtime_models(config.port, api_key).await?;
             codex_catalog::merge_runtime_context_windows(&mut models, &runtime_models);
@@ -1195,6 +1208,7 @@ pub(crate) async fn apply_agent_config(
         &model,
         claude_desktop_model_mappings,
     )?;
+    prepare_vscode_copilot_connection(client, &home, api_key, executable_overrides.as_ref()).await?;
     commit_agent_with_core(&config, claude_desktop_model_mappings, &prepared.models, |claude_desktop_model_mappings| {
         let _guard = AGENT_CONFIG_FILE_LOCK
             .lock()
@@ -1267,6 +1281,7 @@ pub(crate) async fn set_agent_config_enabled(
             &model,
             claude_desktop_model_mappings,
         )?;
+        prepare_vscode_copilot_connection(client, &home, api_key, executable_overrides.as_ref()).await?;
         commit_agent_with_core(&config, claude_desktop_model_mappings, &prepared.models, |claude_desktop_model_mappings| {
             let _guard = AGENT_CONFIG_FILE_LOCK
                 .lock()
