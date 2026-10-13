@@ -1636,8 +1636,7 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
       }
       const confirmed = await askConfirmation({
         title: t('agents.launch.restartCliTitle'),
-        message: t('agents.launch.restartCliMessage'),
-        warning: t('agents.launch.restartCliWarning'),
+        message: `${t('agents.launch.restartCliMessage')} ${t('agents.launch.restartCliWarning')}`,
         confirmText: t('agents.launch.restartCliConfirm'),
         variant: 'danger',
       });
