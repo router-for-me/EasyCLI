@@ -40,6 +40,11 @@ let embedded=params.has('embedded');
 (window as any).fixtureSessionIds=Array.from({length:61},(_,index)=>`session-${index+1}`);
 mockIPC(async (cmd,args:any) => {
  calls.push({cmd,args});
+ if(cmd==='get_codex_cli_daemon_running') {
+   if(params.has('daemon-error'))throw new Error('Codex daemon probe failed');
+   return !params.has('daemon-stopped');
+ }
+ if(cmd==='restart_codex_cli_daemon')return null;
  if(cmd==='plugin:dialog|open') return (window as any).fixtureSelectedProgram ?? null;
  if((window as any).fixtureDeferredCommands?.includes(cmd)) {
    await new Promise<void>(resolve=>{

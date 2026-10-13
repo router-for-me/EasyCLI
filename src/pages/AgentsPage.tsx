@@ -76,6 +76,7 @@ import { AgentConfigBackupDialog } from './AgentConfigBackupDialog';
 import { AgentClientList } from './AgentClientList';
 import { AgentConfigManagementPanel, AgentConfigurationFeedback, AgentRunControls } from './AgentControls';
 import { useDialogFocusTrap } from '../components/useDialogFocusTrap';
+import { useConfirmation } from '../components/ConfirmationDialog';
 import { requestAppNavigation } from '../navigation';
 
 const setupErrors: Record<string, MessageKey> = {
@@ -638,9 +639,10 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
   const [loading, setLoading] = useState(() => agentStatusesCache === null);
   const [modelLoading, setModelLoading] = useState(false);
   const [busyAction, setBusyAction] = useState<
-    'backup' | 'apply' | 'close-config' | 'default' | 'clear' | 'install-pi' | 'update-pi' | 'repair-pi' | 'uninstall-pi' | 'oauth-check' | 'native-oauth' | 'directory' | 'launch' | 'launch-cli' | 'launch-app' | 'restart-app' | 'stop-deepseek' | 'restart-deepseek' | null
+    'backup' | 'apply' | 'close-config' | 'default' | 'clear' | 'install-pi' | 'update-pi' | 'repair-pi' | 'uninstall-pi' | 'oauth-check' | 'native-oauth' | 'directory' | 'launch' | 'launch-cli' | 'launch-app' | 'restart-app' | 'restart-cli' | 'stop-deepseek' | 'restart-deepseek' | null
   >(null);
   const busy = busyAction !== null;
+  const { askConfirmation, confirmationDialog } = useConfirmation();
   const [detectionError, setDetectionError] = useState('');
   const [modelError, setModelError] = useState('');
   const [modelSelectionError, setModelSelectionError] = useState('');
@@ -1650,6 +1652,33 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
     }
   };
 
+  const restartCodexCliService = async () => {
+    if (selected !== 'codex') return;
+    const executablePath = executablePaths[selected] ?? null;
+    setBusyAction('restart-cli');
+    setLaunchError('');
+    setConfigurationNotice('');
+    try {
+      if (!await invoke<boolean>('get_codex_cli_daemon_running', { executablePath })) {
+        setConfigurationNotice(t('agents.launch.cliServiceNotRunning'));
+        return;
+      }
+      const confirmed = await askConfirmation({
+        title: t('agents.launch.restartCliTitle'),
+        message: `${t('agents.launch.restartCliMessage')} ${t('agents.launch.restartCliWarning')}`,
+        confirmText: t('agents.launch.restartCliConfirm'),
+        variant: 'danger',
+      });
+      if (!confirmed) return;
+      await invoke('restart_codex_cli_daemon', { executablePath });
+      setConfigurationNotice(t('agents.launch.cliServiceRestarted'));
+    } catch (requestError) {
+      setLaunchError(String(requestError));
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
   const restartDeepSeekHarness = async () => {
     setBusyAction('restart-deepseek');
     setLaunchError('');
@@ -2340,9 +2369,11 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
             onDismiss={() => { setConfigurationNotice(''); setClearNotice(''); }} />
           {activeSubpage === 'core' ? <AgentRunControls name={activeDefinition.name} dualTargets={hasIndependentCliAndApp}
             desktop={(hasIndependentCliAndApp && !isDeepSeekHarnessClient) || selected === 'claude-desktop' || selected === 'zcode' || selected === 'workbuddy'}
+            cliService={selected === 'codex'}
             targets={activeLaunchTargets} enabled={launchEnabled} busyAction={busyAction}
             harness={isDeepSeekHarnessClient ? deepSeekHarnessProcessStatus : null}
             onLaunch={(target) => void launchAgent(target)} onRestart={() => void restartDesktopApp()}
+            onRestartCli={() => void restartCodexCliService()}
             onStop={() => void stopDeepSeekHarness()} onRestartWeb={() => void restartDeepSeekHarness()} error={launchError} onErrorDismiss={() => setLaunchError('')} /> : null}
           </div>
         </section>
@@ -2668,6 +2699,7 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
           </section>
         </div>
       ) : null}
+      {confirmationDialog}
     </section>
   );
 }
