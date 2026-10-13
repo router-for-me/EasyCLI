@@ -1163,3 +1163,116 @@ fn core_start_log_captures_stdout_and_stderr() {
     assert_eq!(restarted_output.matches("===== CPA kernel startup").count(), 2);
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn apply_staged_core_with_rollback_restores_previous_binary_on_restart_failure() {
+    let root = agent_test_home("core-staged-rollback");
+    let install_dir = root.join("cpa-core");
+    let staging_dir = root.join("cpa-core.staging");
+    let rollback_dir = root.join("cpa-core.rollback");
+    fs::create_dir_all(&install_dir).unwrap();
+    fs::create_dir_all(&staging_dir).unwrap();
+
+    fs::write(install_dir.join(core_binary_name()), b"working-v1-binary").unwrap();
+    write_core_metadata(
+        &install_dir,
+        &CoreMetadata {
+            version: "v8.0.26".to_string(),
+            asset_name: "v8.0.26.tar.gz".to_string(),
+            installed_at_unix: 10,
+        },
+    )
+    .unwrap();
+
+    // 1. Empty staged binary is rejected before touching install_dir
+    fs::write(staging_dir.join(core_binary_name()), b"").unwrap();
+    assert!(apply_staged_core_with_rollback(&install_dir, &staging_dir, &rollback_dir, || Ok(())).is_err());
+    assert_eq!(
+        fs::read(install_dir.join(core_binary_name())).unwrap(),
+        b"working-v1-binary"
+    );
+
+    // 2. Staged binary that fails restart rolls back to working-v1-binary and metadata
+    fs::write(staging_dir.join(core_binary_name()), b"broken-v2-binary").unwrap();
+    write_core_metadata(
+        &staging_dir,
+        &CoreMetadata {
+            version: "v8.0.27".to_string(),
+            asset_name: "v8.0.27.tar.gz".to_string(),
+            installed_at_unix: 20,
+        },
+    )
+    .unwrap();
+
+    let err = apply_staged_core_with_rollback(&install_dir, &staging_dir, &rollback_dir, || {
+        Err("new binary exited immediately".to_string())
+    })
+    .unwrap_err();
+    assert!(err.contains("was rolled back to the previous version"));
+    assert_eq!(
+        fs::read(install_dir.join(core_binary_name())).unwrap(),
+        b"working-v1-binary"
+    );
+    let restored_meta = read_core_metadata(&install_dir).unwrap();
+    assert_eq!(restored_meta.version, "v8.0.26");
+    assert!(!rollback_dir.exists());
+
+    // 3. Staged binary that succeeds restart keeps new binary and cleans up rollback_dir
+    fs::create_dir_all(&staging_dir).unwrap();
+    fs::write(staging_dir.join(core_binary_name()), b"healthy-v2-binary").unwrap();
+    write_core_metadata(
+        &staging_dir,
+        &CoreMetadata {
+            version: "v8.0.27".to_string(),
+            asset_name: "v8.0.27.tar.gz".to_string(),
+            installed_at_unix: 30,
+        },
+    )
+    .unwrap();
+    apply_staged_core_with_rollback(&install_dir, &staging_dir, &rollback_dir, || Ok(())).unwrap();
+    assert_eq!(
+        fs::read(install_dir.join(core_binary_name())).unwrap(),
+        b"healthy-v2-binary"
+    );
+    assert_eq!(read_core_metadata(&install_dir).unwrap().version, "v8.0.27");
+    assert!(!rollback_dir.exists());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn rollback_removes_files_added_by_the_failed_update_and_keeps_user_files() {
+    let root = agent_test_home("core-staged-rollback-added-files");
+    let install_dir = root.join("cpa-core");
+    let staging_dir = root.join("cpa-core.staging");
+    let rollback_dir = root.join("cpa-core.rollback");
+    fs::create_dir_all(install_dir.join("static")).unwrap();
+    fs::create_dir_all(staging_dir.join("static")).unwrap();
+    fs::create_dir_all(staging_dir.join("plugins")).unwrap();
+
+    fs::write(install_dir.join(core_binary_name()), b"working-v1-binary").unwrap();
+    fs::write(install_dir.join("README.md"), b"v1 readme").unwrap();
+    fs::write(install_dir.join("static").join("app.js"), b"v1 js").unwrap();
+    fs::write(install_dir.join("user-notes.txt"), b"not part of any package").unwrap();
+
+    fs::write(staging_dir.join(core_binary_name()), b"broken-v2-binary").unwrap();
+    fs::write(staging_dir.join("README.md"), b"v2 readme").unwrap();
+    fs::write(staging_dir.join("static").join("app.js"), b"v2 js").unwrap();
+    fs::write(staging_dir.join("static").join("new.css"), b"v2 css").unwrap();
+    fs::write(staging_dir.join("plugins").join("extra.so"), b"v2 plugin").unwrap();
+
+    let err = apply_staged_core_with_rollback(&install_dir, &staging_dir, &rollback_dir, || {
+        Err("new binary exited immediately".to_string())
+    })
+    .unwrap_err();
+
+    assert!(err.contains("was rolled back to the previous version"));
+    assert_eq!(fs::read(install_dir.join(core_binary_name())).unwrap(), b"working-v1-binary");
+    assert_eq!(fs::read(install_dir.join("README.md")).unwrap(), b"v1 readme");
+    assert_eq!(fs::read(install_dir.join("static").join("app.js")).unwrap(), b"v1 js");
+    assert_eq!(fs::read(install_dir.join("user-notes.txt")).unwrap(), b"not part of any package");
+    assert!(!install_dir.join("static").join("new.css").exists());
+    assert!(!install_dir.join("plugins").exists());
+    assert!(!rollback_dir.exists());
+    fs::remove_dir_all(root).unwrap();
+}
+
