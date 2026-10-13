@@ -11,6 +11,8 @@ mod core_config;
 mod core_runtime;
 mod desktop_theme;
 mod instance_lock;
+#[cfg(target_os = "linux")]
+mod linux_graphics;
 mod management_api;
 mod network_proxy;
 #[cfg(any(
@@ -2446,6 +2448,12 @@ fn main() {
             }
             return;
         }
+    }
+
+    // SAFETY: no worker threads or GTK/WebKit runtime have started yet.
+    #[cfg(target_os = "linux")]
+    unsafe {
+        linux_graphics::configure();
     }
 
     let _instance_guard = match acquire_app_instance_guard() {
