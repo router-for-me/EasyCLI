@@ -154,6 +154,7 @@ type UsageQuery = {
   model?: string;
   provider?: string;
   source?: string;
+  upstream?: string;
   api_key_hash?: string;
   failed?: boolean;
   canceled?: boolean;
@@ -307,7 +308,7 @@ export function UsageRecordsPage() {
       query: {
         ...nextTimeQuery,
         model: model || undefined,
-        source: source || undefined,
+        upstream: source || undefined,
         api_key_hash: apiKeyHash || undefined,
         failed: result === 'failed' ? true : result === 'success' ? false : undefined,
         canceled: result === 'canceled' ? true : result === 'failed' ? false : undefined,
@@ -482,7 +483,7 @@ export function UsageRecordsPage() {
   };
 
   const modelOptions = filterOptions(optionsAnalysis.models);
-  const sourceOptions = filterOptions(optionsAnalysis.sources);
+  const sourceOptions = [...(optionsAnalysis.upstreams ?? [])].sort((a, b) => a.label.localeCompare(b.label));
   const keyOptions = filterOptions(optionsAnalysis.apiKeys);
   const filterPanel = (
     <section className="panel usage-filter-panel">

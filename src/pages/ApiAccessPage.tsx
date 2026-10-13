@@ -1388,7 +1388,6 @@ export function ApiAccessPage() {
 
   const saveProvider = async (
     nextDraft: ProviderDraft,
-    modelDiscoveryReady: boolean,
   ): Promise<ProviderSaveResult> => {
     const definition = activeDefinition;
     const preparedDraft = applyProviderRemarkIdentity(
@@ -1424,12 +1423,12 @@ export function ApiAccessPage() {
     }
     if (
       activeCategory === 'deepseek'
-      && (!modelDiscoveryReady || preparedDraftForSave.models.length === 0)
+      && preparedDraftForSave.models.length === 0
     ) {
       return {
         saved: false,
         target: 'models',
-        error: t('apiAccess.error.fetchModelsBeforeSave'),
+        error: t('apiAccess.error.modelsRequired'),
       };
     }
     if (Array.from(preparedDraft.remark.trim()).length > 80 || /[\u0000-\u001f\u007f]/.test(preparedDraft.remark)) {
@@ -1999,7 +1998,7 @@ type ApiProviderDialogProps = {
   initialDraft: ProviderDraft;
   busy: boolean;
   onClose: () => void;
-  onSave: (draft: ProviderDraft, modelDiscoveryReady: boolean) => Promise<ProviderSaveResult>;
+  onSave: (draft: ProviderDraft) => Promise<ProviderSaveResult>;
 };
 
 export function ApiProviderDialog({
@@ -2022,10 +2021,6 @@ export function ApiProviderDialog({
   const [formError, setFormError] = useState('');
   const [discoveredModels, setDiscoveredModels] = useState<ModelOption[]>([]);
   const [modelDiscoveryOpen, setModelDiscoveryOpen] = useState(false);
-  const [modelDiscoveryReady, setModelDiscoveryReady] = useState(
-    () => activeCategory !== 'deepseek'
-      || Boolean(editingRow && initialDraft.models.some((model) => model.name.trim())),
-  );
   const [thinkingLevelInput, setThinkingLevelInput] = useState('');
   const [selectedModelNames, setSelectedModelNames] = useState<Set<string>>(
     () => new Set(mergeModelOptions(initialDraft.models).map((model) => model.name.toLowerCase())),
@@ -2076,7 +2071,6 @@ export function ApiProviderDialog({
       discoveryRequestRef.current += 1;
       setModelLoading(false);
       setModelError('');
-      if (activeCategory === 'deepseek') setModelDiscoveryReady(false);
     }
     setDraft((current) => ({
       ...current,
@@ -2185,7 +2179,6 @@ export function ApiProviderDialog({
           ? reconcileModelSelection(models, draft.models, current, 'refresh')
           : modelSelectionForDiscovery(draft.models, models, draft.excludedModelsText ?? ''));
       discoverySelectionInitializedRef.current = true;
-      if (activeCategory === 'deepseek') setModelDiscoveryReady(true);
       if (!models.length) setModelError(t('apiAccess.error.noAvailableModels'));
     } catch (requestError) {
       if (requestId === discoveryRequestRef.current) setModelError(requestErrorMessage(requestError));
@@ -2243,7 +2236,7 @@ export function ApiProviderDialog({
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setFormError('');
-    const result = await onSave(draft, modelDiscoveryReady);
+    const result = await onSave(draft);
     if (result.saved) {
       onClose();
       return;
@@ -2260,7 +2253,6 @@ export function ApiProviderDialog({
 
   const hasModelExclusions = activeSection !== 'openai-compatibility'
     && Boolean(draft.excludedModelsText?.trim());
-  const deepSeekModelsStale = activeCategory === 'deepseek' && !modelDiscoveryReady;
   const modelSummaryTitle = configuredModels.length > 0
     ? t('apiAccess.models.selected', { count: configuredModels.length })
     : activeCategory === 'deepseek'
@@ -2271,9 +2263,7 @@ export function ApiProviderDialog({
         ? t('apiAccess.models.autoAll')
         : t('apiAccess.models.upstreamDefault');
   const modelSummaryDetail = configuredModels.length > 0
-    ? deepSeekModelsStale
-      ? t('apiAccess.models.staleHint')
-      : configuredModels.slice(0, 3).map((model) => model.name).join('、')
+    ? configuredModels.slice(0, 3).map((model) => model.name).join('、')
     : activeCategory === 'deepseek'
       ? t('apiAccess.models.selectionRequiredHint')
     : hasModelExclusions
@@ -2313,7 +2303,6 @@ export function ApiProviderDialog({
         </div> : null}
         {draft.groupKeys ? <ProviderGroupKeysEditor keys={draft.groupKeys} disabled={busy} onChange={(groupKeys) => {
             discoveryRequestRef.current += 1; setModelLoading(false); setModelError(''); setFormError('');
-            if (activeCategory === 'deepseek') setModelDiscoveryReady(false);
             setDraft((current) => ({ ...current, groupKeys }));
           }} /> : null}
         </section>

@@ -1,4 +1,5 @@
 mod resp;
+mod sources;
 mod token;
 
 #[cfg(target_os = "macos")]
@@ -2889,8 +2890,18 @@ fn build_usage_filter(query: &UsageQuery) -> UsageSqlFilter {
     );
     add_text_filter(&mut clauses, &mut params, "source", query.source.as_deref());
     if let Some(upstream) = query.upstream.as_deref().filter(|value| !value.is_empty()) {
-        clauses.push(format!("({USAGE_UPSTREAM_SQL}) = ?"));
-        params.push(SqlValue::Text(upstream.to_string()));
+        if let Some(group) = upstream.strip_prefix("group:") {
+            match serde_json::from_str::<Vec<String>>(group) {
+                Ok(keys) if !keys.is_empty() && keys.iter().all(|key| key.starts_with("auth:")) => {
+                    clauses.push(format!("({USAGE_UPSTREAM_SQL}) IN (SELECT value FROM json_each(?))"));
+                    params.push(SqlValue::Text(group.to_string()));
+                }
+                _ => clauses.push("0 = 1".to_string()),
+            }
+        } else {
+            clauses.push(format!("({USAGE_UPSTREAM_SQL}) = ?"));
+            params.push(SqlValue::Text(upstream.to_string()));
+        }
     }
     add_text_filter(
         &mut clauses,
@@ -4076,8 +4087,14 @@ pub(crate) async fn get_usage_analysis(
     gui_config_state: tauri::State<'_, GuiConfigState>,
 ) -> Result<UsageAnalysis, String> {
     let config = gui_config_state.snapshot()?;
-    let notes = fetch_usage_credential_notes(&config).await;
-    run_usage_task(move || load_usage_analysis_with_notes(&open_usage_database()?, &query, &config, &notes)).await
+    let metadata = sources::fetch(&config).await;
+    run_usage_task(move || {
+        let connection = open_usage_database()?;
+        let registry = sources::resolve(&connection, metadata)?;
+        let mut analysis = load_usage_analysis_with_notes(&connection, &query, &config, &HashMap::new())?;
+        sources::apply_analysis(&mut analysis, &registry);
+        Ok(analysis)
+    }).await
 }
 
 #[cfg(test)]
@@ -4210,20 +4227,12 @@ fn load_usage_analysis_with_notes(
     })
 }
 
-fn usage_upstream_label(config: &GuiConfigFile, provider: &str, source: &str, auth_index: &str) -> String {
-    let provider_label = if provider.trim().is_empty() { "Unknown Provider" } else { provider.trim() };
-    if auth_index.trim().is_empty() {
-        return provider_label.to_string();
+// Keep source labels readable like keeper; identity remains in the filter value.
+fn usage_upstream_label(config: &GuiConfigFile, provider: &str, source: &str, _auth_index: &str) -> String {
+    if !source.trim().is_empty() && !config.api_keys.iter().any(|entry| entry.key == source.trim()) {
+        return usage_source_display(config, provider, source);
     }
-    let label = if source.trim().is_empty() || config.api_keys.iter().any(|entry| entry.key == source) {
-        provider_label.to_string()
-    } else {
-        usage_source_display(config, provider, source)
-    };
-    // The identity suffix distinguishes credentials with the same remark and
-    // stays identical in the table, analytics and filter options.
-    let suffix: String = auth_index.chars().rev().take(6).collect::<Vec<_>>().into_iter().rev().collect();
-    format!("{label} · {suffix}")
+    if provider.trim().is_empty() { "Unknown source".to_string() } else { provider.trim().to_string() }
 }
 
 fn load_usage_upstreams(connection: &Connection, query: &UsageQuery, config: &GuiConfigFile) -> Result<Vec<UsageUpstream>, String> {
@@ -4475,15 +4484,21 @@ pub(crate) async fn get_usage_events(
     gui_config_state: tauri::State<'_, GuiConfigState>,
 ) -> Result<UsageEventPage, String> {
     let config = gui_config_state.snapshot()?;
-    let notes = fetch_usage_credential_notes(&config).await;
-    run_usage_task(move || load_usage_events_with_notes(&open_usage_database()?, &query, &config, &notes)).await
+    let metadata = sources::fetch(&config).await;
+    run_usage_task(move || {
+        let connection = open_usage_database()?;
+        let registry = sources::resolve(&connection, metadata)?;
+        let mut events = load_usage_events_with_notes(&connection, &query, &config, &HashMap::new())?;
+        sources::apply_events(&mut events, &registry, &config);
+        Ok(events)
+    }).await
 }
 
 fn load_usage_events_with_notes(
     connection: &Connection,
     query: &UsageQuery,
     config: &GuiConfigFile,
-    notes: &HashMap<String, String>,
+    _notes: &HashMap<String, String>,
 ) -> Result<UsageEventPage, String> {
     let filter = build_usage_filter(query);
     let total_sql = format!("SELECT COUNT(*) FROM usage_events{}", filter.clause);
@@ -4535,8 +4550,14 @@ fn load_usage_events_with_notes(
             item.api_key_remark = remark.clone();
             item.api_key_display = display.clone();
         }
-        item.source_display = notes.get(item.auth_index.trim()).cloned()
-            .unwrap_or_else(|| usage_upstream_label(config, &item.provider, &item.source, &item.auth_index));
+        let source_is_client_key = hash_text(item.source.trim()) == item.api_key_hash
+            || config.api_keys.iter().any(|entry| entry.key == item.source.trim());
+        let identity = if item.auth_index.trim().is_empty() && !item.source.trim().is_empty() && !source_is_client_key {
+            usage_source_display(config, &item.provider, &item.source)
+        } else {
+            usage_upstream_label(config, &item.provider, if source_is_client_key { "" } else { &item.source }, &item.auth_index)
+        };
+        item.source_display = identity;
         item.cost = usage_record_cost(item, &prices);
     }
     Ok(UsageEventPage {
@@ -5341,7 +5362,7 @@ mod tests {
         connection
     }
 
-    fn sample_record(id: &str, timestamp: &str, model: &str) -> UsageRecord {
+    pub(super) fn sample_record(id: &str, timestamp: &str, model: &str) -> UsageRecord {
         UsageRecord {
             id: id.to_string(),
             row_id: None,
@@ -5416,7 +5437,10 @@ mod tests {
             let overview = load_usage_overview(&connection, &query).unwrap();
             assert_eq!(page.total, 1);
             assert_eq!(overview.total_requests, 1);
-            assert_eq!(page.items[0].source_display, upstream.category.label);
+            if !page.items[0].auth_index.is_empty() {
+                assert_eq!(page.items[0].source_display, upstream.category.label);
+            }
+            assert!(!page.items[0].source_display.contains("secret"));
             assert!(!upstream.category.key.contains("secret"));
             assert!(!upstream.category.label.contains("secret"));
         }
@@ -5550,18 +5574,65 @@ mod tests {
         assert_eq!(analysis.sources.iter().find(|c| c.key == "account@example.com").unwrap().label, "Grok credential note");
         assert_eq!(analysis.sources.iter().find(|c| c.key == "sk-upstream-test").unwrap().label, "Grok API note");
         assert_eq!(analysis.api_keys[0].label, "Client note");
+        assert_eq!(analysis.upstreams.iter().find(|c| c.category.key == "auth:grok-file").unwrap().category.label, "account@example.com");
         let events = load_usage_events_with_notes(&connection, &query, &config, &notes).unwrap();
         assert!(events.items.iter().all(|item| item.api_key_remark == "Client note"));
-        assert_eq!(events.items.iter().find(|item| item.auth_index == "grok-file").unwrap().source_display, "Grok credential note");
+        assert_eq!(events.items.iter().find(|item| item.auth_index == "grok-file").unwrap().source_display, "account@example.com");
         let updated = HashMap::from([("grok-file".into(), "Updated note".into())]);
         let analysis = load_usage_analysis_with_notes(&connection, &query, &config, &updated).unwrap();
         assert_eq!(analysis.sources.iter().find(|c| c.key == "account@example.com").unwrap().label, "Updated note");
+        assert_eq!(analysis.upstreams.iter().find(|c| c.category.key == "auth:grok-file").unwrap().category.label, "account@example.com");
         let conflicting = HashMap::from([
             ("grok-file".into(), "First note".into()),
             ("retired-grok-file".into(), "Different note".into()),
         ]);
         let analysis = load_usage_analysis_with_notes(&connection, &query, &config, &conflicting).unwrap();
         assert_eq!(analysis.sources.iter().find(|c| c.key == "account@example.com").unwrap().label, "account@example.com");
+    }
+
+    #[test]
+    fn usage_accounts_survive_shared_notes_and_missing_auth_indexes() {
+        let mut connection = Connection::open_in_memory().unwrap();
+        initialize_usage_schema(&connection).unwrap();
+        let config = GuiConfigFile::default();
+        let mut records = Vec::new();
+        for (id, account, auth) in [
+            ("first", "first@example.com", "auth-first"),
+            ("second", "second@example.com", "auth-second"),
+            ("legacy", "legacy@example.com", ""),
+        ] {
+            let mut record = sample_record(id, "2026-10-11T00:00:00Z", "model");
+            record.source = account.into();
+            record.auth_index = auth.into();
+            record.provider = "codex".into();
+            records.push(record);
+        }
+        insert_usage_records(&mut connection, &records).unwrap();
+        let notes = HashMap::from([
+            ("auth-first".into(), "Work".into()),
+            ("auth-second".into(), "Work".into()),
+        ]);
+        let query = UsageQuery::default();
+        let events = load_usage_events_with_notes(&connection, &query, &config, &notes).unwrap();
+        for event in &events.items {
+            assert!(event.source_display.contains(&event.source));
+            if !event.auth_index.is_empty() {
+                assert!(!event.source_display.contains("Work"));
+            }
+        }
+        let analysis = load_usage_analysis_with_notes(&connection, &query, &config, &notes).unwrap();
+        for event in events.items.iter().filter(|event| !event.auth_index.is_empty()) {
+            let key = format!("auth:{}", event.auth_index);
+            assert_eq!(analysis.upstreams.iter().find(|item| item.category.key == key).unwrap().category.label, event.source_display);
+        }
+        let mut fallback = sample_record("client-fallback", "2026-10-11T00:00:00Z", "model");
+        fallback.source = "retired-client-key".into();
+        fallback.api_key_hash = hash_text(&fallback.source);
+        fallback.auth_index.clear();
+        fallback.provider = "codex".into();
+        insert_usage_records(&mut connection, &[fallback]).unwrap();
+        let events = load_usage_events_with_notes(&connection, &query, &config, &notes).unwrap();
+        assert_eq!(events.items.iter().find(|event| event.source == "retired-client-key").unwrap().source_display, "codex");
     }
 
     #[test]

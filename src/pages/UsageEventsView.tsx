@@ -113,7 +113,7 @@ const EVENT_COLUMNS: readonly EventColumnDef[] = [
 ] as const;
 
 const DEFAULT_EVENT_VISIBLE_COLUMNS: readonly EventColumnKey[] = [
-  'time', 'model', 'source', 'result', 'total', 'cache', 'latency', 'speed', 'cost',
+  'time', 'model', 'source', 'result', 'total', 'cache', 'latency', 'speed', 'cost', 'key',
 ];
 
 const EVENT_COL_WIDTHS_STORAGE_KEY = 'cpa-gui.usage-events-col-widths.v4';
@@ -145,7 +145,8 @@ export const getInitialVisibleColumns = (): EventColumnKey[] => {
         });
         if (savedKeys.length > 0) {
           const oldDefault = ['time', 'model', 'provider', 'result', 'total', 'cache', 'latency', 'speed', 'cost'];
-          if (savedKeys.length === oldDefault.length && savedKeys.every((key, index) => key === oldDefault[index])) {
+          const previousDefault = ['time', 'model', 'source', 'result', 'total', 'cache', 'latency', 'speed', 'cost'];
+          if ([oldDefault, previousDefault].some(defaults => savedKeys.length === defaults.length && savedKeys.every((key, index) => key === defaults[index]))) {
             return [...DEFAULT_EVENT_VISIBLE_COLUMNS];
           }
           return savedKeys;
@@ -203,6 +204,7 @@ type UsageEventQuery = {
   model?: string;
   provider?: string;
   source?: string;
+  upstream?: string;
   api_key_hash?: string;
   failed?: boolean;
   canceled?: boolean;
@@ -425,11 +427,11 @@ function UsageEventCell({
     }
     case 'source':
       {
-        const keyLabel = privacy.text(record.api_key_remark || record.api_key_display || '—');
+        const credentialLabel = privacy.text(record.source_display || record.provider || '—');
       return (
-        <td className="usage-td-source align-left" title={keyLabel}>
-          <span className="usage-event-source" title={keyLabel}>
-            {keyLabel}
+        <td className="usage-td-source align-left" title={credentialLabel}>
+          <span className="usage-event-source" title={credentialLabel}>
+            {credentialLabel}
           </span>
         </td>
       );
