@@ -187,6 +187,7 @@ pub(crate) fn build_agent_updates_with_oauth(
                 },
             ])
         }
+        AgentClient::CopilotCli | AgentClient::VscodeCopilot => build_copilot_updates(client, home, &openai_base, api_key, model, models, false),
         AgentClient::AntigravityCli => build_antigravity_updates(client, home, &root_base, api_key, model, false),
         AgentClient::WorkBuddy => {
             let before = read_optional_text(&paths[0])?;
@@ -550,7 +551,7 @@ pub(crate) fn write_agent_configuration_file(
     {
         return write_codex_private_file(path, content);
     }
-    if client == AgentClient::AntigravityCli {
+    if matches!(client, AgentClient::AntigravityCli | AgentClient::CopilotCli) {
         return write_codex_private_file(path, content);
     }
     if client == AgentClient::DeepSeekHarness {
@@ -1759,6 +1760,7 @@ pub(crate) fn prepare_agent_managed_removal(
         AgentClient::ZCode => prepare_zcode_managed_removal(paths),
         AgentClient::WorkBuddy => prepare_workbuddy_managed_removal(paths),
         AgentClient::AntigravityCli => prepare_antigravity_removal(client, paths),
+        AgentClient::CopilotCli | AgentClient::VscodeCopilot => prepare_copilot_removal(client, paths),
         AgentClient::KimiCode => prepare_kimi_code_managed_removal(paths),
         AgentClient::GrokBuild => prepare_grok_build_managed_removal(paths),
         AgentClient::Omp => prepare_omp_managed_removal(paths),
@@ -2863,6 +2865,7 @@ pub(crate) fn build_agent_session_restored_bytes_with_preference(
         AgentClient::ZCode => build_restored_zcode_provider_config(current, original)?,
         AgentClient::WorkBuddy => build_restored_workbuddy_config(current, original)?,
         AgentClient::AntigravityCli => restore_antigravity_config(client, path, current, original)?,
+        AgentClient::CopilotCli | AgentClient::VscodeCopilot => restore_copilot_config(client, path, current, original)?,
         AgentClient::KimiCode => build_restored_kimi_code_config(current, original)?,
         AgentClient::GrokBuild => build_restored_grok_build_config(current, original)?,
         AgentClient::Omp => {

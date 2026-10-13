@@ -1391,6 +1391,8 @@ enum AgentClient {
     ZCode,
     WorkBuddy,
     AntigravityCli,
+    CopilotCli,
+    VscodeCopilot,
     KimiCode,
     GrokBuild,
     Omp,
@@ -1416,6 +1418,8 @@ impl AgentClient {
             "zcode" => Ok(Self::ZCode),
             "workbuddy" => Ok(Self::WorkBuddy),
             "antigravity-cli" => Ok(Self::AntigravityCli),
+            "copilot-cli" => Ok(Self::CopilotCli),
+            "vscode-copilot" => Ok(Self::VscodeCopilot),
             "kimi-code" => Ok(Self::KimiCode),
             "grok-build" => Ok(Self::GrokBuild),
             "omp" => Ok(Self::Omp),
@@ -1435,6 +1439,8 @@ impl AgentClient {
             Self::ZCode => "zcode",
             Self::WorkBuddy => "workbuddy",
             Self::AntigravityCli => "antigravity-cli",
+            Self::CopilotCli => "copilot-cli",
+            Self::VscodeCopilot => "vscode-copilot",
             Self::KimiCode => "kimi-code",
             Self::GrokBuild => "grok-build",
             Self::Omp => "omp",
@@ -1453,6 +1459,8 @@ impl AgentClient {
             Self::ZCode => "ZCode",
             Self::WorkBuddy => "WorkBuddy",
             Self::AntigravityCli => "Antigravity CLI",
+            Self::CopilotCli => "Copilot CLI",
+            Self::VscodeCopilot => "VSCode Copilot",
             Self::KimiCode => "Kimi Code",
             Self::GrokBuild => "Grok Build",
             Self::Omp => "Oh My Pi",
@@ -1480,6 +1488,8 @@ impl AgentClient {
             Self::ZCode => &["zcode"],
             Self::WorkBuddy => &[],
             Self::AntigravityCli => &["agy"],
+            Self::CopilotCli => &["copilot"],
+            Self::VscodeCopilot => &["code"],
             Self::KimiCode => &["kimi"],
             Self::GrokBuild => &["grok"],
             Self::Omp => &["omp"],
@@ -2412,6 +2422,10 @@ struct GithubAsset {
 
 fn main() {
     let helper_args = env::args_os().collect::<Vec<_>>();
+    if helper_args.get(1).is_some_and(|a| a == "--cpa-copilot-cli") {
+        let code = run_copilot_helper(&helper_args).unwrap_or_else(|error| { eprintln!("{error}"); 1 });
+        std::process::exit(code);
+    }
     if antigravity_helper_requested(&helper_args) {
         let code = run_antigravity_helper(&helper_args).unwrap_or_else(|error| {
             eprintln!("{error}");

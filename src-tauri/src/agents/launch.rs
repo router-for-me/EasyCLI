@@ -196,6 +196,21 @@ pub(crate) fn launch_agent(
             let directory = resolve_launch_directory(working_directory.as_deref(), &home)?;
             launch_cli_agent(&executable, client.name(), &directory, &antigravity_cli_helper_arguments(&home), &[], &[], &terminal)
         }
+        (AgentClient::CopilotCli, "cli") if copilot_has_marker(client, &agent_config_paths(client, &home))? => {
+            if !status.configured { return Err("Copilot CLI configuration does not match CPA. Apply it again".into()); }
+            let executable = executable_override.filter(|p| p.is_file()).map(Path::to_path_buf)
+                .or_else(|| find_agent_executable(client, &home)).ok_or("Copilot CLI not found")?;
+            let adapter = env::current_exe().map_err(|_| "Unable to locate CPA launch adapter")?;
+            let directory = resolve_launch_directory(working_directory.as_deref(), &home)?;
+            let args = vec!["--cpa-copilot-cli".into(), path_to_string(&agent_config_paths(client, &home)[0]), path_to_string(&executable)];
+            launch_cli_agent(&adapter, client.name(), &directory, &args, &[], &[], &terminal)
+        }
+        (AgentClient::VscodeCopilot, "app") => {
+            let executable = executable_override.filter(|p| p.is_file()).map(Path::to_path_buf)
+                .or_else(|| find_agent_executable(client, &home)).ok_or("VS Code not found")?;
+            let directory = resolve_launch_directory(working_directory.as_deref(), &home)?;
+            launch_vscode_directory(&executable, &directory)
+        }
         (AgentClient::WorkBuddy, "app") => {
             let executable = manual_desktop_path(executable_override).map(Path::to_path_buf)
                 .or_else(|| find_workbuddy_desktop_executable(&home))
@@ -1139,6 +1154,41 @@ fn launch_opencode_desktop(home: &Path, executable_override: Option<&Path>) -> R
     launch_desktop_agent(&application, "OpenCode Desktop")
 }
 
+fn launch_vscode_directory(executable: &Path, directory: &Path) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    let mut command = {
+        // Prefer the editor binary to its batch launcher so folder names are not
+        // interpreted by cmd.exe.
+        let editor = executable.parent().and_then(Path::parent)
+            .map(|root| root.join("Code.exe"))
+            .filter(|path| path.is_file());
+        match editor {
+            Some(editor) => Command::new(editor),
+            None => windows_command_for_executable(executable, false),
+        }
+    };
+    #[cfg(target_os = "macos")]
+    let mut command = {
+        if let Some(application) = executable.ancestors()
+            .find(|path| path.extension().and_then(|value| value.to_str()) == Some("app"))
+        {
+            let mut command = Command::new("open");
+            command.arg("-a").arg(application);
+            command
+        } else {
+            Command::new(executable)
+        }
+    };
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    let mut command = Command::new(executable);
+
+    command.arg(directory).current_dir(directory)
+        .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+    configure_background_command(&mut command);
+    command.spawn().map(|_| ())
+        .map_err(|error| format!("Failed to start VSCode Copilot: {error}"))
+}
+
 fn launch_desktop_agent(executable: &Path, label: &str) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     let mut command = {
@@ -1326,7 +1376,7 @@ fn windows_powershell_cli_script(
     let executable = windows_powershell_single_quoted_literal(&path_to_string(executable));
     if arguments
         .first()
-        .is_some_and(|arg| arg == "--cpa-antigravity-cli")
+        .is_some_and(|arg| matches!(arg.as_str(), "--cpa-antigravity-cli" | "--cpa-copilot-cli"))
     {
         let arguments = arguments
             .iter()
@@ -1594,7 +1644,7 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn antigravity_powershell_waits_for_gui_helper_and_preserves_arguments() {
+    fn powershell_waits_for_gui_helpers_and_preserves_arguments() {
         let directory = env::temp_dir()
             .join(format!(
                 "cpa-powershell-{}-{}",
@@ -1646,27 +1696,30 @@ class GuiHelper {
         };
         run(&script);
         fs::rename(compiled, &executable).unwrap();
-        let arguments = vec![
-            "--cpa-antigravity-cli".into(),
-            path_to_string(&directory),
-            "trailing slash \\".into(),
-            "quote \" and \\\"".into(),
-            "literal $value & [x] 'quoted'".into(),
-            String::new(),
-        ];
-        let script = format!(
-            "{}; if (![IO.File]::Exists({})) {{ throw 'GUI helper is still running' }}",
-            windows_powershell_cli_script(&executable, &directory, &arguments),
-            windows_powershell_single_quoted_literal(&path_to_string(
-                &directory.join("finished.txt")
-            )),
-        );
-        run(&script);
-        let received = fs::read_to_string(directory.join("arguments.txt")).unwrap();
-        assert_eq!(
-            received.lines().collect::<Vec<_>>(),
-            arguments.iter().map(String::as_str).collect::<Vec<_>>()
-        );
+        for helper_flag in ["--cpa-antigravity-cli", "--cpa-copilot-cli"] {
+            let arguments = vec![
+                helper_flag.into(),
+                path_to_string(&directory),
+                "trailing slash \\".into(),
+                "quote \" and \\\"".into(),
+                "literal $value & [x] 'quoted'".into(),
+                String::new(),
+            ];
+            let script = format!(
+                "{}; if (![IO.File]::Exists({})) {{ throw 'GUI helper is still running' }}",
+                windows_powershell_cli_script(&executable, &directory, &arguments),
+                windows_powershell_single_quoted_literal(&path_to_string(
+                    &directory.join("finished.txt")
+                )),
+            );
+            run(&script);
+            let received = fs::read_to_string(directory.join("arguments.txt")).unwrap();
+            assert_eq!(
+                received.lines().collect::<Vec<_>>(),
+                arguments.iter().map(String::as_str).collect::<Vec<_>>()
+            );
+            fs::remove_file(directory.join("finished.txt")).unwrap();
+        }
         fs::remove_dir_all(directory).unwrap();
     }
 

@@ -140,6 +140,9 @@ fn merge_user_image(
             .map(|bytes| std::str::from_utf8(bytes).map_err(|_| "Original state is not UTF-8 text"))
             .transpose()?,
     )?;
+    if client == "vscode-copilot" {
+        return render(path, &merge_copilot_groups_original(&baseline_value, &current_value)).map(|s| Some(s.into_bytes()));
+    }
     let mut merged = merge_user_value(
         baseline.map(|_| &baseline_value),
         applied.map(|_| &applied_value),
@@ -343,6 +346,7 @@ fn user_home_directory() -> Option<PathBuf> {
 fn configuration_root_candidates(home: &Path) -> Vec<PathBuf> {
     let mut roots = vec![
         home.join(".claude"),
+        home.join(".copilot"),
         home.join(".codex"),
         home.join(".config").join("opencode"),
         home.join(".openclaw"),
@@ -362,6 +366,8 @@ fn configuration_root_candidates(home: &Path) -> Vec<PathBuf> {
         home.join(".pi").join("agent"),
         home.join(".minimax"),
     ];
+    if let Some(parent) = copilot_config_paths(AgentClient::VscodeCopilot, home)[0].parent() { roots.push(parent.to_path_buf()); }
+    if let Some(parent) = copilot_config_paths(AgentClient::CopilotCli, home)[0].parent() { roots.push(parent.to_path_buf()); }
     #[cfg(target_os = "macos")]
     {
         let support = home.join("Library/Application Support");
@@ -703,6 +709,10 @@ pub(crate) fn validate_config_images(images: &Images) -> Result<(), String> {
 
 pub(crate) fn validate_client_config_images(client: &str, images: &Images) -> Result<(), String> {
     validate_config_images(images)?;
+    if client == "vscode-copilot" {
+        for (path, bytes) in images { validate_copilot_groups_image(path, text(bytes.as_deref())?)?; }
+        return Ok(());
+    }
     if client == "workbuddy" {
         for (_, bytes) in images {
             parse_workbuddy_config(text(bytes.as_deref())?)?;
@@ -962,6 +972,7 @@ fn validate_unmanaged_preserved(
     if client == "workbuddy" {
         return validate_workbuddy_unmanaged_preserved(before, after);
     }
+    if client == "vscode-copilot" { return validate_copilot_groups_preserved(before, after); }
     let project = |value: &Value| -> Result<Value, String> {
         let mut value = value.clone();
         if client == "claude-desktop" && paths.get(3).is_some_and(|p| p == path) {
@@ -1067,7 +1078,7 @@ pub(crate) fn parse(path: &Path, content: Option<&str>) -> Result<Value, String>
         )
     })?;
     // WorkBuddy also saves models.json as a top-level array.
-    if !value.is_object() && !(path.file_name().is_some_and(|n| n == "models.json") && value.is_array()) {
+    if !value.is_object() && !(path.file_name().is_some_and(|n| n == "models.json" || n == "chatLanguageModels.json") && value.is_array()) {
         return Err(format!("{} configuration root must be an object", path_to_string(path)));
     }
     Ok(value)
