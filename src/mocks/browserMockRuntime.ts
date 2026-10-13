@@ -617,12 +617,149 @@ function createState(scenario: BrowserMockScenario) {
       defaultModel: 'deepseek-chat',
       configured: true,
     },
+    codexSessionContexts: {} as Record<string, MockCodexSessionContext>,
     codexSessions: [
       { id: 'mock-session-1', title: 'Implement Browser Mock', cwd: 'E:\\projects\\mock-demo', modelProvider: 'cpa-gui', archived: false, updatedAtMs: Date.now() - 20 * 60_000, databasePath: 'C:\\Users\\Mock\\.codex\\state.sqlite' },
       { id: 'mock-session-2', title: 'Learn TypeScript types', cwd: 'E:\\projects\\typescript-study', modelProvider: 'openai', archived: false, updatedAtMs: Date.now() - 3 * 60 * 60_000, databasePath: 'C:\\Users\\Mock\\.codex\\state.sqlite' },
       { id: 'mock-session-3', title: 'Review legacy UI', cwd: 'E:\\projects\\legacy-ui', modelProvider: 'cpa-gui', archived: true, updatedAtMs: Date.now() - 3 * 24 * 60 * 60_000, databasePath: 'C:\\Users\\Mock\\.codex\\state.sqlite' },
     ],
   };
+}
+
+type MockCodexSessionMessage = {
+  id: string;
+  lineNumber: number;
+  role: string;
+  timestamp: string;
+  content: string;
+  rawType: string;
+  model: string;
+  callId: string | null;
+};
+
+type MockCodexSessionContext = {
+  id: string;
+  title: string;
+  cwd: string;
+  modelProvider: string;
+  model: string;
+  archived: boolean;
+  updatedAtMs: number;
+  rolloutPath: string;
+  databasePath: string;
+  messages: MockCodexSessionMessage[];
+  stats: {
+    totalLines: number;
+    messageCount: number;
+    userMessageCount: number;
+    assistantMessageCount: number;
+    toolCount: number;
+    fileSizeBytes: number;
+  };
+  rawJsonlAvailable: boolean;
+  rolloutSha256: string;
+  rawJsonl: string;
+};
+
+function mockSessionRawJsonl(context: MockCodexSessionContext): string {
+  const lines = [
+    JSON.stringify({ type: 'session_meta', payload: { id: context.id, title: context.title, cwd: context.cwd, model_provider: context.modelProvider } }),
+    JSON.stringify({ type: 'turn_context', payload: { model: context.model, cwd: context.cwd } }),
+  ];
+  for (const message of context.messages) {
+    if (message.role === 'tool') {
+      lines.push(JSON.stringify({
+        type: 'response_item',
+        payload: { type: 'function_call', name: 'exec_command', arguments: message.content, call_id: message.callId },
+      }));
+      continue;
+    }
+    lines.push(JSON.stringify({
+      type: 'response_item',
+      payload: {
+        type: 'message',
+        role: message.role,
+        content: [{ type: message.role === 'assistant' ? 'output_text' : 'input_text', text: message.content }],
+      },
+    }));
+  }
+  return lines.join('\n') + '\n';
+}
+
+function mockSessionStats(context: MockCodexSessionContext) {
+  const lines = context.rawJsonl.split('\n').filter((line) => line.trim().length > 0);
+  return {
+    totalLines: lines.length,
+    messageCount: context.messages.filter((message) => message.role !== 'tool').length,
+    userMessageCount: context.messages.filter((message) => message.role === 'user').length,
+    assistantMessageCount: context.messages.filter((message) => message.role === 'assistant').length,
+    toolCount: context.messages.filter((message) => message.role === 'tool').length,
+    fileSizeBytes: new TextEncoder().encode(context.rawJsonl).length,
+  };
+}
+
+function mockSessionContext(state: BrowserMockState, sessionId: string): MockCodexSessionContext {
+  const cached = state.codexSessionContexts[sessionId];
+  if (cached) return cached;
+  const session = state.codexSessions.find((item) => item.id === sessionId);
+  const context: MockCodexSessionContext = {
+    id: sessionId,
+    title: session?.title ?? 'Mock Session Title',
+    cwd: session?.cwd ?? 'C:\\Workspace\\project',
+    modelProvider: session?.modelProvider ?? 'cpa-gui',
+    model: 'deepseek-v4.1',
+    archived: session?.archived ?? false,
+    updatedAtMs: session?.updatedAtMs ?? Date.now(),
+    rolloutPath: `C:\\Users\\Mock\\.codex\\sessions\\rollout-${sessionId}.jsonl`,
+    databasePath: session?.databasePath ?? 'C:\\Users\\Mock\\.codex\\state.sqlite',
+    messages: [
+      {
+        id: 'msg-2',
+        lineNumber: 2,
+        role: 'user',
+        timestamp: new Date(Date.now() - 3_600_000).toISOString(),
+        content: 'Hello Codex, can you help me refactor the database module?',
+        rawType: 'response_item',
+        model: 'deepseek-v4.1',
+        callId: null,
+      },
+      {
+        id: 'msg-3',
+        lineNumber: 3,
+        role: 'assistant',
+        timestamp: new Date(Date.now() - 3_500_000).toISOString(),
+        content: 'Sure, I will inspect the current database schema and transactions first.',
+        rawType: 'response_item',
+        model: 'deepseek-v4.1',
+        callId: null,
+      },
+      {
+        id: 'tool-4',
+        lineNumber: 4,
+        role: 'tool',
+        timestamp: new Date(Date.now() - 3_400_000).toISOString(),
+        content: 'exec_command(cmd="Get-ChildItem -Directory")',
+        rawType: 'response_item',
+        model: 'deepseek-v4.1',
+        callId: 'mock-call-1',
+      },
+    ],
+    stats: {
+      totalLines: 0,
+      messageCount: 0,
+      userMessageCount: 0,
+      assistantMessageCount: 0,
+      toolCount: 0,
+      fileSizeBytes: 0,
+    },
+    rawJsonlAvailable: true,
+    rolloutSha256: '0'.repeat(64),
+    rawJsonl: '',
+  };
+  context.rawJsonl = mockSessionRawJsonl(context);
+  context.stats = mockSessionStats(context);
+  state.codexSessionContexts[sessionId] = context;
+  return context;
 }
 
 function findAuthFile(state: BrowserMockState, name: string) {
@@ -1318,6 +1455,78 @@ export function createBrowserMockRuntime(
           limit,
           hasMore: offset + limit < state.codexSessions.length,
           warnings: [],
+        };
+      }
+      case 'get_codex_session_context': {
+        const request = asObject(payload.request);
+        const sessionId = String(request.sessionId || 'mock-session-id');
+        return clone(mockSessionContext(state, sessionId));
+      }
+      case 'open_codex_session_rollout': {
+        const sessionId = String(asObject(payload.request).sessionId || '');
+        if (!mockSessionContext(state, sessionId).rolloutPath) throw new Error('This session has no rollout file to open');
+        return null;
+      }
+      case 'save_codex_session_context': {
+        const request = asObject(payload.request);
+        const sessionId = String(request.sessionId || '');
+        const context = clone(mockSessionContext(state, sessionId));
+        if (typeof request.title === 'string') context.title = request.title;
+        if (typeof request.cwd === 'string') context.cwd = request.cwd;
+        if (typeof request.model === 'string') context.model = request.model;
+        if (typeof request.modelProvider === 'string') context.modelProvider = request.modelProvider;
+        if (typeof request.archived === 'boolean') context.archived = request.archived;
+        context.updatedAtMs = Date.now();
+
+          for (const entry of asArray(request.messageUpdates)) {
+            const update = asObject(entry);
+            const index = context.messages.findIndex((message) => message.lineNumber === Number(update.lineNumber));
+            if (index < 0) continue;
+            if (update.deleted) {
+              context.messages.splice(index, 1);
+              continue;
+            }
+            if (typeof update.content === 'string') context.messages[index].content = update.content;
+            if (typeof update.role === 'string') context.messages[index].role = update.role;
+          }
+          let nextLine = context.messages.reduce((max, message) => Math.max(max, message.lineNumber), 0) + 1;
+          for (const entry of asArray(request.newMessages)) {
+            const message = asObject(entry);
+            context.messages.push({
+              id: `mock-message-${nextLine}`,
+              lineNumber: nextLine,
+              role: String(message.role || 'user'),
+              timestamp: new Date().toISOString(),
+              content: String(message.content || ''),
+              rawType: 'response_item',
+              model: context.model,
+              callId: null,
+            });
+            nextLine += 1;
+          }
+          context.messages.forEach((message, index) => {
+            message.lineNumber = index + 2;
+            message.id = `msg-${message.lineNumber}`;
+          });
+          context.rawJsonl = mockSessionRawJsonl(context);
+
+        context.stats = mockSessionStats(context);
+        state.codexSessionContexts[sessionId] = context;
+
+        const target = state.codexSessions.find((item) => item.id === sessionId);
+        if (target) {
+          target.title = context.title;
+          target.cwd = context.cwd;
+          target.modelProvider = context.modelProvider;
+          target.archived = context.archived;
+          target.updatedAtMs = context.updatedAtMs;
+        }
+
+        return {
+          success: true,
+          sessionId,
+          backupPath: `C:\\Users\\Mock\\.codex\\backups\\session-context-edits\\session-${sessionId}`,
+          message: 'Session context updated in Mock',
         };
       }
       case 'delete_codex_sessions': {

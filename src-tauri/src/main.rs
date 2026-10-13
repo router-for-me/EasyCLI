@@ -31,6 +31,8 @@ mod provider_health;
 ))]
 mod tray;
 mod usage;
+#[cfg(target_os = "windows")]
+mod windows_frame;
 
 #[cfg(test)]
 use configuration_watcher::nearest_existing_watch_directory;
@@ -2544,6 +2546,7 @@ fn main() {
             // `app.windows` array (JSON Merge Patch) and duplicate the main window config.
             #[cfg(target_os = "windows")]
             if let Some(window) = app.get_webview_window("main") {
+                windows_frame::install(&window)?;
                 window.set_decorations(false)?;
             }
             if let Err(error) = network_proxy::refresh(app.state::<GuiConfigState>().inner()) {
@@ -2821,7 +2824,10 @@ fn main() {
             codex_sessions::delete_codex_sessions,
             codex_sessions::repair_codex_session_metadata,
             codex_sessions::preview_codex_session_index_cleanup,
-            codex_sessions::apply_codex_session_index_cleanup
+            codex_sessions::apply_codex_session_index_cleanup,
+            codex_sessions::context::get_codex_session_context,
+            codex_sessions::context::save_codex_session_context,
+            codex_sessions::context::open_codex_session_rollout
         ])
         .build(tauri::generate_context!())
         .expect("failed to build app");

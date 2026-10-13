@@ -25,7 +25,7 @@ describe('usage preferences across updates', () => {
     });
     Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: browser });
     try {
-      expect(getInitialVisibleColumns()).toEqual(['time', 'model', 'provider', 'result', 'total', 'cache', 'latency', 'speed', 'cost']);
+      expect(getInitialVisibleColumns()).toEqual(['time', 'model', 'source', 'result', 'total', 'cache', 'latency', 'speed', 'cost', 'key']);
       expect(getInitialColumnWidths().provider).toBe(135);
       browser.setItem('cpa-gui.usage-events-visible-cols.v5', JSON.stringify(['time', 'provider', 'key', 'source', 'model', 'effort', 'result', 'request', 'latency', 'speed', 'total', 'cache', 'cost']));
       expect(getInitialVisibleColumns()).toEqual(['time', 'provider', 'key', 'source', 'model', 'result', 'request', 'latency', 'speed', 'total', 'cache', 'cost']);
@@ -37,6 +37,12 @@ describe('usage preferences across updates', () => {
       expect(getInitialCollapseErrors()).toBe(true);
       browser.setItem('cpa-gui.usage-events-collapse-errors.v1', '0');
       expect(getInitialCollapseErrors()).toBe(false);
+      browser.clear();
+      expect(getInitialVisibleColumns()).toContain('key');
+      browser.setItem(columns, JSON.stringify(['time', 'model', 'source', 'result', 'total', 'cache', 'latency', 'speed', 'cost']));
+      expect(getInitialVisibleColumns()).toContain('key');
+      browser.setItem(columns, JSON.stringify(['time', 'source']));
+      expect(getInitialVisibleColumns()).toEqual(['time', 'source']);
     } finally {
       if (original) Object.defineProperty(globalThis, 'localStorage', original);
       else Reflect.deleteProperty(globalThis, 'localStorage');

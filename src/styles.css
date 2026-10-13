@@ -11783,3 +11783,336 @@ body.table-col-resizing * {
 .agent-executable-path-control input { flex: 1 1 320px; min-width: 180px; }
 .agent-detection-help { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 10px 0; color: var(--text-secondary); }
 .agent-path-value { display: block; margin-top: 6px; max-width: 560px; overflow-wrap: anywhere; color: var(--text-tertiary); font-family: ui-monospace, monospace; }
+
+.codex-session-actions,
+.codex-session-context-button,
+.codex-session-context-editor :is(.context-editor-nav, .context-editor-badges, .context-editor-actions, .context-meta-head-title, .context-path-item, .context-role-filters, .context-search-box, .message-role-badge, .message-header-meta, .message-item-actions, .add-message-role-select) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.codex-session-actions {
+  align-self: center;
+}
+
+.codex-session-context-button {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: var(--font-size-label);
+  white-space: nowrap;
+}
+
+.codex-session-context-editor,
+.codex-session-context-editor :is(.context-editor-title-group, .context-meta-body, .context-form-field, .context-meta-paths, .context-message-list, .context-message-card, .context-add-message-card) {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.codex-session-context-editor {
+  gap: 16px;
+  width: 100%;
+}
+
+.codex-session-context-editor :is(.context-editor-header, .context-meta-head, .context-filter-toolbar, .message-card-header, .add-message-head) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.context-editor-header {
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-secondary);
+}
+
+.context-editor-nav {
+  flex: 1;
+}
+
+.context-editor-title-group h1 {
+  margin: 0;
+  max-width: 580px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+  font-size: var(--font-size-panel-title);
+  font-weight: 600;
+}
+
+.codex-session-context-editor :is(.context-editor-badges, .context-editor-actions, .context-meta-head-title, .context-role-filters, .message-header-meta) {
+  flex-wrap: wrap;
+}
+
+.context-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+
+.context-id-badge {
+  min-width: 0;
+  max-width: 100%;
+  cursor: pointer;
+}
+
+.codex-session-context-editor :is(.context-id-badge code, .context-path-item code) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-family-mono);
+  font-size: 11px;
+}
+
+.context-badge.active,
+.codex-session-context-editor .success-icon {
+  color: var(--ui-accent);
+}
+
+.context-edit-safety,
+.context-meta-head-title small {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-label);
+  line-height: var(--line-height-body);
+}
+
+.context-meta-card,
+.context-message-card,
+.context-add-message-card {
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  overflow: hidden;
+}
+
+.context-meta-head {
+  width: 100%;
+  border: 0;
+  color: var(--text-secondary);
+  font: inherit;
+  text-align: left;
+  padding: 10px 14px;
+  cursor: pointer;
+  background: var(--bg-tertiary);
+}
+
+.context-meta-body {
+  padding: 14px;
+  border-top: 1px solid var(--border-secondary);
+}
+
+.context-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.context-form-field span,
+.context-meta-paths {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.context-meta-paths {
+  padding-top: 8px;
+  border-top: 1px dashed var(--border-secondary);
+}
+
+.context-path-item code {
+  min-width: 0;
+  max-width: 600px;
+  background: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.context-archived-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.context-filter-toolbar {
+  margin-bottom: 12px;
+}
+
+.context-search-box,
+.codex-session-context-editor :is(.filter-chip, .role-select-chip) {
+  padding: 4px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.codex-session-context-editor :is(.filter-chip, .role-select-chip) {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 15px;
+  cursor: pointer;
+}
+
+.codex-session-context-editor :is(.filter-chip.active, .role-select-chip.active) {
+  background: var(--primary-color);
+  color: var(--primary-contrast);
+  border-color: var(--primary-color);
+}
+
+.context-search-box input {
+  min-width: 0;
+  width: 170px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text-primary);
+}
+
+.context-message-list {
+  max-height: clamp(340px, calc(100dvh - 440px), 720px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.context-message-list > * {
+  flex-shrink: 0;
+}
+
+.context-message-card,
+.context-add-message-card {
+  padding: 10px 12px;
+}
+
+.context-message-card.user { --context-role-color: var(--ui-accent); }
+.context-message-card.assistant { --context-role-color: #64748b; }
+.context-message-card.tool { --context-role-color: var(--amber-text); }
+.context-message-card.reasoning { --context-role-color: #8b5cf6; }
+
+.context-message-card {
+  border-left: 3px solid var(--context-role-color, var(--border-color));
+}
+
+.codex-session-context-editor .message-role-badge {
+  color: var(--context-role-color, var(--text-secondary));
+  font-size: 12px;
+}
+
+.context-message-card.deleted {
+  opacity: 0.55;
+  background: var(--bg-tertiary);
+  border-style: dashed;
+}
+
+.context-message-card.modified {
+  border-color: var(--ui-accent);
+}
+
+.context-message-card.new-item {
+  border-style: dashed;
+}
+
+.codex-session-context-editor :is(.line-num, .message-model-tag, .message-header-meta time, .message-deleted-placeholder) {
+  font-size: 11px;
+  color: var(--text-quaternary);
+}
+
+.codex-session-context-editor :is(.message-header-meta time, .message-signature-tag, .reasoning-edit-warning) {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.codex-session-context-editor :is(.message-signature-tag, .reasoning-edit-warning) {
+  color: var(--amber-text);
+  font-size: 12px;
+}
+
+.codex-session-context-editor :is(.icon-button, .context-toggle-button, .context-search-box button, .text-button) {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-quaternary);
+  cursor: pointer;
+}
+
+.codex-session-context-editor .icon-button:hover:not(:disabled) {
+  background: var(--border-secondary);
+  color: var(--text-primary);
+}
+
+.codex-session-context-editor .message-card-body pre {
+  margin: 0;
+  max-height: 240px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+
+.codex-session-context-editor :is(.message-textarea, .add-message-textarea, .context-form-field input) {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 5px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.codex-session-context-editor :is(.message-textarea, .add-message-textarea, .context-form-field input):focus {
+  outline: none;
+  border-color: var(--ui-accent);
+  background: var(--bg-primary);
+}
+
+.codex-session-context-editor :is(.message-editor-footer, .add-message-actions) {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.context-add-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 10px;
+  border: 1px dashed var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+@media (max-width: 900px) {
+  .context-form-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 600px) {
+  .codex-session-context-editor .context-editor-nav { flex-direction: column; align-items: flex-start; }
+  .context-editor-actions, .codex-session-actions { width: 100%; justify-content: space-between; }
+}

@@ -50,7 +50,7 @@ const records = Array.from({ length: 400 }, (_, index) => ({
   ttft_ms: 200,
   source: index % 2 ? 'secondary-source' : 'test-source',
   auth_index: index % 2 ? 'auth-secondary' : 'auth-primary',
-  source_display: index % 2 ? 'Secondary source' : 'Test source',
+  source_display: index % 2 ? 'second@example.com' : 'first@example.com',
   failed: index % 4 === 0,
   canceled: false,
   failure_status: index % 4 === 0 ? 429 : 0,
@@ -78,6 +78,7 @@ const category = (key: string, label = key) => ({ key, label, requests: 200, fai
 const usageKeyFixture = {
   apiKeys: [category('test-key', 'Test key')],
   lastEventKey: '',
+  lastEventUpstream: '',
 };
 Object.assign(window, { usageKeyFixture });
 
@@ -91,11 +92,11 @@ mockIPC(async (cmd, args) => {
     return {
       models: [category('test-model'), category('secondary-model')],
       providers: [category('test-provider')],
-      sources: [category('test-source', 'Test source'), category('secondary-source', 'Secondary source')],
+      sources: [category('test-source', 'first@example.com'), category('secondary-source', 'second@example.com')],
       apiKeys: usageKeyFixture.apiKeys,
       upstreams: [
-        { ...category('auth:auth-primary', 'Primary credential'), provider: 'codex' },
-        { ...category('auth:auth-secondary', 'Secondary credential'), provider: 'claude' },
+        { ...category('auth:auth-primary', 'first@example.com'), provider: 'codex' },
+        { ...category('auth:auth-secondary', 'second@example.com'), provider: 'claude' },
       ],
     };
   }
@@ -113,6 +114,7 @@ mockIPC(async (cmd, args) => {
       && (query.failed === undefined || record.failed === query.failed)
       && (query.canceled === undefined || record.canceled === query.canceled));
     usageKeyFixture.lastEventKey = query.api_key_hash || '';
+    usageKeyFixture.lastEventUpstream = query.upstream || '';
     const start = (query.page - 1) * query.page_size;
     return {
       page: query.page,
