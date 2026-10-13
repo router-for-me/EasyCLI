@@ -27,8 +27,8 @@
 .provider-health-key-selector select { min-width: 0; flex: 1; }
 .provider-group-key .model-config-entry { min-width: 0; }
 .provider-group-key select, .provider-health-key-selector select {
-  min-height: 36px; border: 1px solid var(--theme-e8e4dc); border-radius: 7px;
-  background: var(--bg-primary); color: var(--text-primary); padding: 5px 8px; font: inherit;
+  min-height: max(36px, calc(1.6em + 2px)); border: 1px solid var(--theme-e8e4dc); border-radius: 7px;
+  background: var(--bg-primary); color: var(--text-primary); padding: 0 8px; font: inherit;
 }
 .api-provider-dialog .provider-group-key-main .icon-button { width: 32px; min-width: 32px; height: 32px; }
 .provider-row-title > span { color: var(--text-secondary); font-size: 12px; overflow-wrap: anywhere; }
