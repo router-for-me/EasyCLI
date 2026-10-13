@@ -1,5 +1,5 @@
 import { CopilotPluginStatus } from '../components/copilot/CopilotPluginStatus';
-import { CopilotSetupGuide, copilotSetupErrorKey } from '../components/copilot/CopilotSetupGuide';
+import type { MessageKey } from '../i18n/resources';
 import { ClaudeCodeRoleRows } from '../components/claude-code/ClaudeCodeRoleRows';
 import { ClaudeCodeModelInputs } from '../components/claude-code/ClaudeCodeModelInputs';
 import { MessageNotice } from '../appNotice';
@@ -77,6 +77,23 @@ import { AgentClientList } from './AgentClientList';
 import { AgentConfigManagementPanel, AgentConfigurationFeedback, AgentRunControls } from './AgentControls';
 import { useDialogFocusTrap } from '../components/useDialogFocusTrap';
 import { requestAppNavigation } from '../navigation';
+
+const setupErrors: Record<string, MessageKey> = {
+  COPILOT_SETUP_REQUIRED: 'agents.copilotSetup.required',
+  COPILOT_SETUP_NOT_INSTALLED: 'agents.copilotSetup.notInstalled',
+  COPILOT_SETUP_LAUNCH_FAILED: 'agents.copilotSetup.launchFailed',
+  COPILOT_SETUP_DISABLED: 'agents.copilotSetup.disabled',
+  COPILOT_SETUP_DIRTY: 'agents.copilotSetup.dirty',
+  COPILOT_SETUP_UNSUPPORTED: 'agents.copilotSetup.unsupported',
+  COPILOT_SETUP_PROFILE: 'agents.copilotSetup.profile',
+  COPILOT_SETUP_FAILED: 'agents.copilotSetup.failed',
+  COPILOT_SETUP_TIMEOUT: 'agents.copilotSetup.timeout',
+};
+
+function copilotSetupErrorKey(error: string): MessageKey | undefined {
+  const code = error.match(/\bCOPILOT_SETUP_[A-Z_]+\b/)?.[0];
+  return code ? setupErrors[code] : undefined;
+}
 
 type AgentClientId =
   | 'claude-code'
@@ -1452,7 +1469,9 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
       setOauthConfigurationDraft(null);
     } catch (requestError) {
       if (!handleOAuthLoginError(requestError, 'apply')) {
-        setDefaultError(String(requestError));
+        const error = String(requestError);
+        const setupError = selected === 'vscode-copilot' ? copilotSetupErrorKey(error) : undefined;
+        setDefaultError(setupError ? t(setupError) : error);
         setTemplatePreview(null);
       }
     } finally {
@@ -2314,7 +2333,7 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
             </div>
           ) : null}
           {activeSubpage !== 'core' ? configurationFeedback : null}
-          {selected === 'vscode-copilot' && activeSubpage === 'core' ? <CopilotSetupGuide pending={busyAction === 'apply'} /> : null}
+          {selected === 'vscode-copilot' && activeSubpage === 'core' && busyAction === 'apply' ? <p className="agent-model-hint" role="status">{t('agents.copilotSetup.pending')}</p> : null}
           <MessageNotice message={configurationErrorMessage}
             onDismiss={() => { setConfigurationError(''); setModelSelectionError(''); setModelError(''); }} />
           <MessageNotice tone="success" message={!configurationErrorMessage ? configurationNotice || clearNotice : null}

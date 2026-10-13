@@ -31,8 +31,8 @@ pub(super) fn vscode_credential_matches(config_path: &Path, key: &str, reference
         .is_some_and(|value| Some(value.as_str()) == reference.as_str())
 }
 
-const HELPER_MANIFEST: &str = include_str!("../../../../helpers/vscode-copilot-setup/package.json");
-const HELPER_SOURCE: &str = include_str!("../../../../helpers/vscode-copilot-setup/extension.cjs");
+const HELPER_MANIFEST: &str = include_str!("setup-helper.package.json");
+const HELPER_SOURCE: &str = include_str!("setup-helper.cjs");
 
 fn write_setup_helper(directory: &Path) -> Result<PathBuf, String> {
     let helper = directory.join("helper");

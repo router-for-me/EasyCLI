@@ -1,5 +1,30 @@
 use super::*;
 
+#[test]
+fn copilot_vscode_template_rejects_missing_or_rotated_credentials_without_writes() {
+    let home = Home::new();
+    let path = copilot_config_paths(AgentClient::VscodeCopilot, &home.0).remove(0);
+    let template = |key: &str| build_copilot_updates(AgentClient::VscodeCopilot, &home.0,
+        "http://127.0.0.1:8317/v1", key, "model", &[], true);
+    assert_eq!(template("first-key").err().as_deref(), Some("COPILOT_SETUP_REQUIRED"));
+    assert!(!path.exists());
+    let cache = path.parent().unwrap().join("ezcpa-copilot/credential.json");
+    home.save(&cache, &json!({"keyHash": sha256_bytes(b"first-key"),
+        "secretReference": "${input:chat.lm.secret.first}"}));
+    let updates = template("first-key").unwrap();
+    home.save(&path, &serde_json::from_str::<Value>(&updates[0].after).unwrap());
+    let before = fs::read(&path).unwrap();
+    let cache_before = fs::read(&cache).unwrap();
+    assert_eq!(template("rotated-key").err().as_deref(), Some("COPILOT_SETUP_REQUIRED"));
+    assert_eq!(fs::read(&path).unwrap(), before);
+    assert_eq!(fs::read(&cache).unwrap(), cache_before);
+    home.save(&cache, &json!({"keyHash": sha256_bytes(b"rotated-key"),
+        "secretReference": "${input:chat.lm.secret.rotated}"}));
+    let updated: Value = serde_json::from_str(&template("rotated-key").unwrap()[0].after).unwrap();
+    assert_eq!(updated[0]["apiKey"], "${input:chat.lm.secret.rotated}");
+    assert_eq!(fs::read(&path).unwrap(), before);
+}
+
 struct Home(PathBuf);
 impl Home {
     fn new() -> Self {

@@ -1212,6 +1212,7 @@ export const zhCN = {
   "agents.copilotSetup.dirty": "请先保存 VS Code 中正在编辑的 chatLanguageModels.json，再返回 ezcpa 重试。",
   "agents.copilotSetup.unsupported": "当前 VS Code 不支持所需的原生模型配置接口。请更新到 1.141 或更新版本，然后重试。",
   "agents.copilotSetup.profile": "助手打开的不是 ezcpa 管理的默认配置文件。请将 VS Code 切换到默认配置文件，再返回 ezcpa 重试。",
+  "agents.copilotSetup.required": "应用 VS Code Copilot 基础模板前，请先在“基础配置”中启用或更新配置，安全保存当前 API Key，然后重新预览模板。",
   "agents.copilotSetup.failed": "一次性配置未完成。请确认已启用内置 Copilot、保存模型配置，并使用 VS Code 1.141 或更新版本，再重试。",
   "agents.copilotSetup.timeout": "两分钟内未收到助手确认。请关闭遗留的“扩展开发宿主”窗口，确认 VS Code 使用默认配置文件且 Copilot 已启用，再重试。普通编辑器窗口无需关闭。",
   'agents.description.antigravityCli': '使用 CPA 的 Gemini 兼容接口配置 Antigravity CLI',

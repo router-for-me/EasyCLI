@@ -1213,6 +1213,7 @@ export const jaOverrides = {
   "agents.copilotSetup.dirty": "VS Code で chatLanguageModels.json を保存してから ezcpa で再試行してください。",
   "agents.copilotSetup.unsupported": "必要なモデル設定 API がありません。VS Code を 1.141 以降に更新して再試行してください。",
   "agents.copilotSetup.profile": "アシスタントが別のプロファイルで開きました。VS Code を既定プロファイルに切り替えて再試行してください。",
+  "agents.copilotSetup.required": "VS Code Copilot の基本テンプレートを適用する前に、「基本設定」で設定を有効化または更新し、現在の API キーを安全に保存してから、テンプレートを再度プレビューしてください。",
   "agents.copilotSetup.failed": "一時設定に失敗しました。内蔵 Copilot を有効にし、モデル設定を保存して、VS Code 1.141 以降で再試行してください。",
   "agents.copilotSetup.timeout": "2 分以内に完了を確認できませんでした。残った「Extension Development Host」を閉じ、既定プロファイルと Copilot の有効化を確認して再試行してください。通常のエディターは閉じる必要はありません。",
   'agents.description.antigravityCli': 'CPA の Gemini 互換 API で Antigravity CLI を設定',
