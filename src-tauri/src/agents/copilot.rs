@@ -256,6 +256,11 @@ pub(crate) fn build_copilot_updates(
             let reference = if client == AgentClient::VscodeCopilot {
                 setup::cached_vscode_secret(&path, key)
             } else { None };
+            // Preview and apply share this pure builder; reject stale credentials
+            // without starting a setup window or changing the previewed files.
+            if template && client == AgentClient::VscodeCopilot && reference.is_none() {
+                return Err("COPILOT_SETUP_REQUIRED".into());
+            }
             let after =
                 build_copilot_config(client, &path, before.as_deref(), base,
                     reference.as_deref().unwrap_or(key), model, models)?;

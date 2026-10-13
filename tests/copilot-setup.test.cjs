@@ -6,7 +6,8 @@ const path = require('node:path');
 
 function loadHelper(api = {}, disk) {
   const extension = { exports: {} };
-  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../helpers/vscode-copilot-setup/extension.cjs'), 'utf8'), {
+  const source = fs.readFileSync(path.join(__dirname, '../src-tauri/src/agents/copilot/setup-helper.cjs'), 'utf8');
+  vm.runInNewContext(source, {
     require: name => name === 'vscode' ? api : name === 'node:fs/promises' && disk ? disk : require(name),
     module: extension, setTimeout, clearTimeout, process: { platform: process.platform },
   });

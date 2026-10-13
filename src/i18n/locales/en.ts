@@ -1213,6 +1213,7 @@ export const en: Record<MessageKey, string> = {
   "agents.copilotSetup.dirty": "Save chatLanguageModels.json in VS Code, then retry in ezcpa.",
   "agents.copilotSetup.unsupported": "This VS Code does not support the required native model setup API. Update to version 1.141 or later and retry.",
   "agents.copilotSetup.profile": "The assistant opened a different profile. Switch VS Code to its default profile and retry in ezcpa.",
+  "agents.copilotSetup.required": "Before applying the VS Code Copilot template, enable or update the configuration under Basic configuration to securely save the current API key, then preview the template again.",
   "agents.copilotSetup.failed": "One-time setup failed. Enable built-in Copilot, save the model configuration, and use VS Code 1.141 or later before retrying.",
   "agents.copilotSetup.timeout": "The assistant did not confirm within two minutes. Close any leftover Extension Development Host window, check the default profile and enabled Copilot, then retry. Keep normal editor windows open.",
   'agents.description.antigravityCli': 'Configure Antigravity CLI with CPA’s Gemini-compatible API',

@@ -761,10 +761,13 @@ pub(crate) async fn restart_agent_app(
         match client {
             AgentClient::Codex => stop_codex_desktop(&target)?,
             AgentClient::OpenCode => {
-                let DesktopAppTarget::Application(path) = &target else {
-                    return Err("Invalid OpenCode desktop installation type".to_string());
-                };
-                stop_opencode_desktop(path)?;
+                match &target {
+                    DesktopAppTarget::Application(path) => stop_opencode_desktop(path)?,
+                    #[cfg(target_os = "windows")]
+                    DesktopAppTarget::WindowsAppId(_) => {
+                        return Err("Invalid OpenCode desktop installation type".to_string());
+                    }
+                }
             }
             _ => stop_other_desktop(&target, client.name())?,
         }
