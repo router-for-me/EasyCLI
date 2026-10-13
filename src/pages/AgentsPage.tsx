@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import claudeIcon from '../assets/icons/claude.svg';
 import codexIcon from '../assets/icons/codex.svg';
+import copilotIcon from '../assets/icons/copilot.svg';
 import deepseekIcon from '../assets/icons/deepseek.svg';
 import hermesIcon from '../assets/icons/hermes.png';
 import grokIcon from '../assets/icons/grok.svg';
@@ -333,7 +334,7 @@ const agentDefinitions: AgentDefinition[] = [
     descriptionKey: 'agents.description.grokBuild',
   },
   { id: 'copilot-cli', name: 'Copilot CLI', Icon: Bot, descriptionKey: 'agents.description.copilotCli' },
-  { id: 'vscode-copilot', name: 'VSCode Copilot', Icon: Bot, descriptionKey: 'agents.description.vscodeCopilot' },
+  { id: 'vscode-copilot', name: 'VSCode Copilot', icon: copilotIcon, descriptionKey: 'agents.description.vscodeCopilot' },
   { id: 'antigravity-cli', name: 'Antigravity CLI', icon: antigravityIcon, descriptionKey: 'agents.description.antigravityCli' },
   {
     id: 'workbuddy',
