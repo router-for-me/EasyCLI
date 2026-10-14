@@ -457,8 +457,8 @@ const viewports = [{ width: 640, height: 600 }, { width: 964, height: 700 }, { w
           await page.locator('.config-settings-header').scrollIntoViewIfNeeded();
           await settle();
           await page.screenshot({ path: path.join(directory, 'settings-routing.png') });
-          await page.locator('.theme-selector-trigger[data-appearance="dark"]').click();
-          await page.locator('.theme-selector-option[data-theme-id="dark"]').click();
+          await page.locator('.theme-selector-trigger').click();
+          await page.locator('.theme-selector-card[data-theme-id="dark"]').click();
           await page.keyboard.press('Escape');
           await settle();
           await page.screenshot({ path: path.join(directory, 'settings-routing-dark.png') });
@@ -466,8 +466,8 @@ const viewports = [{ width: 640, height: 600 }, { width: 964, height: 700 }, { w
           await page.locator('.config-settings-header').scrollIntoViewIfNeeded();
           await settle();
           await page.screenshot({ path: path.join(directory, 'settings-access-dark.png') });
-          await page.locator('.theme-selector-trigger[data-appearance="light"]').click();
-          await page.locator('.theme-selector-option[data-theme-id="light"]').click();
+          await page.locator('.theme-selector-trigger').click();
+          await page.locator('.theme-selector-card[data-theme-id="light"]').click();
           await page.keyboard.press('Escape');
           await page.setViewportSize(viewport);
         }
