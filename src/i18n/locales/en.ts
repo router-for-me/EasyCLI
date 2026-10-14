@@ -2059,6 +2059,7 @@ export const en: Record<MessageKey, string> = {
   'quota.service.limit.month': 'Monthly limit',
   'quota.service.limit.duration': '{duration} limit',
   'quota.service.codeReview': 'Code review',
+  'quota.service.individualSpendingLimit': 'Individual spending limit',
   'quota.service.additional': 'Additional {index}',
   'quota.service.window.fiveHour': '5-hour window',
   'quota.service.window.sevenDay': '7-day window',

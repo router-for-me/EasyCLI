@@ -2059,6 +2059,7 @@ export const jaOverrides = {
   'quota.service.limit.month': '月間制限',
   'quota.service.limit.duration': '{duration}制限',
   'quota.service.codeReview': 'コードレビュー',
+  'quota.service.individualSpendingLimit': '個人の支出上限',
   'quota.service.additional': '追加 {index}',
   'quota.service.window.fiveHour': '5 時間枠',
   'quota.service.window.sevenDay': '7 日間枠',
