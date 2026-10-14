@@ -2,6 +2,31 @@ use super::support::*;
 use super::*;
 
 #[test]
+fn image_generation_preference_round_trips_without_leaking_into_kernel_yaml() {
+    let home = agent_test_home("image-generation-preference");
+    let path = home.join("config.toml");
+    let mut config: GuiConfigFile = toml::from_str("").unwrap();
+    assert!(!config.image_generation_user_selected);
+    write_gui_config_to_path(&config, &path).unwrap();
+    assert!(!fs::read_to_string(&path).unwrap().contains("image-generation-user-selected"));
+    config.image_generation_user_selected = true;
+    write_gui_config_to_path(&config, &path).unwrap();
+    let content = fs::read_to_string(&path).unwrap();
+    assert!(content.contains("image-generation-user-selected = true"));
+    let restored: GuiConfigFile = toml::from_str(&content).unwrap();
+    assert!(restored.image_generation_user_selected);
+    let template = "config-version: 8\nmultimedia: {disable-image-generation: false}\napi-keys: {codex: [{keys: [{api-key: test-key}]}]}\n";
+    let merged = merge_core_config_yaml(template, Some(template), &restored).unwrap();
+    let document: serde_norway::Value = serde_norway::from_str(&merged).unwrap();
+    assert_eq!(document["multimedia"]["disable-image-generation"], false);
+    assert!(!merged.contains("image-generation-user-selected"));
+    config.image_generation_user_selected = false;
+    write_gui_config_to_path(&config, &path).unwrap();
+    assert!(!fs::read_to_string(&path).unwrap().contains("image-generation-user-selected"));
+    fs::remove_dir_all(home).unwrap();
+}
+
+#[test]
 fn usage_statistics_opt_out_is_removed_when_reenabled() {
     let home = agent_test_home("usage-opt-out");
     let path = home.join("config.toml");

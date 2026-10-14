@@ -617,6 +617,7 @@ struct GuiConfigFile {
     window_height: Option<u32>,
     auth_dir: String,
     auth_dir_user_selected: bool,
+    image_generation_user_selected: bool,
     #[serde(deserialize_with = "deserialize_gui_api_keys")]
     api_keys: Vec<GuiApiKeyEntry>,
     api_access_remarks: Vec<GuiApiAccessRemark>,
@@ -926,6 +927,7 @@ impl Default for GuiConfigFile {
             window_height: Some(DEFAULT_MAIN_WINDOW_HEIGHT),
             auth_dir: DEFAULT_AUTH_DIR.to_string(),
             auth_dir_user_selected: false,
+            image_generation_user_selected: false,
             api_keys: vec![default_api_key_entry()],
             api_access_remarks: Vec::new(),
             management_secret_key: LEGACY_DEFAULT_MANAGEMENT_SECRET_KEY.to_string(),
