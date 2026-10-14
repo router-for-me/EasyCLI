@@ -1,0 +1,714 @@
+diff --git a/internal/auth/workbuddy/workbuddy.go b/internal/auth/workbuddy/workbuddy.go
+new file mode 100644
+index 0000000..da1ca90
+--- /dev/null
++++ b/internal/auth/workbuddy/workbuddy.go
+@@ -0,0 +1,306 @@
++// Package workbuddy provides authentication, device fingerprint derivation,
++// and token management for Tencent WorkBuddy (workbuddy.ai / copilot.tencent.com).
++package workbuddy
++
++import (
++	"bytes"
++	"context"
++	"crypto/md5"
++	"encoding/base64"
++	"encoding/hex"
++	"fmt"
++	"io"
++	"net/http"
++	"net/url"
++	"strings"
++	"time"
++
++	"github.com/google/uuid"
++	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
++	"github.com/router-for-me/CLIProxyAPI/v8/internal/util"
++	"github.com/tidwall/gjson"
++)
++
++const (
++	// WorkBuddyIntlOrigin is the base origin for international WorkBuddy accounts.
++	WorkBuddyIntlOrigin = "https://www.workbuddy.ai"
++	// WorkBuddyCNOrigin is the base origin for domestic CodeBuddy/Tencent accounts.
++	WorkBuddyCNOrigin = "https://copilot.tencent.com"
++	// AuthStatePath is the endpoint to initialize an OAuth login state.
++	AuthStatePath = "/v2/plugin/auth/state"
++	// AuthTokenPath is the endpoint to poll for issued OAuth tokens.
++	AuthTokenPath = "/v2/plugin/auth/token"
++
++	IntlClientVersion = "5.5.2"
++	CNClientVersion   = "5.5.6"
++
++	IntlUserAgent = "WorkBuddy/5.5.2 WorkBuddy AI/5.5.2 CLI/5.5.2"
++	CNUserAgent   = "WorkBuddy/5.5.6 WorkBuddy/5.5.6 CLI/2.137.1"
++)
++
++// WorkBuddyAuth handles WorkBuddy OAuth and identity management.
++type WorkBuddyAuth struct {
++	cfg        *config.Config
++	httpClient *http.Client
++}
++
++// NewWorkBuddyAuth creates a WorkBuddy authentication helper.
++func NewWorkBuddyAuth(cfg *config.Config) *WorkBuddyAuth {
++	var sdkCfg config.SDKConfig
++	if cfg != nil {
++		sdkCfg = cfg.SDKConfig
++		if sdkCfg.ProxyURL == "" {
++			sdkCfg.ProxyURL = strings.TrimSpace(cfg.ProxyURL)
++		}
++	}
++	return &WorkBuddyAuth{
++		cfg:        cfg,
++		httpClient: util.SetProxy(&sdkCfg, &http.Client{Timeout: 30 * time.Second}),
++	}
++}
++
++// WorkBuddyTokenData contains token information issued by WorkBuddy.
++type WorkBuddyTokenData struct {
++	AccessToken  string `json:"accessToken"`
++	RefreshToken string `json:"refreshToken"`
++	TokenType    string `json:"tokenType"`
++	ExpiresIn    int64  `json:"expiresIn"`
++	ExpiresAt    int64  `json:"expiresAt"`
++	UID          string `json:"uid"`
++	Realm        string `json:"realm"`
++}
++
++// DeriveID derives a deterministic 32-character hex identifier from uid and salt.
++// Consistent with workbuddy2api-hub's derive_id to prevent upstream risk control flags.
++func DeriveID(uid, salt string) string {
++	u := strings.TrimSpace(uid)
++	if u == "" {
++		u = "anonymous"
++	}
++	seed := fmt.Sprintf("%s:%s", salt, u)
++	hash := md5.Sum([]byte(seed))
++	return hex.EncodeToString(hash[:])
++}
++
++// GenerateRequestID generates a request ID with a deterministic prefix and microsecond timestamp.
++func GenerateRequestID(uid string) string {
++	prefix := DeriveID(uid, "req")
++	micro := time.Now().UnixNano() / 1000 % 1000000
++	return fmt.Sprintf("%s-%06d", prefix, micro)
++}
++
++// OriginForRealm returns the API host URL according to the realm.
++func OriginForRealm(realm string) string {
++	if strings.EqualFold(strings.TrimSpace(realm), "cn") {
++		return WorkBuddyCNOrigin
++	}
++	return WorkBuddyIntlOrigin
++}
++
++// DomainForRealm returns the domain string for X-Domain header.
++func DomainForRealm(realm string) string {
++	parsed, err := url.Parse(OriginForRealm(realm))
++	if err == nil && parsed.Host != "" {
++		return parsed.Host
++	}
++	if strings.EqualFold(strings.TrimSpace(realm), "cn") {
++		return "copilot.tencent.com"
++	}
++	return "www.workbuddy.ai"
++}
++
++// BuildIdentityHeaders constructs the required WorkBuddy headers for an upstream call.
++func BuildIdentityHeaders(realm, uid, token, conversationID string) map[string]string {
++	isCN := strings.EqualFold(strings.TrimSpace(realm), "cn")
++	clientVer := IntlClientVersion
++	chatUA := IntlUserAgent
++	domain := DomainForRealm(realm)
++
++	if isCN {
++		clientVer = CNClientVersion
++		chatUA = CNUserAgent
++	}
++
++	effectiveUID := strings.TrimSpace(uid)
++	if effectiveUID == "" {
++		effectiveUID = "anonymous"
++	}
++
++	headers := map[string]string{
++		"X-Agent-Purpose": "conversation",
++		"X-IDE-Name":      "WorkBuddy",
++		"X-IDE-Type":      "WorkBuddy",
++		"X-IDE-Version":   clientVer,
++		"X-Product":       "WorkBuddy",
++		"X-Domain":        domain,
++		"User-Agent":      chatUA,
++		"X-User-Id":       effectiveUID,
++		"X-Request-ID":    GenerateRequestID(effectiveUID),
++	}
++
++	if token != "" {
++		headers["Authorization"] = "Bearer " + strings.TrimSpace(token)
++	}
++
++	if conversationID != "" {
++		headers["X-Conversation-ID"] = conversationID
++	} else {
++		headers["X-Conversation-ID"] = strings.ToUpper(uuid.New().String())
++	}
++
++	return headers
++}
++
++// ExtractUIDFromJWT extracts the user identifier from a JWT access token.
++func ExtractUIDFromJWT(token string) string {
++	parts := strings.Split(token, ".")
++	if len(parts) < 2 {
++		return ""
++	}
++	payloadSegment := parts[1]
++	decoded, err := base64.RawURLEncoding.DecodeString(payloadSegment)
++	if err != nil {
++		decoded, err = base64.URLEncoding.DecodeString(payloadSegment)
++		if err != nil {
++			decoded, err = base64.StdEncoding.DecodeString(payloadSegment)
++			if err != nil {
++				return ""
++			}
++		}
++	}
++	uid := gjson.GetBytes(decoded, "uid").String()
++	if uid == "" {
++		uid = gjson.GetBytes(decoded, "sub").String()
++	}
++	if uid == "" {
++		uid = gjson.GetBytes(decoded, "userId").String()
++	}
++	return strings.TrimSpace(uid)
++}
++
++// CredentialFileName returns the file name for storing a WorkBuddy auth record.
++func CredentialFileName(uid string) string {
++	cleanUID := strings.Map(func(r rune) rune {
++		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
++			return r
++		}
++		return '-'
++	}, strings.TrimSpace(uid))
++	if cleanUID == "" {
++		cleanUID = fmt.Sprintf("wb-%d", time.Now().Unix())
++	}
++	return fmt.Sprintf("workbuddy-%s.json", cleanUID)
++}
++
++// StartLogin initializes the OAuth authorization flow with WorkBuddy.
++func (a *WorkBuddyAuth) StartLogin(ctx context.Context, realm, platform string) (authURL string, state string, err error) {
++	if strings.TrimSpace(platform) == "" {
++		platform = "CLI"
++	}
++	origin := OriginForRealm(realm)
++	endpoint := fmt.Sprintf("%s%s?platform=%s", origin, AuthStatePath, url.QueryEscape(platform))
++
++	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader([]byte("{}")))
++	if err != nil {
++		return "", "", fmt.Errorf("create auth state request: %w", err)
++	}
++	req.Header.Set("Content-Type", "application/json")
++	req.Header.Set("Accept", "application/json, text/plain, */*")
++	req.Header.Set("User-Agent", IntlUserAgent)
++	req.Header.Set("Origin", origin)
++	req.Header.Set("Referer", origin+"/")
++
++	resp, err := a.httpClient.Do(req)
++	if err != nil {
++		return "", "", fmt.Errorf("request auth state: %w", err)
++	}
++	defer resp.Body.Close()
++
++	body, err := io.ReadAll(resp.Body)
++	if err != nil {
++		return "", "", fmt.Errorf("read auth state body: %w", err)
++	}
++
++	parsedState := gjson.GetBytes(body, "data.state").String()
++	parsedURL := gjson.GetBytes(body, "data.authUrl").String()
++	if parsedState == "" || parsedURL == "" {
++		return "", "", fmt.Errorf("auth state returned invalid payload: %s", string(body))
++	}
++
++	return parsedURL, parsedState, nil
++}
++
++// PollToken polls the WorkBuddy token endpoint. Returns nil, nil while waiting for the user.
++func (a *WorkBuddyAuth) PollToken(ctx context.Context, state, realm string) (*WorkBuddyTokenData, error) {
++	origin := OriginForRealm(realm)
++	endpoint := fmt.Sprintf("%s%s?state=%s", origin, AuthTokenPath, url.QueryEscape(state))
++
++	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
++	if err != nil {
++		return nil, fmt.Errorf("create auth token poll request: %w", err)
++	}
++	req.Header.Set("Accept", "application/json, text/plain, */*")
++	req.Header.Set("User-Agent", IntlUserAgent)
++
++	resp, err := a.httpClient.Do(req)
++	if err != nil {
++		return nil, fmt.Errorf("poll auth token: %w", err)
++	}
++	defer resp.Body.Close()
++
++	body, err := io.ReadAll(resp.Body)
++	if err != nil {
++		return nil, fmt.Errorf("read auth token body: %w", err)
++	}
++
++	code := gjson.GetBytes(body, "code").Int()
++	if code == 11217 {
++		// 11217 means "login ing..."
++		return nil, nil
++	}
++
++	if code != 0 {
++		msg := gjson.GetBytes(body, "msg").String()
++		if msg == "" {
++			msg = fmt.Sprintf("error code %d", code)
++		}
++		return nil, fmt.Errorf("authorization failed: %s", msg)
++	}
++
++	data := gjson.GetBytes(body, "data")
++	accessToken := strings.TrimSpace(data.Get("accessToken").String())
++	if accessToken == "" {
++		return nil, fmt.Errorf("token exchange returned empty access token")
++	}
++
++	refreshToken := strings.TrimSpace(data.Get("refreshToken").String())
++	tokenType := data.Get("tokenType").String()
++	expiresIn := data.Get("expiresIn").Int()
++	now := time.Now().Unix()
++	expiresAt := now + expiresIn
++	if expiresIn <= 0 {
++		expiresAt = now + 2592000
++	}
++
++	uid := ExtractUIDFromJWT(accessToken)
++	if uid == "" {
++		uid = fmt.Sprintf("wb-%s", state[:min(8, len(state))])
++	}
++
++	return &WorkBuddyTokenData{
++		AccessToken:  accessToken,
++		RefreshToken: refreshToken,
++		TokenType:    tokenType,
++		ExpiresIn:    expiresIn,
++		ExpiresAt:    expiresAt,
++		UID:          uid,
++		Realm:        realm,
++	}, nil
++}
++
++func min(a, b int) int {
++	if a < b {
++		return a
++	}
++	return b
++}
+diff --git a/internal/runtime/executor/workbuddy_executor.go b/internal/runtime/executor/workbuddy_executor.go
+new file mode 100644
+index 0000000..78d5876
+--- /dev/null
++++ b/internal/runtime/executor/workbuddy_executor.go
+@@ -0,0 +1,396 @@
++package executor
++
++import (
++	"bufio"
++	"bytes"
++	"context"
++	"encoding/json"
++	"fmt"
++	"io"
++	"net/http"
++	"strings"
++
++	workbuddyauth "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/workbuddy"
++	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
++	"github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor/helps"
++	"github.com/router-for-me/CLIProxyAPI/v8/internal/thinking"
++	"github.com/router-for-me/CLIProxyAPI/v8/internal/util"
++	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
++	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
++	sdktranslator "github.com/router-for-me/CLIProxyAPI/v8/sdk/translator"
++	log "github.com/sirupsen/logrus"
++	"github.com/tidwall/gjson"
++	"github.com/tidwall/sjson"
++)
++
++var (
++	_ cliproxyauth.ProviderExecutor    = (*WorkBuddyExecutor)(nil)
++	_ cliproxyauth.RequestAuthPreparer = (*WorkBuddyExecutor)(nil)
++)
++
++const defaultWorkBuddySystemPrompt = "You are a helpful assistant."
++
++// WorkBuddyExecutor implements cliproxyauth.ProviderExecutor for Tencent WorkBuddy (www.workbuddy.ai / copilot.tencent.com).
++type WorkBuddyExecutor struct {
++	cfg *config.Config
++}
++
++// NewWorkBuddyExecutor constructs a new WorkBuddy executor.
++func NewWorkBuddyExecutor(cfg *config.Config) *WorkBuddyExecutor {
++	return &WorkBuddyExecutor{cfg: cfg}
++}
++
++// Identifier returns the provider identifier "workbuddy".
++func (e *WorkBuddyExecutor) Identifier() string {
++	return "workbuddy"
++}
++
++func workbuddyCreds(auth *cliproxyauth.Auth) (realm, uid, token string) {
++	realm = "intl"
++	uid = "anonymous"
++	if auth == nil {
++		return realm, uid, ""
++	}
++	if auth.Metadata != nil {
++		if r, ok := auth.Metadata["realm"].(string); ok && strings.TrimSpace(r) != "" {
++			realm = strings.TrimSpace(r)
++		}
++		if u, ok := auth.Metadata["uid"].(string); ok && strings.TrimSpace(u) != "" {
++			uid = strings.TrimSpace(u)
++		}
++		if t, ok := auth.Metadata["access_token"].(string); ok && strings.TrimSpace(t) != "" {
++			token = strings.TrimSpace(t)
++		}
++		if token == "" {
++			if t, ok := auth.Metadata["accessToken"].(string); ok && strings.TrimSpace(t) != "" {
++				token = strings.TrimSpace(t)
++			}
++		}
++	}
++	if token == "" && auth.Attributes != nil {
++		if t := strings.TrimSpace(auth.Attributes["access_token"]); t != "" {
++			token = t
++		}
++		if token == "" {
++			if k := strings.TrimSpace(auth.Attributes["api_key"]); k != "" {
++				token = k
++			}
++		}
++		if r := strings.TrimSpace(auth.Attributes["realm"]); r != "" {
++			realm = r
++		}
++		if u := strings.TrimSpace(auth.Attributes["uid"]); u != "" {
++			uid = u
++		}
++	}
++	if uid == "anonymous" && token != "" {
++		if extracted := workbuddyauth.ExtractUIDFromJWT(token); extracted != "" {
++			uid = extracted
++		}
++	}
++	return realm, uid, token
++}
++
++// PrepareRequest injects WorkBuddy specific headers and authorization into the outgoing HTTP request.
++func (e *WorkBuddyExecutor) PrepareRequest(req *http.Request, auth *cliproxyauth.Auth) error {
++	if req == nil {
++		return nil
++	}
++	realm, uid, token := workbuddyCreds(auth)
++	headers := workbuddyauth.BuildIdentityHeaders(realm, uid, token, "")
++	for k, v := range headers {
++		req.Header.Set(k, v)
++	}
++
++	var attrs map[string]string
++	if auth != nil {
++		attrs = auth.Attributes
++	}
++	util.ApplyCustomHeadersFromAttrs(req, attrs)
++	return nil
++}
++
++// HttpRequest injects WorkBuddy credentials into the request and executes it.
++func (e *WorkBuddyExecutor) HttpRequest(ctx context.Context, auth *cliproxyauth.Auth, req *http.Request) (*http.Response, error) {
++	if req == nil {
++		return nil, fmt.Errorf("workbuddy executor: request is nil")
++	}
++	if ctx == nil {
++		ctx = req.Context()
++	}
++	httpReq := req.WithContext(ctx)
++	if err := e.PrepareRequest(httpReq, auth); err != nil {
++		return nil, err
++	}
++	httpClient := helps.NewProxyAwareHTTPClient(ctx, e.cfg, auth, 0)
++	return httpClient.Do(httpReq)
++}
++
++// Refresh checks and refreshes expired WorkBuddy credentials.
++func (e *WorkBuddyExecutor) Refresh(ctx context.Context, auth *cliproxyauth.Auth) (*cliproxyauth.Auth, error) {
++	if auth == nil {
++		return nil, fmt.Errorf("workbuddy executor: auth is nil")
++	}
++	return auth, nil
++}
++
++// ShouldPrepareRequestAuth indicates whether the credentials require preparation before request dispatch.
++func (e *WorkBuddyExecutor) ShouldPrepareRequestAuth(auth *cliproxyauth.Auth) bool {
++	if auth == nil {
++		return false
++	}
++	_, _, token := workbuddyCreds(auth)
++	return token == ""
++}
++
++// PrepareRequestAuth prepares authentication metadata if needed.
++func (e *WorkBuddyExecutor) PrepareRequestAuth(ctx context.Context, auth *cliproxyauth.Auth) (*cliproxyauth.Auth, error) {
++	return auth, nil
++}
++
++// CountTokens provides token estimation for WorkBuddy requests.
++func (e *WorkBuddyExecutor) CountTokens(ctx context.Context, auth *cliproxyauth.Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (cliproxyexecutor.Response, error) {
++	return cliproxyexecutor.Response{}, nil
++}
++
++// Execute performs non-streaming execution against Tencent WorkBuddy.
++func (e *WorkBuddyExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (resp cliproxyexecutor.Response, err error) {
++	ctx = helps.EnsureSessionContext(ctx, opts, req.Payload)
++	baseModel := thinking.ParseSuffix(req.Model).ModelName
++
++	reporter := helps.NewExecutorUsageReporter(ctx, e, baseModel, auth)
++	defer reporter.TrackFailure(ctx, &err)
++
++	realm, uid, token := workbuddyCreds(auth)
++	if token == "" {
++		return resp, statusErr{code: http.StatusUnauthorized, msg: "missing workbuddy access token"}
++	}
++
++	from := opts.SourceFormat
++	to := sdktranslator.FromString("openai")
++	isCompat := helps.APIKeyModelIsCompat(req)
++
++	originalPayloadSource := req.Payload
++	if len(opts.OriginalRequest) > 0 {
++		originalPayloadSource = opts.OriginalRequest
++	}
++	originalPayload := originalPayloadSource
++
++	_, translated, updatesChanged, err := helps.TranslateRequestPairWithAPIKeyModelCompatibilityAndUpdateIntent(
++		ctx, opts.Headers, e.cfg, from, to, baseModel, originalPayload, req.Payload, false, isCompat,
++	)
++	if err != nil {
++		return resp, err
++	}
++
++	translated, err = helps.ApplyRequestThinking(translated, req, opts, from.String(), to.String(), e.Identifier(), updatesChanged)
++	if err != nil {
++		return resp, err
++	}
++
++	translated = normalizeWorkBuddyPayload(translated, baseModel)
++	url := fmt.Sprintf("%s/v2/chat/completions", workbuddyauth.OriginForRealm(realm))
++
++	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(translated))
++	if err != nil {
++		return resp, err
++	}
++	httpReq.Header.Set("Content-Type", "application/json")
++	if err := e.PrepareRequest(httpReq, auth); err != nil {
++		return resp, err
++	}
++
++	helps.RecordAPIRequest(ctx, e.cfg, helps.UpstreamRequestLog{
++		URL:       url,
++		Method:    http.MethodPost,
++		Headers:   httpReq.Header.Clone(),
++		Body:      translated,
++		Provider:  e.Identifier(),
++		AuthID:    uid,
++		AuthLabel: fmt.Sprintf("workbuddy (%s)", realm),
++		AuthType:  "oauth",
++		AuthValue: util.HideAPIKey(token),
++	})
++
++	httpClient := reporter.TrackHTTPClient(helps.NewProxyAwareHTTPClient(ctx, e.cfg, auth, 0))
++	httpResp, errDo := httpClient.Do(httpReq)
++	if errDo != nil {
++		helps.RecordAPIResponseError(ctx, e.cfg, errDo)
++		return resp, errDo
++	}
++	defer httpResp.Body.Close()
++
++	helps.RecordAPIResponseMetadata(ctx, e.cfg, httpResp.StatusCode, httpResp.Header.Clone())
++	respBody, errRead := io.ReadAll(httpResp.Body)
++	if errRead != nil {
++		helps.RecordAPIResponseError(ctx, e.cfg, errRead)
++		return resp, errRead
++	}
++	helps.AppendAPIResponseChunk(ctx, e.cfg, respBody)
++
++	if httpResp.StatusCode < 200 || httpResp.StatusCode >= 300 {
++		return resp, statusErr{code: httpResp.StatusCode, msg: string(respBody)}
++	}
++
++	targetFormat := cliproxyexecutor.ResponseFormatOrSource(opts)
++	var param any
++	out := sdktranslator.TranslateNonStream(ctx, sdktranslator.FormatOpenAI, targetFormat, req.Model, helps.ApplyPatchOriginalRequest(req, opts), req.Payload, respBody, &param)
++	return cliproxyexecutor.Response{Payload: out, Headers: httpResp.Header.Clone()}, nil
++}
++
++// ExecuteStream performs streaming execution against Tencent WorkBuddy.
++func (e *WorkBuddyExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (_ *cliproxyexecutor.StreamResult, err error) {
++	ctx = helps.EnsureSessionContext(ctx, opts, req.Payload)
++	baseModel := thinking.ParseSuffix(req.Model).ModelName
++
++	reporter := helps.NewExecutorUsageReporter(ctx, e, baseModel, auth)
++	defer reporter.TrackFailure(ctx, &err)
++
++	realm, uid, token := workbuddyCreds(auth)
++	if token == "" {
++		return nil, statusErr{code: http.StatusUnauthorized, msg: "missing workbuddy access token"}
++	}
++
++	from := opts.SourceFormat
++	to := sdktranslator.FromString("openai")
++	isCompat := helps.APIKeyModelIsCompat(req)
++
++	originalPayloadSource := req.Payload
++	if len(opts.OriginalRequest) > 0 {
++		originalPayloadSource = opts.OriginalRequest
++	}
++	originalPayload := originalPayloadSource
++
++	_, translated, updatesChanged, err := helps.TranslateRequestPairWithAPIKeyModelCompatibilityAndUpdateIntent(
++		ctx, opts.Headers, e.cfg, from, to, baseModel, originalPayload, req.Payload, true, isCompat,
++	)
++	if err != nil {
++		return nil, err
++	}
++
++	translated, err = helps.ApplyRequestThinking(translated, req, opts, from.String(), to.String(), e.Identifier(), updatesChanged)
++	if err != nil {
++		return nil, err
++	}
++
++	translated = normalizeWorkBuddyPayload(translated, baseModel)
++	url := fmt.Sprintf("%s/v2/chat/completions", workbuddyauth.OriginForRealm(realm))
++
++	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(translated))
++	if err != nil {
++		return nil, err
++	}
++	httpReq.Header.Set("Content-Type", "application/json")
++	if err := e.PrepareRequest(httpReq, auth); err != nil {
++		return nil, err
++	}
++
++	helps.RecordAPIRequest(ctx, e.cfg, helps.UpstreamRequestLog{
++		URL:       url,
++		Method:    http.MethodPost,
++		Headers:   httpReq.Header.Clone(),
++		Body:      translated,
++		Provider:  e.Identifier(),
++		AuthID:    uid,
++		AuthLabel: fmt.Sprintf("workbuddy (%s)", realm),
++		AuthType:  "oauth",
++		AuthValue: util.HideAPIKey(token),
++	})
++
++	httpClient := reporter.TrackHTTPClient(helps.NewProxyAwareHTTPClient(ctx, e.cfg, auth, 0))
++	httpResp, errDo := httpClient.Do(httpReq)
++	if errDo != nil {
++		helps.RecordAPIResponseError(ctx, e.cfg, errDo)
++		return nil, errDo
++	}
++
++	helps.RecordAPIResponseMetadata(ctx, e.cfg, httpResp.StatusCode, httpResp.Header.Clone())
++	if httpResp.StatusCode < 200 || httpResp.StatusCode >= 300 {
++		defer httpResp.Body.Close()
++		errBytes, _ := io.ReadAll(io.LimitReader(httpResp.Body, 64*1024))
++		helps.AppendAPIResponseChunk(ctx, e.cfg, errBytes)
++		return nil, statusErr{code: httpResp.StatusCode, msg: string(errBytes)}
++	}
++
++	targetFormat := cliproxyexecutor.ResponseFormatOrSource(opts)
++	outChan := make(chan cliproxyexecutor.StreamChunk, 100)
++
++	go func() {
++		defer httpResp.Body.Close()
++		defer close(outChan)
++
++		reader := bufio.NewReader(httpResp.Body)
++		var param any
++
++		for {
++			line, errLine := reader.ReadBytes('\n')
++			if len(line) > 0 {
++				helps.AppendAPIResponseChunk(ctx, e.cfg, line)
++				trimmed := bytes.TrimSpace(line)
++				if bytes.HasPrefix(trimmed, []byte("data:")) {
++					dataPayload := bytes.TrimPrefix(trimmed, []byte("data:"))
++					dataPayload = bytes.TrimSpace(dataPayload)
++					if string(dataPayload) == "[DONE]" {
++						outChan <- cliproxyexecutor.StreamChunk{Payload: []byte("data: [DONE]\n\n")}
++						break
++					}
++					chunks := sdktranslator.TranslateStream(
++						ctx,
++						sdktranslator.FormatOpenAI,
++						targetFormat,
++						req.Model,
++						helps.ApplyPatchOriginalRequest(req, opts),
++						req.Payload,
++						dataPayload,
++						&param,
++					)
++					for _, c := range chunks {
++						outChan <- cliproxyexecutor.StreamChunk{Payload: c}
++					}
++				}
++			}
++			if errLine != nil {
++				if errLine != io.EOF && ctx.Err() == nil {
++					log.Warnf("workbuddy stream read error: %v", errLine)
++				}
++				break
++			}
++		}
++	}()
++
++	return &cliproxyexecutor.StreamResult{
++		Chunks:  outChan,
++		Headers: httpResp.Header.Clone(),
++	}, nil
++}
++
++// normalizeWorkBuddyPayload validates system prompt presence and handles DeepSeek reasoning fields.
++func normalizeWorkBuddyPayload(payload []byte, model string) []byte {
++	// Ensure system prompt is present
++	messages := gjson.GetBytes(payload, "messages")
++	if !messages.Exists() || len(messages.Array()) == 0 || messages.Array()[0].Get("role").String() != "system" {
++		sysMsg := map[string]string{"role": "system", "content": defaultWorkBuddySystemPrompt}
++		sysJSON, _ := json.Marshal(sysMsg)
++		var rawArr []json.RawMessage
++		rawArr = append(rawArr, sysJSON)
++		for _, m := range messages.Array() {
++			rawArr = append(rawArr, json.RawMessage(m.Raw))
++		}
++		newMessages, _ := json.Marshal(rawArr)
++		payload, _ = sjson.SetRawBytes(payload, "messages", newMessages)
++	}
++
++	// Clean internal control markers
++	var markers []string
++	gjson.ParseBytes(payload).ForEach(func(key, _ gjson.Result) bool {
++		if strings.HasPrefix(key.String(), "_") {
++			markers = append(markers, key.String())
++		}
++		return true
++	})
++	for _, m := range markers {
++		payload, _ = sjson.DeleteBytes(payload, m)
++	}
++
++	return payload
++}
