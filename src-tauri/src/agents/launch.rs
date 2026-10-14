@@ -799,6 +799,25 @@ pub(crate) async fn get_codex_cli_daemon_running(
     .map_err(|error| format!("Codex CLI background service check task failed: {error}"))?
 }
 
+static CODEX_CLI_DAEMON_RESTARTING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+struct CodexCliDaemonRestartGuard;
+
+impl Drop for CodexCliDaemonRestartGuard {
+    fn drop(&mut self) {
+        CODEX_CLI_DAEMON_RESTARTING.store(false, std::sync::atomic::Ordering::Release);
+    }
+}
+
+// A second `daemon restart` issued while Codex is still draining the first would restart the
+// replacement daemon as well, so only one restart may run at a time across all windows.
+fn begin_codex_cli_daemon_restart() -> Option<CodexCliDaemonRestartGuard> {
+    CODEX_CLI_DAEMON_RESTARTING
+        .compare_exchange(false, true, std::sync::atomic::Ordering::Acquire, std::sync::atomic::Ordering::Relaxed)
+        .ok()
+        .map(|_| CodexCliDaemonRestartGuard)
+}
+
 #[tauri::command]
 pub(crate) async fn restart_codex_cli_daemon(
     app: tauri::AppHandle,
@@ -808,7 +827,10 @@ pub(crate) async fn restart_codex_cli_daemon(
         .path()
         .home_dir()
         .map_err(|error| format!("Failed to get user directory: {error}"))?;
+    let guard = begin_codex_cli_daemon_restart()
+        .ok_or_else(|| "A Codex CLI background service restart is already in progress".to_string())?;
     tauri::async_runtime::spawn_blocking(move || {
+        let _guard = guard;
         restart_codex_cli_daemon_process(&home, executable_path.as_deref().map(Path::new))
     })
     .await
@@ -861,7 +883,9 @@ fn parse_codex_cli_daemon_status(
 
 fn restart_codex_cli_daemon_process(home: &Path, executable_override: Option<&Path>) -> Result<(), String> {
     let mut command = codex_cli_daemon_command(home, executable_override, "restart")?;
-    let output = command_output_with_timeout(&mut command, Duration::from_secs(60))
+    // Codex drains running turns before it force-stops the old daemon, which alone can take about a
+    // minute, so a shorter limit reports a timeout while the restart is still in progress.
+    let output = command_output_with_timeout(&mut command, Duration::from_secs(150))
         .map_err(|error| format!("Failed to restart the Codex CLI background service: {error}"))?
         .ok_or_else(|| "Restarting the Codex CLI background service timed out".to_string())?;
     if output.status.success() {
@@ -1662,6 +1686,14 @@ mod tests {
             assert_eq!(env::split_paths(path).next().unwrap(), root);
         }
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn codex_cli_daemon_restart_allows_one_restart_at_a_time() {
+        let guard = begin_codex_cli_daemon_restart().unwrap();
+        assert!(begin_codex_cli_daemon_restart().is_none());
+        drop(guard);
+        assert!(begin_codex_cli_daemon_restart().is_some());
     }
 
     #[test]

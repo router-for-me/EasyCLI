@@ -44,7 +44,6 @@ mockIPC(async (cmd,args:any) => {
    if(params.has('daemon-error'))throw new Error('Codex daemon probe failed');
    return !params.has('daemon-stopped');
  }
- if(cmd==='restart_codex_cli_daemon')return null;
  if(cmd==='plugin:dialog|open') return (window as any).fixtureSelectedProgram ?? null;
  if((window as any).fixtureDeferredCommands?.includes(cmd)) {
    await new Promise<void>(resolve=>{
@@ -52,6 +51,7 @@ mockIPC(async (cmd,args:any) => {
    });
  }
  if((window as any).fixtureFailedCommands?.includes(cmd))throw new Error('模拟后台刷新失败');
+ if(cmd==='restart_codex_cli_daemon')return null;
  if(cmd==='plugin:event|listen') return 1;
  if(cmd==='plugin:event|unlisten'||cmd==='set_app_locale') return null;
  if(cmd==='get_agent_config_statuses'||cmd==='refresh_agent_config_statuses') {

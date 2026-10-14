@@ -431,6 +431,8 @@ const AGENT_MODEL_SELECTIONS_KEY = 'cpa-gui.agent-model-selections.v1';
 // Keep the last successful data across page visits; revalidate it in the background.
 let agentStatusesCache: AgentConfigStatus[] | null = null;
 const agentModelsCache: Partial<Record<AgentClientId, ModelOption[]>> = {};
+// A Codex daemon restart outlives page visits; a remounted page waits on it instead of starting another.
+let codexCliServiceRestart: Promise<void> | null = null;
 const AGENT_SELECTED_CLIENT_KEY = 'cpa-gui.agent-selected-client.v1';
 const AGENT_LAUNCH_DIRECTORY_HISTORY_KEY = 'cpa-gui.agent-launch-directory-history.v1';
 const AGENT_EXECUTABLE_PATHS_KEY = 'cpa-gui.agent-executable-paths.v1';
@@ -640,9 +642,12 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
   const [loading, setLoading] = useState(() => agentStatusesCache === null);
   const [modelLoading, setModelLoading] = useState(false);
   const [busyAction, setBusyAction] = useState<
-    'backup' | 'apply' | 'close-config' | 'default' | 'clear' | 'install-pi' | 'update-pi' | 'repair-pi' | 'uninstall-pi' | 'oauth-check' | 'native-oauth' | 'directory' | 'launch' | 'launch-cli' | 'launch-app' | 'restart-app' | 'restart-cli' | 'stop-deepseek' | 'restart-deepseek' | null
+    'backup' | 'apply' | 'close-config' | 'default' | 'clear' | 'install-pi' | 'update-pi' | 'repair-pi' | 'uninstall-pi' | 'oauth-check' | 'native-oauth' | 'directory' | 'launch' | 'launch-cli' | 'launch-app' | 'restart-app' | 'stop-deepseek' | 'restart-deepseek' | null
   >(null);
   const busy = busyAction !== null;
+  // Codex drains running turns before restarting its daemon, which can take about a minute, so the
+  // restart only locks its own controls instead of the page-wide busy state.
+  const [cliServiceRestarting, setCliServiceRestarting] = useState(() => codexCliServiceRestart !== null);
   const { askConfirmation, confirmationDialog } = useConfirmation();
   const [detectionError, setDetectionError] = useState('');
   const [modelError, setModelError] = useState('');
@@ -1653,10 +1658,21 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
     }
   };
 
+  useEffect(() => {
+    const pending = codexCliServiceRestart;
+    if (!pending) return;
+    let active = true;
+    pending.then(
+      () => { if (active) setConfigurationNotice(t('agents.launch.cliServiceRestarted')); },
+      (requestError) => { if (active) setLaunchError(String(requestError)); },
+    ).finally(() => { if (active) setCliServiceRestarting(false); });
+    return () => { active = false; };
+  }, []);
+
   const restartCodexCliService = async () => {
-    if (selected !== 'codex') return;
+    if (selected !== 'codex' || cliServiceRestarting || codexCliServiceRestart) return;
     const executablePath = executablePaths[selected] ?? null;
-    setBusyAction('restart-cli');
+    setCliServiceRestarting(true);
     setLaunchError('');
     setConfigurationNotice('');
     try {
@@ -1671,12 +1687,15 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
         variant: 'danger',
       });
       if (!confirmed) return;
-      await invoke('restart_codex_cli_daemon', { executablePath });
+      const restart = invoke<void>('restart_codex_cli_daemon', { executablePath })
+        .finally(() => { codexCliServiceRestart = null; });
+      codexCliServiceRestart = restart;
+      await restart;
       setConfigurationNotice(t('agents.launch.cliServiceRestarted'));
     } catch (requestError) {
       setLaunchError(String(requestError));
     } finally {
-      setBusyAction(null);
+      setCliServiceRestarting(false);
     }
   };
 
@@ -2370,7 +2389,7 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
             onDismiss={() => { setConfigurationNotice(''); setClearNotice(''); }} />
           {activeSubpage === 'core' ? <AgentRunControls name={activeDefinition.name} dualTargets={hasIndependentCliAndApp}
             desktop={(hasIndependentCliAndApp && !isDeepSeekHarnessClient) || selected === 'claude-desktop' || selected === 'zcode' || selected === 'workbuddy'}
-            cliService={selected === 'codex'}
+            cliService={selected === 'codex'} cliServiceRestarting={selected === 'codex' && cliServiceRestarting}
             targets={activeLaunchTargets} enabled={launchEnabled} busyAction={busyAction}
             harness={isDeepSeekHarnessClient ? deepSeekHarnessProcessStatus : null}
             onLaunch={(target) => void launchAgent(target)} onRestart={() => void restartDesktopApp()}
