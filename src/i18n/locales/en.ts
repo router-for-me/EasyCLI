@@ -380,6 +380,10 @@ export const en: Record<MessageKey, string> = {
   'app.language': 'Language',
   "app.theme.lightGroup": "Light themes",
   "app.theme.darkGroup": "Dark themes",
+  'app.theme.triggerLabel': 'Theme',
+
+  'app.theme.triggerHint': 'Change light/dark mode and theme',
+
   "app.theme.current": "Theme: {name}",
   "app.theme.unavailable": "Theme unavailable",
   "app.theme.unavailableHint": "The saved theme is unavailable. Light is being used. Choose another theme.",

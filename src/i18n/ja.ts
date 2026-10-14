@@ -431,6 +431,10 @@ export const jaOverrides = {
   'app.language': '言語',
   "app.theme.lightGroup": "ライトテーマ",
   "app.theme.darkGroup": "ダークテーマ",
+  'app.theme.triggerLabel': '外観',
+
+  'app.theme.triggerHint': 'ライト・ダークモードとテーマを変更',
+
   "app.theme.current": "テーマ：{name}",
   "app.theme.unavailable": "テーマを利用できません",
   "app.theme.unavailableHint": "保存されたテーマを利用できないため、ライトを使用しています。別のテーマを選択してください。",

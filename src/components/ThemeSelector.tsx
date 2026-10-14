@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, Monitor, Moon, Sun } from 'lucide-react';
+import { Check, ChevronDown, Monitor, Moon, Sun, SunMoon } from 'lucide-react';
 import { useI18n } from '../i18n';
 import { retryThemeSave, setSystemTheme, useResolvedThemeId, useSystemThemes, useThemePreferenceIssue } from '../theme';
 import { themePreview, themeRegistry, type ThemeRegistry } from '../themes/registry';
@@ -45,7 +45,7 @@ export function ThemeSelector({ value, onChange, open, onOpenChange, registry = 
   const name = unavailable ? t('app.theme.unavailable') : t(current.nameKey);
   const issueText = issue === 'read' ? t('app.theme.readFailed') : issue === 'save' ? t('app.theme.saveFailed')
     : unavailable ? t('app.theme.unavailableHint') : '';
-  const label = `${t('app.theme.label')} — ${t('app.theme.current', { name })}`;
+  const label = `${t('app.theme.triggerHint')} — ${t('app.theme.current', { name })}`;
 
   useLayoutEffect(() => {
     if (!open) { setLayout(undefined); return; }
@@ -107,7 +107,9 @@ export function ThemeSelector({ value, onChange, open, onOpenChange, registry = 
         aria-haspopup="dialog" aria-expanded={open} aria-label={label}
         title={issueText ? `${label} — ${issueText}` : label} onClick={() => onOpenChange(!open)}
         onKeyDown={(event) => { if (event.key === 'Escape' && open) { event.preventDefault(); onOpenChange(false); } }}>
-        <ThemeThumbnail theme={current} />
+        <SunMoon size={16} strokeWidth={1.75} aria-hidden="true" />
+        <span>{t('app.theme.triggerLabel')}</span>
+        <ChevronDown className="theme-selector-chevron" size={12} aria-hidden="true" />
         {issueText ? <i className="theme-selector-warning" aria-hidden="true" /> : null}
       </button>
       {open ? createPortal(
