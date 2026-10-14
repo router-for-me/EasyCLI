@@ -13,8 +13,8 @@ use tauri::{AppHandle, State};
 use std::os::windows::process::CommandExt;
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-const DEFAULT_WORKBUDDY_PORT: u16 = 8788;
-const DEFAULT_WORKBUDDY_HOST: &str = "127.0.0.1";
+pub(crate) const DEFAULT_WORKBUDDY_PORT: u16 = 8788;
+pub(crate) const DEFAULT_WORKBUDDY_HOST: &str = "127.0.0.1";
 
 #[derive(Default)]
 pub(crate) struct WorkBuddyProxyState {
@@ -843,16 +843,15 @@ fn extract_uid_from_jwt(jwt: &str) -> Option<String> {
 }
 
 /// Synchronizes WorkBuddy Reverse Proxy as an OpenAI-compatible provider in EasyCLIProxyAPI's config.yaml.
-#[tauri::command]
-pub(crate) async fn sync_workbuddy_provider_to_cpa(
-    port: Option<u16>,
-    api_key: Option<String>,
+pub(crate) fn sync_workbuddy_provider_to_cpa_sync(
+    port: u16,
+    api_key: Option<&str>,
 ) -> Result<String, String> {
     let install_dir = core_install_dir()?;
     let config_path = install_dir.join(CORE_CONFIG_FILE);
 
     if !config_path.is_file() {
-        return Err(format!("Kernel configuration file not found at {}", path_to_string(&config_path)));
+        return Ok("Kernel configuration file not found yet; skipping sync".to_string());
     }
 
     let _lock = lock_core_config_file()?;
@@ -862,8 +861,7 @@ pub(crate) async fn sync_workbuddy_provider_to_cpa(
     let mut doc: serde_norway::Value = serde_norway::from_str(&content)
         .map_err(|e| format!("Failed to parse YAML configuration: {e}"))?;
 
-    let target_port = port.unwrap_or(DEFAULT_WORKBUDDY_PORT);
-    let base_url = format!("http://127.0.0.1:{target_port}/v1");
+    let base_url = format!("http://127.0.0.1:{port}/v1");
     let key_value = api_key.unwrap_or_default();
 
     let models_list = vec![
@@ -943,4 +941,105 @@ pub(crate) async fn sync_workbuddy_provider_to_cpa(
     write_core_config_if_changed(&config_path, &new_content)?;
 
     Ok(format!("WorkBuddy successfully synchronized as OpenAI-compatible provider at {base_url}"))
+}
+
+#[tauri::command]
+pub(crate) async fn sync_workbuddy_provider_to_cpa(
+    port: Option<u16>,
+    api_key: Option<String>,
+) -> Result<String, String> {
+    sync_workbuddy_provider_to_cpa_sync(port.unwrap_or(DEFAULT_WORKBUDDY_PORT), api_key.as_deref())
+}
+
+pub(crate) fn start_workbuddy_proxy_sync(
+    proxy_state: &WorkBuddyProxyState,
+) -> Result<u32, String> {
+    let proxy_dir = ensure_workbuddy_proxy_dir()?;
+    let script_path = proxy_dir.join("wb_proxy.py");
+    if !script_path.is_file() {
+        return Err(format!("wb_proxy.py not found at {}", path_to_string(&script_path)));
+    }
+
+    let selected_port = proxy_state
+        .port
+        .lock()
+        .map_err(|e| e.to_string())?
+        .unwrap_or(DEFAULT_WORKBUDDY_PORT);
+    let selected_host = proxy_state
+        .host
+        .lock()
+        .map_err(|e| e.to_string())?
+        .clone()
+        .unwrap_or_else(|| DEFAULT_WORKBUDDY_HOST.to_string());
+    let api_key = proxy_state.api_key.lock().map_err(|e| e.to_string())?.clone();
+    let python_path = proxy_state.python_path.lock().map_err(|e| e.to_string())?.clone();
+
+    // Check if already running
+    {
+        let mut guard = proxy_state.process.lock().map_err(|e| e.to_string())?;
+        if let Some(managed) = guard.as_mut() {
+            if managed.child.try_wait().ok().flatten().is_none() {
+                return Ok(managed.pid);
+            }
+            *guard = None;
+        }
+    }
+
+    let resolved_python = find_python_executable(python_path.as_deref())
+        .ok_or_else(|| "Python >= 3.9 not found".to_string())?;
+
+    let accounts_dir = proxy_dir.join("accounts");
+    let _ = fs::create_dir_all(&accounts_dir);
+
+    let mut command = Command::new(&resolved_python);
+    command.current_dir(&proxy_dir);
+    command.arg(&script_path);
+    command.arg("--host").arg(&selected_host);
+    command.arg("--port").arg(selected_port.to_string());
+    command.arg("--accounts-dir").arg(&accounts_dir);
+
+    if let Some(ref key) = api_key {
+        let trimmed = key.trim();
+        if !trimmed.is_empty() {
+            command.arg("--api-key").arg(trimmed);
+        }
+    }
+
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+
+    command.stdin(Stdio::null());
+    command.stdout(Stdio::null());
+    command.stderr(Stdio::null());
+
+    let child = command
+        .spawn()
+        .map_err(|e| format!("Failed to launch WorkBuddy companion proxy: {e}"))?;
+
+    let pid = child.id();
+
+    #[cfg(windows)]
+    let job = attach_child_to_windows_job(&child)?;
+
+    {
+        let mut guard = proxy_state.process.lock().map_err(|e| e.to_string())?;
+        *guard = Some(ManagedWorkBuddyProxyProcess {
+            child,
+            #[cfg(windows)]
+            job,
+            pid,
+            host: selected_host,
+            port: selected_port,
+        });
+    }
+
+    Ok(pid)
+}
+
+pub(crate) fn stop_workbuddy_proxy_sync(
+    proxy_state: &WorkBuddyProxyState,
+) -> Result<(), String> {
+    let mut guard = proxy_state.process.lock().map_err(|e| e.to_string())?;
+    *guard = None;
+    Ok(())
 }

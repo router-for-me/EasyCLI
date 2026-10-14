@@ -229,6 +229,11 @@ export function WorkBuddyProxyPage() {
 
       {/* Main Grid */}
       <div className="workbuddy-grid">
+        <div className="workbuddy-notice-box">
+          <strong>💡 已与 EasyCLIProxyAPI 合二为一（零配置伴生引擎）</strong>：
+          WorkBuddy 反代已深度接入内核生命周期。当你在首页启动内核时，WorkBuddy 伴生引擎会自动在后台静默就绪，并自动将所有模型挂载到 EasyCLIProxyAPI 中。你的所有客户端（Claude Code、Codex、Cursor、NextChat 等）只需连接 EasyCLIProxyAPI 的统一地址即可直接调用 WorkBuddy 的所有模型。
+        </div>
+
         {/* Service Control Card */}
         <section className="workbuddy-card">
           <div className="workbuddy-card-title">
