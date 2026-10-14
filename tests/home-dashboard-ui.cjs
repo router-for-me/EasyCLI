@@ -301,8 +301,8 @@ const base = process.env.HOME_DASHBOARD_TEST_BASE_URL || 'http://127.0.0.1:1421'
         localStorage.setItem('easy-cli-proxy-api.locale', 'zh-CN');
       });
       await page.goto(`${base}/?mock=running`, { waitUntil: 'domcontentloaded' });
-      await page.locator(`.theme-selector-trigger[data-appearance="${theme}"]`).click();
-      await page.locator(`.theme-selector-option[data-theme-id="${theme}"]`).click();
+      await page.locator(`.theme-selector-trigger`).click();
+      await page.locator(`.theme-selector-card[data-theme-id="${theme}"]`).click();
       await page.keyboard.press('Escape');
       await page.locator('.home-overview[aria-busy="false"]').waitFor();
       const toolbar = page.locator('#browser-mock-toolbar');
@@ -335,8 +335,8 @@ const base = process.env.HOME_DASHBOARD_TEST_BASE_URL || 'http://127.0.0.1:1421'
           localStorage.setItem('easy-cli-proxy-api.locale', locale);
         }, locale);
         await page.goto(`${base}/?mock=running`, { waitUntil: 'domcontentloaded' });
-        await page.locator(`.theme-selector-trigger[data-appearance="${theme}"]`).click();
-        await page.locator(`.theme-selector-option[data-theme-id="${theme}"]`).click();
+        await page.locator(`.theme-selector-trigger`).click();
+        await page.locator(`.theme-selector-card[data-theme-id="${theme}"]`).click();
       await page.keyboard.press('Escape');
         await page.locator('.home-overview[aria-busy="false"]').waitFor();
         const toolbar = page.locator('#browser-mock-toolbar');

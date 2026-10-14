@@ -161,11 +161,11 @@ mkdirSync(screenshots, { recursive: true });
     await page.locator('.context-message-card.user', { hasText: 'Add to an empty session' }).waitFor();
 
     for (const theme of ['dark', 'light']) {
-      await page.locator(`.theme-selector-trigger[data-appearance="${theme}"]`).click();
-      await page.locator(`.theme-selector-option[data-theme-id="${theme}"]`).click();
+      await page.locator(`.theme-selector-trigger`).click();
+      await page.locator(`.theme-selector-card[data-theme-id="${theme}"]`).click();
       await page.keyboard.press('Escape');
       await page.waitForFunction(expected => document.documentElement.dataset.theme === expected, theme);
-      await page.locator(`.theme-selector-trigger[data-appearance="${theme}"][aria-expanded="false"]`).waitFor();
+      await page.locator(`.theme-selector-trigger[aria-expanded="false"]`).waitFor();
       const background = await page.locator('.context-meta-card').evaluate(card => getComputedStyle(card).backgroundColor);
       assert.equal(background, theme === 'dark' ? 'rgb(20, 23, 32)' : 'rgb(255, 255, 255)');
       await page.screenshot({ path: path.join(screenshots, `codex-session-context-${theme}.png`), fullPage: true, animations: 'disabled' });
@@ -233,8 +233,8 @@ mkdirSync(screenshots, { recursive: true });
       assert.ok(lastCardFits, 'The last message must be reachable by scrolling');
     }
     await page.setViewportSize({ width: 1600, height: 1100 });
-    await page.locator('.theme-selector-trigger[data-appearance="dark"]').click();
-    await page.locator('.theme-selector-option[data-theme-id="dark"]').click();
+    await page.locator('.theme-selector-trigger').click();
+    await page.locator('.theme-selector-card[data-theme-id="dark"]').click();
     await page.keyboard.press('Escape');
     await page.locator('.sidebar-language-trigger').click();
     await page.getByRole('option', { name: '简体中文', exact: true }).click();
