@@ -290,7 +290,18 @@ pub(crate) fn pi_provider_update_available(installed: &str, latest: &str) -> Res
 
 pub(crate) fn pi_package_source_matches(value: &str) -> bool {
     let value = value.trim();
-    value == PI_CLIPROXYAPI_PACKAGE || value.starts_with(&format!("{PI_CLIPROXYAPI_PACKAGE}@"))
+    if value == PI_CLIPROXYAPI_PACKAGE || value.starts_with(&format!("{PI_CLIPROXYAPI_PACKAGE}@")) {
+        return true;
+    }
+    let path = Path::new(value);
+    path.is_absolute()
+        && fs::read_to_string(path.join("package.json"))
+            .ok()
+            .and_then(|content| serde_json::from_str::<serde_json::Value>(&content).ok())
+            .is_some_and(|package| {
+                package.get("name").and_then(serde_json::Value::as_str)
+                    == Some("@router-for-me/pi-cliproxyapi-provider")
+            })
 }
 
 pub(crate) fn read_pi_settings(home: &Path) -> Result<Option<serde_json::Value>, String> {

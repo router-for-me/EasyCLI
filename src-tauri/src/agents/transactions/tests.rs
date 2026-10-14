@@ -1,6 +1,25 @@
 use super::*;
 
 #[test]
+fn opencode_model_merge_drops_retired_efforts_and_preserves_custom_variants() {
+    let before = serde_json::json!({"provider": {"cpa-gui": {"models": {"source/model": {
+        "name": "old",
+        "variants": {"medium": {"reasoningEffort": "medium"}, "careful": {"temperature": 0.1}},
+        "options": {"custom": true}
+    }}}}});
+    let mut after = serde_json::json!({"provider": {"cpa-gui": {"models": {"source/model": {
+        "name": "new",
+        "variants": {"low": {"reasoningEffort": "low"}, "high": {"reasoningEffort": "high"}, "medium": {"disabled": true}}
+    }}}}});
+    preserve_model_extensions("opencode", Path::new("opencode.json"), &before, &mut after);
+    let model = &after["provider"]["cpa-gui"]["models"]["source/model"];
+    assert_eq!(model["variants"]["medium"], serde_json::json!({"disabled": true}));
+    assert_eq!(model["variants"]["careful"]["temperature"], 0.1);
+    assert_eq!(model["variants"]["high"]["reasoningEffort"], "high");
+    assert_eq!(model["options"]["custom"], true);
+}
+
+#[test]
 fn codex_model_merge_does_not_resurrect_removed_schema_fields() {
     let before = serde_json::json!({"models": [{
         "slug": "third-party-model",

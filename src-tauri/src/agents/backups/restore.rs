@@ -101,6 +101,7 @@ fn desktop_restore_configuration(
             context_window: None,
             input_modalities: None,
             harness_metadata: None,
+            catalog_metadata: None,
         })
         .collect();
     Ok(Some((mappings, models)))

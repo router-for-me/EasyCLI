@@ -771,13 +771,29 @@ pub(crate) async fn fetch_agent_models(
     port: u16,
     api_key: &str,
 ) -> Result<Vec<AgentModelOption>, String> {
-    let payload = fetch_agent_model_payload(port, api_key).await?;
+    fetch_agent_models_for_client(port, api_key, None).await
+}
+
+async fn fetch_agent_models_for_client(
+    port: u16,
+    api_key: &str,
+    client_version: Option<&str>,
+) -> Result<Vec<AgentModelOption>, String> {
+    let payload = fetch_agent_model_payload_for_client(port, api_key, client_version).await?;
     parse_agent_model_options(&payload)
 }
 
 pub(crate) async fn fetch_agent_model_payload(
     port: u16,
     api_key: &str,
+) -> Result<serde_json::Value, String> {
+    fetch_agent_model_payload_for_client(port, api_key, None).await
+}
+
+async fn fetch_agent_model_payload_for_client(
+    port: u16,
+    api_key: &str,
+    client_version: Option<&str>,
 ) -> Result<serde_json::Value, String> {
     if port == 0 {
         return Err("Invalid kernel port".to_string());
@@ -797,8 +813,11 @@ pub(crate) async fn fetch_agent_model_payload(
     ];
 
     for (index, endpoint) in endpoints.iter().enumerate() {
-        let response = client
-            .get(endpoint)
+        let mut request = client.get(endpoint);
+        if let Some(version) = client_version {
+            request = request.query(&[("client_version", version)]);
+        }
+        let response = request
             .bearer_auth(api_key)
             .header(reqwest::header::ACCEPT, "application/json")
             .header(reqwest::header::USER_AGENT, USER_AGENT)
@@ -853,7 +872,9 @@ pub(crate) async fn fetch_codex_runtime_models(
     for (index, endpoint) in endpoints.iter().enumerate() {
         let response = client
             .get(endpoint)
-            .query(&[("client_version", env!("CARGO_PKG_VERSION"))])
+            // Request the complete catalog. The GUI version is not the target
+            // Codex CLI version and would incorrectly suppress newer efforts.
+            .query(&[("client_version", "")])
             .bearer_auth(api_key)
             .header(reqwest::header::ACCEPT, "application/json")
             .header(reqwest::header::USER_AGENT, USER_AGENT)
@@ -907,7 +928,9 @@ pub(crate) async fn fetch_prepared_agent_models(
         let runtime_models = fetch_codex_catalog_runtime_models(config).await?;
         prepare_codex_agent_models(&runtime_models)
     } else {
-        let mut models = if client == AgentClient::DeepSeekHarness {
+        let mut models = if client == AgentClient::OpenCode {
+            fetch_agent_models_for_client(config.port, api_key, Some("opencode")).await?
+        } else if client == AgentClient::DeepSeekHarness {
             fetch_deepseek_harness_models(config).await?
         } else {
             fetch_agent_models(config.port, api_key).await?
@@ -1420,7 +1443,7 @@ pub(crate) fn parse_agent_model_options(
         let name = if let Some(name) = item.as_str() {
             name.trim().to_string()
         } else {
-            ["id", "name", "model", "value"]
+            ["slug", "id", "name", "model", "value"]
                 .into_iter()
                 .find_map(|key| item.get(key).and_then(serde_json::Value::as_str))
                 .unwrap_or_default()
@@ -1460,6 +1483,7 @@ pub(crate) fn parse_agent_model_options(
             codex_catalog::parse_modalities(&serde_json::json!({"input_modalities": item.get("input")}))
         });
         let harness_metadata = harness_api_metadata(item);
+        let first_new_model = models.len();
 
         if let Some(model_alias) = model_alias {
             if keep_original {
@@ -1468,6 +1492,12 @@ pub(crate) fn parse_agent_model_options(
             append_agent_model_option(&mut models, &model_alias, Some(name), true, context_window, input_modalities, harness_metadata);
         } else {
             append_agent_model_option(&mut models, &name, display_name, false, context_window, input_modalities, harness_metadata);
+        }
+        for model in &mut models[first_new_model..] {
+            let metadata = ["max_tokens", "max_completion_tokens", "max_output_tokens", "input_modalities", "supported_input_modalities", "output_modalities", "supported_reasoning_levels"]
+                .into_iter().filter_map(|key| item.get(key).map(|value| (key.to_string(), value.clone())))
+                .collect::<serde_json::Map<_, _>>();
+            model.catalog_metadata = (!metadata.is_empty()).then_some(serde_json::Value::Object(metadata));
         }
     }
     Ok(models)
@@ -1498,6 +1528,7 @@ pub(crate) fn append_agent_model_option(
     models.push(AgentModelOption {
         input_modalities,
         harness_metadata,
+        catalog_metadata: None,
         name: name.to_string(),
         alias,
         is_alias,

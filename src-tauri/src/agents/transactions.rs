@@ -843,6 +843,13 @@ fn preserve_model_extensions(client: &str, path: &Path, before: &Value, after: &
                 object.remove(*key);
             }
         }
+        if client == "opencode" && after.get("variants").is_some() {
+            if let Some(variants) = extensions.get_mut("variants").and_then(Value::as_object_mut) {
+                // Do not resurrect previously generated efforts after a catalog change.
+                // Named user variants remain extensions of the managed model.
+                variants.retain(|key, _| !matches!(key.as_str(), "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra"));
+            }
+        }
         fill_missing(&extensions, after);
     }
     fn inventory(client: &str, before: &Value, after: &mut Value) {

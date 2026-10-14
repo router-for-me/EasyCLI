@@ -637,6 +637,7 @@ pub(crate) fn fresh_agent_contents(
     let models = [AgentModelOption {
         input_modalities: None,
         harness_metadata: None,
+        catalog_metadata: None,
         name: model.to_string(),
         alias: None,
         is_alias: false,
@@ -1494,6 +1495,7 @@ pub(crate) fn reset_agent_configuration_to_default(
         models: &[AgentModelOption {
             input_modalities: None,
             harness_metadata: None,
+            catalog_metadata: None,
             name: model.to_string(),
             alias: None,
             is_alias: false,

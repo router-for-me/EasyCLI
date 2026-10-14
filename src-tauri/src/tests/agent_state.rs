@@ -105,6 +105,19 @@ fn pi_package_source_match_accepts_unpinned_and_pinned_sources() {
 }
 
 #[test]
+fn pi_package_source_match_recognizes_local_provider_manifest() {
+    let home = agent_test_home("pi-local-provider");
+    fs::create_dir_all(&home).unwrap();
+    let manifest = home.join("package.json");
+    assert!(!pi_package_source_matches(home.to_str().unwrap()));
+    fs::write(&manifest, r#"{"name":"@router-for-me/other-provider"}"#).unwrap();
+    assert!(!pi_package_source_matches(home.to_str().unwrap()));
+    fs::write(&manifest, r#"{"name":"@router-for-me/pi-cliproxyapi-provider"}"#).unwrap();
+    assert!(pi_package_source_matches(home.to_str().unwrap()));
+    fs::remove_dir_all(home).unwrap();
+}
+
+#[test]
 fn agent_status_cache_requires_matching_port_and_api_key() {
     let cache = AgentConfigStatusCache::default();
     cache.replace(8317, "agent-key", Vec::new()).unwrap();

@@ -850,6 +850,7 @@ pub(crate) fn ordered_agent_models(
         ordered.push(AgentModelOption {
             input_modalities: None,
             harness_metadata: None,
+            catalog_metadata: None,
             name: selected_model.to_string(),
             alias: None,
             is_alias: false,
@@ -3241,7 +3242,9 @@ pub(crate) fn build_opencode_agent_config(
         .into_iter()
         .map(|model| {
             let display_name = model.alias.as_deref().unwrap_or(&model.name).to_string();
-            (model.name, serde_json::json!({ "name": display_name }))
+            let mut entry = serde_json::json!({ "name": display_name });
+            apply_opencode_catalog_capabilities(&mut entry, &model);
+            (model.name, entry)
         })
         .collect::<serde_json::Map<_, _>>();
     let managed_provider = ensure_json_object_entry(providers, MANAGED_AGENT_PROVIDER_ID);
@@ -3264,6 +3267,75 @@ pub(crate) fn build_opencode_agent_config(
         Ok(rendered)
     } else {
         Ok(format!("{}\n{rendered}", comments.join("\n")))
+    }
+}
+
+fn apply_opencode_catalog_capabilities(entry: &mut serde_json::Value, model: &AgentModelOption) {
+    let Some(metadata) = model.catalog_metadata.as_ref() else {
+        return;
+    };
+    let output = ["max_tokens", "max_completion_tokens", "max_output_tokens"]
+        .into_iter()
+        .find_map(|key| metadata.get(key).and_then(json_positive_u64));
+    // OpenCode requires both fields whenever a limit object is supplied.
+    if let (Some(context), Some(output)) = (model.context_window, output) {
+        entry["limit"] = serde_json::json!({"context": context, "output": output});
+    }
+    let mut modalities = serde_json::Map::new();
+    for (target, source) in [
+        ("input", "input_modalities"),
+        ("output", "output_modalities"),
+    ] {
+        let value = if target == "input" {
+            metadata.get("supported_input_modalities").or_else(|| metadata.get(source))
+        } else {
+            metadata.get(source)
+        };
+        if let Some(values) = value.and_then(serde_json::Value::as_array) {
+            let supported = values
+                .iter()
+                .filter_map(serde_json::Value::as_str)
+                .filter(|value| matches!(*value, "text" | "image" | "audio" | "video" | "pdf"))
+                .map(|value| serde_json::json!(value))
+                .collect::<Vec<_>>();
+            modalities.insert(target.into(), serde_json::json!(supported));
+        }
+    }
+    if !modalities.is_empty() {
+        entry["modalities"] = serde_json::Value::Object(modalities);
+    }
+    if let Some(levels) = metadata
+        .get("supported_reasoning_levels")
+        .and_then(serde_json::Value::as_array)
+    {
+        // OpenCode merges configured variants into SDK-inferred defaults. Explicit
+        // tombstones are required to keep an advertised effort list authoritative.
+        let mut variants = [
+            "none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra",
+        ]
+        .into_iter()
+        .map(|effort| (effort.to_string(), serde_json::json!({"disabled": true})))
+        .collect::<serde_json::Map<_, _>>();
+        for level in levels {
+            if let Some(effort) = level
+                .as_str()
+                .or_else(|| level.get("effort").and_then(serde_json::Value::as_str))
+            {
+                if matches!(
+                    effort,
+                    "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra"
+                ) {
+                    variants.insert(
+                        effort.into(),
+                        serde_json::json!({"reasoningEffort": effort}),
+                    );
+                }
+            }
+        }
+        entry["reasoning"] = serde_json::json!(variants
+            .iter()
+            .any(|(level, value)| level != "none" && value.get("reasoningEffort").is_some()));
+        entry["variants"] = serde_json::Value::Object(variants);
     }
 }
 
