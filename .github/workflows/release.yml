@@ -238,7 +238,18 @@ jobs:
           mkdir -p "$signed_core_dir"
           tar -xzf "$core_archive" -C "$signed_core_dir"
           core_binary="$(find "$signed_core_dir" -type f -name 'cli-proxy-api' -print -quit)"
-          codesign --force --options runtime --timestamp --sign "$APPLE_SIGNING_IDENTITY" --keychain "$keychain_path" "$core_binary"
+          core_entitlements=".github/entitlements/cli-proxy-api.plist"
+          test -s "$core_binary"
+          codesign --force --options runtime --timestamp \
+            --entitlements "$core_entitlements" \
+            --sign "$APPLE_SIGNING_IDENTITY" \
+            --keychain "$keychain_path" \
+            "$core_binary"
+          codesign --verify --strict --verbose=2 "$core_binary"
+          signed_team_id="$(codesign -dv "$core_binary" 2>&1 | sed -n 's/^TeamIdentifier=//p')"
+          test "$signed_team_id" = "$APPLE_TEAM_ID"
+          signed_entitlements="$(codesign -d --entitlements :- "$core_binary" 2>&1)"
+          grep -q '<key>com.apple.security.cs.disable-library-validation</key>' <<< "$signed_entitlements"
           signed_archive="$RUNNER_TEMP/$(basename "$core_archive")"
           COPYFILE_DISABLE=1 tar -czf "$signed_archive" -C "$signed_core_dir" .
           mv "$signed_archive" "$core_archive"
