@@ -1660,7 +1660,10 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
 
   useEffect(() => {
     const pending = codexCliServiceRestart;
-    if (!pending) return;
+    if (!pending) {
+      setCliServiceRestarting(false);
+      return;
+    }
     let active = true;
     pending.then(
       () => { if (active) setConfigurationNotice(t('agents.launch.cliServiceRestarted')); },
