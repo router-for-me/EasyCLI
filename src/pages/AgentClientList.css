@@ -102,7 +102,7 @@
 }
 
 .agent-client-manager::backdrop {
-  background: #0007;
+  background: var(--theme-scrim);
 }
 
 .agent-client-manager header,

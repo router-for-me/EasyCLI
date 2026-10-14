@@ -1,0 +1,17 @@
+:root[data-theme-backdrop='gradient'] #root {
+  background: var(--theme-backdrop-image) center / 100% 100% no-repeat var(--theme-backdrop-color) !important;
+}
+
+:root[data-theme-backdrop='gradient'] :is(.immersive-window, .app-shell, .workspace),
+:root[data-theme-backdrop='gradient'] .workspace .content {
+  background: transparent;
+}
+
+:root[data-theme-backdrop='gradient'] .sidebar {
+  background: var(--theme-backdrop-sidebar);
+}
+
+:root[data-theme-backdrop='gradient'] .immersive-window .window-titlebar {
+  background: var(--theme-backdrop-panel);
+}
+

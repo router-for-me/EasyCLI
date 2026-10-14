@@ -1,11 +1,8 @@
 /* The request log is deliberately scoped away from the other usage tabs. */
 .usage-records-page .usage-request-log {
-  --usage-log-surface: #fff;
   --usage-log-text: #24343b;
   --usage-log-muted: #63767d;
   --usage-log-line: #e8e8e8;
-  --usage-log-hover: #f7f7f7;
-  --usage-log-soft: #f5f5f5;
   --usage-log-input: #2563eb;
   --usage-log-output: #0f766e;
   --usage-log-reasoning: #b45309;
@@ -22,7 +19,7 @@
   gap: 0;
   border: 1px solid var(--usage-log-line);
   border-radius: 8px;
-  background: var(--usage-log-surface);
+  background: var(--bg-card);
   color: var(--usage-log-text);
   box-shadow: none;
   overflow: hidden;
@@ -47,7 +44,7 @@
   padding: 0 10px;
   border: 1px solid var(--usage-log-line);
   border-radius: 6px;
-  background: var(--usage-log-surface);
+  background: var(--bg-card);
   color: var(--usage-log-muted);
   box-shadow: none;
   font-size: 12px;
@@ -70,7 +67,7 @@
 .usage-request-log .usage-col-reset-btn:hover,
 .usage-request-log .usage-events-export-btn:hover {
   border-color: var(--border-hover);
-  background: var(--usage-log-soft);
+  background: var(--bg-tertiary);
   color: var(--usage-log-text);
 }
 
@@ -93,7 +90,7 @@
 .usage-request-log .usage-table-wrap {
   min-height: 0;
   flex: 1 1 auto;
-  background: var(--usage-log-surface);
+  background: var(--bg-card);
   scrollbar-gutter: auto;
 }
 
@@ -113,7 +110,7 @@
 .usage-request-log .usage-events-table th {
   height: 40px;
   padding: 0;
-  background: var(--usage-log-surface);
+  background: var(--bg-card);
   color: var(--usage-log-muted);
   box-shadow: none;
   font-size: var(--font-size-caption);
@@ -130,13 +127,13 @@
 .usage-request-log .usage-events-table td {
   height: auto;
   padding: 9px 8px;
-  background: var(--usage-log-surface);
+  background: var(--bg-card);
   color: var(--usage-log-text);
   line-height: 1.45;
 }
 
 .usage-request-log .usage-events-table tbody tr:hover td {
-  background: var(--usage-log-hover) !important;
+  background: var(--bg-hover) !important;
 }
 
 .usage-request-log .usage-th-total,
@@ -443,20 +440,20 @@
   height: 12px;
   min-height: 12px;
   border: 0;
-  background: var(--usage-log-surface);
+  background: var(--bg-card);
 }
 
 .usage-request-log .usage-table-top-scrollbar::-webkit-scrollbar { height: 12px; }
 
 .usage-request-log .usage-table-top-scrollbar::-webkit-scrollbar-thumb {
   border: 2px solid transparent;
-  background-color: #d6d5d2;
+  background-color: var(--theme-scrollbar-thumb);
 }
 
 .usage-request-log .usage-table-top-scrollbar::-webkit-scrollbar-thumb:hover,
 .usage-request-log .usage-table-top-scrollbar::-webkit-scrollbar-thumb:active {
   border-width: 2px;
-  background-color: #b4b1ac;
+  background-color: var(--theme-scrollbar-hover);
 }
 
 .usage-request-log .usage-events-footer {
@@ -468,7 +465,7 @@
   gap: 12px;
   padding: 10px 14px;
   border-top: 1px solid var(--usage-log-line);
-  background: var(--usage-log-surface);
+  background: var(--bg-card);
 }
 
 .usage-request-log .usage-events-footer-left {
@@ -505,14 +502,14 @@
   padding: 0 11px;
   border: 1px solid var(--usage-log-line);
   border-radius: 6px;
-  background: var(--usage-log-surface);
+  background: var(--bg-card);
   color: var(--usage-log-text);
   font-size: 11px;
 }
 
 .usage-request-log .usage-page-nav-btn:hover:not(:disabled) {
   border-color: var(--border-hover);
-  background: var(--usage-log-soft);
+  background: var(--bg-tertiary);
   color: var(--usage-log-text);
 }
 
@@ -522,12 +519,9 @@
 }
 
 :root[data-theme='dark'] .usage-records-page .usage-request-log {
-  --usage-log-surface: var(--bg-card);
   --usage-log-text: #edece9;
   --usage-log-muted: #aaa8a4;
   --usage-log-line: #34363b;
-  --usage-log-hover: #26282c;
-  --usage-log-soft: #292b30;
   --usage-log-input: #93c5fd;
   --usage-log-output: #5eead4;
   --usage-log-reasoning: #fbbf24;
@@ -538,7 +532,7 @@
   --usage-log-duration-warn: #fbbf24;
   --usage-log-duration-bad: #f87171;
   border-color: var(--usage-log-line);
-  background: var(--usage-log-surface);
+  background: var(--bg-card);
   box-shadow: none;
 }
 
@@ -546,10 +540,6 @@
   border-color: #17664e;
   background: transparent;
   color: #6ee7b7;
-}
-
-:root[data-theme='dark'] .usage-request-log .usage-table-top-scrollbar::-webkit-scrollbar-thumb {
-  background-color: #505258;
 }
 
 @container workspace (max-width: 760px) {

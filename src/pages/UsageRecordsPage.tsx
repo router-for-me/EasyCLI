@@ -1351,6 +1351,7 @@ function UsageTrend({
           {active ? (
             <div
               className={`usage-trend-tooltip${activePercent > 62 ? ' is-left' : ' is-right'}`}
+              data-theme-surface="overlay"
               style={{ left: `${activePercent}%` }}
             >
               <div className="usage-trend-tooltip-header">

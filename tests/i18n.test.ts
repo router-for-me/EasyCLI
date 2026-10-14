@@ -8,7 +8,6 @@ describe('i18n', () => {
     expect(translate('zh-CN', 'app.theme.system')).toBe('自动');
     expect(translate('zh-TW', 'app.theme.system')).toBe('自動');
     expect(translate('zh-TW', 'app.theme.label')).toBe('外觀模式');
-    expect(translate('zh-TW', 'app.theme.switchToSystem')).toBe('隨系統自動切換亮色和暗色');
     expect(translate('en', 'app.theme.system')).toBe('Auto');
     expect(translate('ja', 'app.theme.system')).toBe('自動');
   });

@@ -5,17 +5,27 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <script>
       (() => {
-        let savedTheme;
-        try {
-          savedTheme = localStorage.getItem('easy-cli-proxy-api.theme');
-        } catch {
+        let paint = { system: false, appearance: 'light', light: '#ffffff', dark: '#0b0d11' };
+        const read = (key, parse) => {
+          try {
+            return parse(localStorage.getItem(key));
+          } catch {
+            return null;
+          }
+        };
+        const cached = read('easy-cli-proxy-api.theme-paint', (value) => JSON.parse(value ?? 'null'));
+        const legacy = read('easy-cli-proxy-api.theme', (value) => value);
+        if (cached && /^#[\da-f]{6}$/i.test(cached.light) && /^#[\da-f]{6}$/i.test(cached.dark)) {
+          paint = { system: cached.system === true, appearance: cached.appearance === 'dark' ? 'dark' : 'light', light: cached.light, dark: cached.dark };
+        } else if (legacy === 'dark' || legacy === 'system') {
+          paint = { ...paint, system: legacy === 'system', appearance: legacy === 'dark' ? 'dark' : 'light' };
         }
-        const theme = savedTheme === 'light' || savedTheme === 'dark'
-          ? savedTheme
-          : window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        const theme = paint.system
+          ? window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+          : paint.appearance;
         document.documentElement.dataset.theme = theme;
         document.documentElement.style.colorScheme = theme;
-        document.documentElement.style.backgroundColor = theme === 'dark' ? '#0b0d11' : '#ffffff';
+        document.documentElement.style.backgroundColor = paint[theme];
       })();
     </script>
     <title>EasyCLIProxyAPI</title>

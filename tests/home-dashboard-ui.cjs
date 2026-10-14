@@ -297,11 +297,13 @@ const base = process.env.HOME_DASHBOARD_TEST_BASE_URL || 'http://127.0.0.1:1421'
     }
     for (const [theme, width, height] of [['light', 1280, 900], ['dark', 1280, 900], ['light', 640, 600], ['dark', 640, 600]]) {
       await page.setViewportSize({ width, height });
-      await page.evaluate(theme => {
+      await page.evaluate(() => {
         localStorage.setItem('easy-cli-proxy-api.locale', 'zh-CN');
-        localStorage.setItem('easy-cli-proxy-api.theme', theme);
-      }, theme);
+      });
       await page.goto(`${base}/?mock=running`, { waitUntil: 'domcontentloaded' });
+      await page.locator(`.theme-selector-trigger`).click();
+      await page.locator(`.theme-selector-card[data-theme-id="${theme}"]`).click();
+      await page.keyboard.press('Escape');
       await page.locator('.home-overview[aria-busy="false"]').waitFor();
       const toolbar = page.locator('#browser-mock-toolbar');
       if (await toolbar.count()) await toolbar.evaluate(node => { node.style.display = 'none'; });
@@ -329,11 +331,13 @@ const base = process.env.HOME_DASHBOARD_TEST_BASE_URL || 'http://127.0.0.1:1421'
     for (const locale of ['zh-CN', 'en']) {
       for (const theme of ['light', 'dark']) {
         await page.setViewportSize(desktopViewports[0]);
-        await page.evaluate(({ locale, theme }) => {
+        await page.evaluate(locale => {
           localStorage.setItem('easy-cli-proxy-api.locale', locale);
-          localStorage.setItem('easy-cli-proxy-api.theme', theme);
-        }, { locale, theme });
+        }, locale);
         await page.goto(`${base}/?mock=running`, { waitUntil: 'domcontentloaded' });
+        await page.locator(`.theme-selector-trigger`).click();
+        await page.locator(`.theme-selector-card[data-theme-id="${theme}"]`).click();
+      await page.keyboard.press('Escape');
         await page.locator('.home-overview[aria-busy="false"]').waitFor();
         const toolbar = page.locator('#browser-mock-toolbar');
         if (await toolbar.count()) await toolbar.evaluate(node => { node.style.display = 'none'; });

@@ -202,6 +202,7 @@ export function SelectMenu({
         <div
           ref={menuRef}
           className="select-menu-dropdown"
+          data-theme-surface="overlay"
           style={layout
             ? { top: layout.top, left: layout.left, width: layout.width, height: layout.height }
             : { top: 0, left: 0, width: 0, height: 0, visibility: 'hidden' }}

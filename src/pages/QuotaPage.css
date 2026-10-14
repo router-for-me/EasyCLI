@@ -98,18 +98,18 @@
 .quota-page .quota-status-badge.ready { background: #e8f8ee; color: #149447; }
 .quota-page .quota-status-badge.error { background: #fff0ee; color: #d94b42; }
 .quota-page .quota-card-actions { grid-column: 2; grid-row: 1; justify-content: flex-end; }
-.quota-page .quota-card-actions .icon-button { width: 30px; height: 30px; border-radius: 7px; background: #eef4ff; color: #347df4; }
+.quota-page .quota-card-actions .icon-button { width: 30px; height: 30px; border-radius: 7px; background: var(--bg-tertiary); color: #347df4; }
 .quota-page .quota-row-list { order: 1; gap: 10px; min-width: 0; }
 .quota-page .real-quota-row { gap: 4px; min-width: 0; overflow-wrap: anywhere; }
 .quota-page .real-quota-row > div:first-child { font-size: var(--font-size-meta); align-items: flex-start; }
 .quota-page .real-quota-row > div:first-child strong { flex-shrink: 0; }
-.quota-page .real-quota-track { height: 6px; background: #edf0f4; }
+.quota-page .real-quota-track { height: 6px; background: var(--bg-tertiary); }
 .quota-page .real-quota-track span { background: #20bf62; }
 .quota-page .real-quota-row small { font-size: 11px; }
 .quota-page .quota-reset-credit-summary { order: 2; gap: 5px 10px; padding: 8px; }
 .quota-page .quota-reset-credit-summary span { white-space: normal; overflow-wrap: anywhere; }
-.quota-page .quota-reset-footer { order: 3; align-self: flex-end; margin: auto 0 0; min-height: 30px; padding: 5px 10px; border-radius: 7px; color: #347df4; border-color: #d8e5fb; background: #f3f7ff; }
-.quota-page .quota-reset-footer:hover:not(:disabled) { border-color: #9dbcf4; background: #eaf2ff; }
+.quota-page .quota-reset-footer { order: 3; align-self: flex-end; margin: auto 0 0; min-height: 30px; padding: 5px 10px; border-radius: 7px; color: #347df4; border-color: #d8e5fb; background: var(--bg-card); }
+.quota-page .quota-reset-footer:hover:not(:disabled) { border-color: #9dbcf4; background: var(--bg-hover); }
 .quota-page .quota-card-message, .quota-page .quota-card-error { min-height: 36px; flex-wrap: wrap; }
 .quota-page .quota-card-error > span { display: grid; gap: 4px; min-width: 0; }
 .quota-page .quota-card-error small { overflow-wrap: anywhere; font-size: 11px; }

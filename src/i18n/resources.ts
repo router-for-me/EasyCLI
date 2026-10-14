@@ -9,6 +9,26 @@ export type MessageVariables = Record<string, string | number>;
 
 export const zhTW: Record<MessageKey, string> = {
   ...createTraditionalMessages(zhCN),
+  "app.theme.lightGroup": "淺色主題",
+  "app.theme.darkGroup": "深色主題",
+  'app.theme.triggerLabel': '外觀',
+
+  'app.theme.triggerHint': '切換日夜模式與主題外觀',
+
+  "app.theme.current": "主題：{name}",
+  "app.theme.unavailable": "主題無法使用",
+  "app.theme.unavailableHint": "已儲存的主題無法使用，目前使用亮色。請選擇其他主題。",
+  "app.theme.readFailed": "無法讀取主題設定，目前使用亮色。重新選擇主題後將儲存新設定。",
+  "app.theme.saveFailed": "主題已暫時套用，但無法儲存。",
+  "app.theme.retrySave": "重試儲存",
+  'app.theme.warmSand.name': '暖砂',
+  'app.theme.warmSand.description': '奶油紙色與陶土色，溫潤清晰',
+  'app.theme.graphite.name': '石墨',
+  'app.theme.graphite.description': '炭灰底色與柔和藍調，沉穩清晰',
+  'app.theme.midnight.name': '午夜藍',
+  'app.theme.midnight.description': '墨藍漸層至靛藍，搭配輕透面板與霧紫藍點綴',
+  'app.theme.sakura.name': '櫻語紅粉',
+  'app.theme.sakura.description': '淡櫻粉漸層至奶油白，搭配輕透面板與灰黑文字',
   'oauth.vertex.title': 'Vertex JSON 登入',
   'app.privacy.enable': '開啟隱私模式，隱藏帳號信箱等身分資訊',
   'app.privacy.disable': '關閉隱私模式，顯示完整帳號資訊',
