@@ -704,6 +704,7 @@ pub(crate) fn parse_modalities(value: &Value) -> Option<Vec<String>> {
         .get("input_modalities")
         .or_else(|| value.get("inputModalities"))
         .or_else(|| value.get("supported_input_modalities"))
+        .or_else(|| value.get("supportedInputModalities"))
         .and_then(Value::as_array)?;
     let mut seen = HashSet::new();
     let modalities = raw
