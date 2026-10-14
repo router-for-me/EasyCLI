@@ -10,12 +10,10 @@ export type MessageVariables = Record<string, string | number>;
 export const zhTW: Record<MessageKey, string> = {
   ...createTraditionalMessages(zhCN),
   "app.theme.choose": "選擇主題",
-  "app.theme.followSystem": "跟隨系統",
   "app.theme.lightGroup": "淺色主題",
   "app.theme.darkGroup": "深色主題",
   "app.theme.systemLightHint": "淺色「{name}」",
   "app.theme.systemDarkHint": "深色「{name}」",
-  "app.theme.systemDescription": "跟隨系統明暗，使用指定的淺色和深色主題；右鍵主題可修改，未指定時使用預設主題。",
   "app.theme.disableSystem": "關閉跟隨系統，保留目前主題",
   "app.theme.enableSystem": "開啟跟隨系統",
   "app.theme.systemLightAssigned": "系統淺色主題",

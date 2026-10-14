@@ -2,8 +2,6 @@ import { themeTokenProperties, type ThemeDefinition, type ThemeTokens } from './
 
 const materialSlots = ['surface', 'softSurface', 'workspaceBackground', 'hoverBackground'] as const;
 
-// All existing and future consumers of the semantic palette receive the material.
-// No page/card class names belong here. Floating surfaces opt into an opaque scope.
 export function themeMaterialTokens(theme: ThemeDefinition): Readonly<ThemeTokens> {
   if (!theme.backdrop) return theme.tokens;
   return {
@@ -39,14 +37,10 @@ export function themeOverlayPalette(theme: ThemeDefinition) {
 }
 
 export function themeOverlayRules(theme: ThemeDefinition): string {
-  // Default themes keep their CSS palette. Custom solid and gradient themes
-  // share the same floating-surface contract.
   if (!Object.keys(theme.tokens).length) return '';
   const palette = themeOverlayPalette(theme);
   const declarations = materialSlots.flatMap((slot) => {
     return themeTokenProperties[slot].map((property) => `${property}:${palette[slot]}`);
   }).join(';');
-  // Dialog descendants inherit the same opaque palette, including nested controls.
-  // Popovers without an ARIA overlay role use data-theme-surface="overlay".
   return `:root[data-theme-id] :is(dialog,[role='dialog'],[role='alertdialog'],[role='menu'],[role='tooltip'],[popover],[data-theme-surface='overlay']){${declarations};--theme-sticky-background:${palette.surface};--theme-sticky-hover-background:${palette.hoverBackground}}`;
 }

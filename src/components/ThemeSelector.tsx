@@ -65,8 +65,6 @@ export function ThemeSelector({ value, onChange, open, onOpenChange, registry = 
       const sidebar = trigger.current.closest('.sidebar');
       const width = Math.min(sidebar && sidebar.clientWidth < 400 ? sidebar.clientWidth - 24 : 280, window.innerWidth - edge * 2);
       menu.current.style.width = `${width}px`;
-      // Include the list's hidden content so measuring an already-constrained menu
-      // does not change its placement when the window resizes.
       const hiddenListHeight = themeList.current
         ? themeList.current.scrollHeight - themeList.current.clientHeight : 0;
       const desiredHeight = Math.min(menu.current.scrollHeight + hiddenListHeight + 2, 560);
@@ -96,7 +94,6 @@ export function ThemeSelector({ value, onChange, open, onOpenChange, registry = 
   useLayoutEffect(() => {
     if (!open) return;
     setActive(Math.max(0, options.indexOf(selectedId)));
-    // Options are derived from the stable registry; labels may change independently.
   }, [open, appearance, selectedId, registry]);
 
   useEffect(() => {
@@ -121,7 +118,6 @@ export function ThemeSelector({ value, onChange, open, onOpenChange, registry = 
     revealedList.current = list;
     const index = opening ? Math.max(0, options.indexOf(selectedId)) : active;
     const option = document.getElementById(`${id}-${index}`);
-    // Scroll only this viewport, never the page or in response to pointer hover.
     if (!option || !list.contains(option)) return;
     const viewport = list.getBoundingClientRect();
     const row = option.getBoundingClientRect();
@@ -208,12 +204,13 @@ export function ThemeSelector({ value, onChange, open, onOpenChange, registry = 
       })}
       <button ref={systemToggle} className="theme-selector-system-toggle" type="button" aria-pressed={value === 'system'}
         aria-label={t(value === 'system' ? 'app.theme.disableSystem' : 'app.theme.enableSystem')}
-        aria-describedby={`${id}-system-description`} onMouseEnter={showHint} onMouseLeave={() => setHintLayout(undefined)}
+        aria-describedby={`${id}-system-light ${id}-system-dark`} onMouseEnter={showHint} onMouseLeave={() => setHintLayout(undefined)}
         onFocus={showHint} onBlur={() => setHintLayout(undefined)}
         onClick={() => { setHintLayout(undefined); onOpenChange(false); onChange(value === 'system' ? resolvedId : 'system'); }}>
         <Monitor size={15} aria-hidden="true" />
       </button>
-      <span id={`${id}-system-description`} className="sr-only">{systemLightHint}，{systemDarkHint}</span>
+      <span id={`${id}-system-light`} className="sr-only">{systemLightHint}</span>
+      <span id={`${id}-system-dark`} className="sr-only">{systemDarkHint}</span>
       <span role="status" className="sr-only">{announcement}</span>
       {issueText ? <span id={`${id}-issue`} className="sr-only">{issueText}</span> : null}
       {open ? createPortal(
@@ -231,13 +228,11 @@ export function ThemeSelector({ value, onChange, open, onOpenChange, registry = 
             {issue === 'save' ? <button ref={retry} type="button"
               onKeyDown={(event) => {
                 if (event.key !== 'Tab') return;
-                // The portal sits outside the trigger's tab order. Resume navigation there.
                 trigger.current?.focus();
                 if (event.shiftKey) event.preventDefault();
                 else onOpenChange(false);
               }}
               onClick={() => {
-                // A successful save removes this button; keep focus on a stable control.
                 trigger.current?.focus();
                 retryThemeSave();
               }}>{t('app.theme.retrySave')}</button> : null}

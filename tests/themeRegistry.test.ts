@@ -124,7 +124,6 @@ describe('theme registry and application', () => {
     }
   });
   test('backdrops are immutable and thumbnails use the same artwork and materials', () => {
-    // Exercise both gradient types independently of the shipped theme's palette.
     const input: ThemeBackdrop = { ...structuredClone(sakura.backdrop!), layers: [
       { kind: 'radial', center: [100, 0], size: [85, 100], stops: [{ color: '#FFE4EF', at: 0 }, { color: '#FFE4EF00', at: 100 }] },
       { kind: 'linear', angle: 135, stops: [{ color: '#FFE4EF', at: 0 }, { color: '#FAF5EE', at: 100 }] },
@@ -132,7 +131,6 @@ describe('theme registry and application', () => {
     const registry = createThemeRegistry([...themeRegistry.themes, { ...custom, backdrop: input }]);
     const registered = registry.get(custom.id)!;
     const image = backdropImage(registered.backdrop!);
-    // Simulate accidental mutation by a theme author after registration.
     (input.layers[0].stops[0] as { color: string }).color = '#000000';
     expect(backdropImage(registered.backdrop!)).toBe(image);
     expect(Object.isFrozen(registered.backdrop!.layers[0].stops[0])).toBe(true);
@@ -226,8 +224,6 @@ describe('theme registry and application', () => {
   test.each([sakura, midnight])('$id text and focus remain legible over the gradient and composited translucent surfaces', (theme) => {
     const backdrop = theme.backdrop!;
     const colors = [theme.windowBackground, ...backdrop.layers.flatMap((layer) => layer.stops.map((stop) => stop.color))].map(rgb);
-    // Channel bounds conservatively contain the sRGB blends across all gradient
-    // positions and alpha layers, including areas between the declared stops.
     const darkest = [0, 1, 2].map((channel) => Math.min(...colors.map((value) => value[channel])));
     const lightest = [0, 1, 2].map((channel) => Math.max(...colors.map((value) => value[channel])));
     const composite = (paint: string, background: number[]) => {

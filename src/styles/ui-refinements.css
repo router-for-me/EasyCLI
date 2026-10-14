@@ -39,9 +39,9 @@
   --theme-39352f: #334155;
   --theme-342f2a: #1e293b;
   --theme-2d2a26: #0f172a;
-  --ui-accent: #0f766e;
-  --ui-accent-strong: #0b5d57;
-  --ui-accent-soft: #f0fdfa;
+  --ui-accent: #222222;
+  --ui-accent-strong: #000000;
+  --ui-accent-soft: #f0f0f0;
   --ui-panel-shadow: 0 1px 3px 0 var(--theme-panel-shadow-color, rgba(15, 23, 42, 0.05)), 0 1px 2px -1px var(--theme-panel-shadow-color, rgba(15, 23, 42, 0.03));
   --ui-card-hover-shadow: 0 4px 14px -2px var(--theme-panel-shadow-color, rgba(15, 23, 42, 0.08)), 0 2px 6px -2px var(--theme-panel-shadow-color, rgba(15, 23, 42, 0.04));
 }

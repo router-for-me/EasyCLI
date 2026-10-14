@@ -5,6 +5,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { createThemeController, type AppTheme, type ThemePreference } from './themeController';
 import { ThemePreferences } from './services/themePreferences';
 import { createThemeApplicator } from './themes/applyTheme';
+import { cacheFirstPaint, firstPaint } from './themes/firstPaint';
 import type { ThemeSelection } from './themes/types';
 import { themeRegistry, type ThemeRegistry } from './themes/registry';
 
@@ -61,7 +62,11 @@ export function initializeTheme(registry: ThemeRegistry = themeRegistry) {
         document.removeEventListener('visibilitychange', visible);
       };
     },
-    applyTheme: (_appearance, definition) => applyTheme(definition),
+    applyTheme(_appearance, definition) {
+      applyTheme(definition);
+      cacheFirstPaint(() => window.localStorage,
+        firstPaint(registry, preferences.get(), preferences.getSystemThemes(), definition));
+    },
     async connectNative() {
       if (!isTauri()) return null;
       const currentWindow = getCurrentWindow();

@@ -6,7 +6,6 @@ type Backend = {
 };
 export type ThemePreferenceIssue = 'read' | 'save' | null;
 
-// Desktop-only persistence. Deliberately does not read legacy files or browser storage.
 export class ThemePreferences {
   private value = 'light';
   private systemThemes: SystemThemes = { light: 'light', dark: 'dark' };
@@ -42,7 +41,6 @@ export class ThemePreferences {
       this.systemThemes = { light: 'light', dark: 'dark' };
       this.report('read');
     }
-    // Missing, unreadable and unknown preferences are never automatically overwritten.
   }
 
   set(preference: string, remembered: SystemThemes = this.systemThemes) {

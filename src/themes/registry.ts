@@ -16,7 +16,6 @@ export function createThemeRegistry(definitions: readonly ThemeDefinition[]) {
     if (!['light', 'dark'].includes(definition.appearance) || !definition.nameKey || !Number.isFinite(definition.order)) {
       throw new Error(`Invalid theme metadata: ${definition.id}`);
     }
-    // Native window backgrounds must be opaque; tokens may include alpha.
     if (!/^#[\da-f]{6}$/i.test(definition.windowBackground)) throw new Error(`Invalid window background: ${definition.id}`);
     for (const [key, value] of Object.entries(definition.tokens)) {
       if (!Object.prototype.hasOwnProperty.call(themeTokenProperties, key) || !/^#(?:[\da-f]{6}|[\da-f]{8})$/i.test(value)) {
@@ -45,7 +44,6 @@ export function createThemeRegistry(definitions: readonly ThemeDefinition[]) {
   };
 }
 
-// Add shipped themes here; the controller, persistence and selector need no per-theme branches.
 export const themeRegistry = createThemeRegistry([light, dark, warmSand, graphite, midnight, sakura]);
 export type ThemeRegistry = ReturnType<typeof createThemeRegistry>;
 
@@ -55,6 +53,6 @@ export function themePreview(theme: ThemeDefinition): ThemePreview {
     background: `${theme.backdrop ? `${backdropImage(theme.backdrop)}, ` : ''}${theme.tokens.workspaceBackground ?? theme.windowBackground}`,
     sidebar: theme.backdrop?.sidebar ?? theme.tokens.sidebarBackground ?? (dark ? '#0f1218' : '#f7f8fa'),
     surface: theme.backdrop?.panel ?? theme.tokens.surface ?? (dark ? '#141720' : '#ffffff'),
-    accent: theme.tokens.accent ?? (dark ? '#5dd3c7' : '#0f766e'),
+    accent: theme.tokens.accent ?? (dark ? '#f5f5f5' : '#222222'),
   };
 }

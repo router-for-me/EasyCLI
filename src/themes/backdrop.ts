@@ -6,8 +6,6 @@ const numberInRange = (value: unknown, min: number, max: number): value is numbe
 const pair = (value: unknown, min: number, max: number): value is [number, number] =>
   Array.isArray(value) && value.length === 2 && value.every((item) => numberInRange(item, min, max));
 
-// Accept structured gradients only, never URLs or arbitrary CSS. Copy and freeze nested
-// values so a caller cannot change the validated definition after registration.
 export function normalizeBackdrop(backdrop: ThemeBackdrop, id: string): ThemeBackdrop {
   const invalid = (): never => { throw new Error(`Invalid theme backdrop: ${id}`); };
   if (!backdrop || !color(backdrop.sidebar) || !color(backdrop.panel)

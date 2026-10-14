@@ -1,6 +1,5 @@
 import type { ThemeDefinition } from './types';
 
-// Paper-inspired neutrals and terracotta accents, with distinct interaction states.
 export const warmSand: ThemeDefinition = {
   id: 'warm-sand-light',
   nameKey: 'app.theme.warmSand.name',

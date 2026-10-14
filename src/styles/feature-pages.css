@@ -139,7 +139,7 @@
 .easy-mode-stepper-item.complete .easy-mode-stepper-number {
   border-color: var(--ui-accent);
   background: var(--ui-accent);
-  color: #ffffff;
+  color: var(--primary-contrast);
 }
 
 .easy-mode-stepper-item small,
@@ -190,7 +190,7 @@
   place-items: center;
   border-radius: 9px;
   background: var(--ui-accent);
-  color: #ffffff;
+  color: var(--primary-contrast);
   font-weight: var(--font-weight-semibold);
 }
 
@@ -576,7 +576,7 @@
 .simple-mode-step-status-item.active .simple-mode-step-status-number {
   border-color: var(--ui-accent);
   background: var(--ui-accent);
-  color: #ffffff;
+  color: var(--primary-contrast);
 }
 
 .simple-mode-step-status-item.complete .simple-mode-step-status-number {
@@ -1080,7 +1080,7 @@
 .simple-mode-progress-item.active .simple-mode-step-badge {
   border-color: var(--ui-accent);
   background: var(--ui-accent);
-  color: #ffffff;
+  color: var(--primary-contrast);
 }
 
 .simple-mode-progress-copy {
@@ -2551,7 +2551,7 @@
 
 .simple-mode-guide-toggle.active {
   background: var(--ui-accent, #3b82f6);
-  color: #ffffff;
+  color: var(--primary-contrast);
   border-color: var(--ui-accent, #3b82f6);
   box-shadow: 0 0 12px color-mix(in srgb, var(--ui-accent) 45%, transparent);
 }
@@ -2645,20 +2645,20 @@
 .simple-mode-highlight-button {
   border: 1px solid var(--ui-accent) !important;
   background: var(--ui-accent) !important;
-  color: #ffffff !important;
+  color: var(--primary-contrast) !important;
   box-shadow: 0 4px 12px var(--ui-accent-shadow);
 }
 
 .simple-mode-highlight-button:hover {
   border-color: var(--ui-accent-strong) !important;
   background: var(--ui-accent-strong) !important;
-  color: #ffffff !important;
+  color: var(--primary-contrast) !important;
 }
 
 .simple-mode-guide-toggle.simple-mode-highlight-button.active {
   border-color: var(--ui-accent) !important;
   background: var(--ui-accent) !important;
-  color: #ffffff !important;
+  color: var(--primary-contrast) !important;
   box-shadow: 0 4px 12px var(--ui-accent-shadow);
 }
 
@@ -2714,7 +2714,7 @@
   padding: 3px 10px;
   border-radius: 999px;
   background: var(--ui-accent, #3b82f6);
-  color: #ffffff;
+  color: var(--primary-contrast);
   font-size: var(--font-size-caption);
   font-weight: var(--font-weight-semibold);
 }
