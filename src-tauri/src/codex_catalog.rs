@@ -879,8 +879,8 @@ mod tests {
         validate_embedded_catalog().unwrap();
         let state = catalog_state().unwrap().read().unwrap();
         let sources = &state.sources;
-        assert_eq!(sources.templates.len(), 14);
-        assert_eq!(sources.revision, 5);
+        assert_eq!(sources.templates.len(), 10);
+        assert_eq!(sources.revision, 7);
         let embedded: Value = serde_json::from_str(MODEL_CATALOG_JSON).unwrap();
         assert!(embedded.get("fallback_model").is_none());
         let fallback: Value = serde_json::from_str(FALLBACK_MODEL_JSON).unwrap();
@@ -913,15 +913,11 @@ mod tests {
             "gpt-6.1-sol",
             "gpt-6-sol",
             "gpt-6-luna",
+            "gpt-reserve",
             "gpt-5.6-sol",
             "gpt-5.6-terra",
             "gpt-5.6-luna",
-            "gpt-daybreak-blue-latest",
-            "gpt-daybreak-red-latest",
             "gpt-5.5",
-            "gpt-5.4",
-            "gpt-5.4-mini",
-            "gpt-5.2",
             "codex-auto-review",
         ];
         assert!(official_slugs
@@ -930,7 +926,7 @@ mod tests {
         let astra = &sources.templates["gpt-6-astra"].value;
         assert_eq!(astra["context_window"], 272_000);
         assert_eq!(astra["max_context_window"], 872_000);
-        assert_eq!(astra["default_reasoning_level"], "low");
+        assert_eq!(astra["default_reasoning_level"], "medium");
         assert_eq!(
             reasoning_efforts(astra),
             ["low", "medium", "high", "xhigh", "max", "ultra"]
@@ -1193,6 +1189,20 @@ mod tests {
     }
 
     #[test]
+    fn public_sol_61_model_uses_updated_bundled_context_default() {
+        let sources = parse_sources(MODEL_CATALOG_JSON).unwrap();
+        let runtime = parse_public_models(&serde_json::json!({"data": [
+            {"id": "gpt-6.1-sol", "object": "model"}
+        ]})).unwrap();
+        let catalog = prepare_catalog_with_sources(&runtime, &sources).unwrap();
+        let output = output_models(&catalog);
+        assert_eq!(output[0]["context_window"], 500_000);
+        assert_eq!(output[0]["max_context_window"], 872_000);
+        assert!(output[0]["auto_compact_token_limit"].is_null());
+        assert_eq!(catalog.models[0].context_window, Some(500_000));
+    }
+
+    #[test]
     fn api_context_defaults_apply_to_official_and_fallback_models() {
         let sources = parse_sources(MODEL_CATALOG_JSON).unwrap();
         let runtime = runtime(serde_json::json!({"models":[
@@ -1335,7 +1345,7 @@ mod tests {
 
         assert_eq!(model["slug"], "gpt-6.1-sol");
         assert_eq!(model["display_name"], "gpt-6.1-sol");
-        assert_eq!(model["context_window"], 272_000);
+        assert_eq!(model["context_window"], 500_000);
         assert_eq!(model["max_context_window"], 872_000);
         assert_eq!(model["default_reasoning_level"], "low");
         assert_eq!(
@@ -1389,7 +1399,7 @@ mod tests {
 
         assert_eq!(model["context_window"], 1_048_576);
         assert_eq!(model["max_context_window"], 1_048_576);
-        assert_eq!(model["default_reasoning_level"], "low");
+        assert_eq!(model["default_reasoning_level"], "medium");
         assert_eq!(
             reasoning_efforts(model),
             ["low", "medium", "high", "xhigh", "max", "ultra"]
