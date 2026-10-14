@@ -5,12 +5,13 @@ import { useI18n } from '../i18n';
 type LaunchTarget = { id: 'app' | 'cli'; label: string; detail: string };
 
 export function AgentRunControls({
-  name, dualTargets, desktop, cliService, targets, enabled, busyAction, harness, onLaunch, onRestart, onRestartCli, onStop, onRestartWeb, error, onErrorDismiss,
+  name, dualTargets, desktop, cliService, cliServiceRestarting, targets, enabled, busyAction, harness, onLaunch, onRestart, onRestartCli, onStop, onRestartWeb, error, onErrorDismiss,
 }: {
   name: string;
   dualTargets: boolean;
   desktop: boolean;
   cliService: boolean;
+  cliServiceRestarting: boolean;
   targets: LaunchTarget[];
   enabled: boolean;
   busyAction: string | null;
@@ -31,7 +32,7 @@ export function AgentRunControls({
     const action = dualTargets ? `launch-${kind}` : 'launch';
     const starting = busyAction === action;
     return <button type="button" className="secondary-button agent-launch-button"
-      disabled={busy || !enabled || !target} onClick={() => onLaunch(target)}
+      disabled={busy || !enabled || !target || (cliServiceRestarting && target.id === 'cli')} onClick={() => onLaunch(target)}
       title={target?.detail ?? t('agents.launch.unavailable')}>
       {starting ? <LoaderCircle size={16} className="spin" />
         : target?.id === 'cli' ? <Terminal size={16} />
@@ -44,9 +45,10 @@ export function AgentRunControls({
     <div className="agent-section-heading"><div><strong>{t('agents.run.title')}</strong></div></div>
     <div className="agent-launch-actions">
       {cliService ? <button type="button" className="secondary-button agent-launch-button"
-        onClick={onRestartCli} disabled={busy || !enabled || !cli} title={cli?.detail ?? t('agents.launch.unavailable')}>
-        {busyAction === 'restart-cli' ? <LoaderCircle size={16} className="spin" /> : <RefreshCw size={16} />}
-        {t(busyAction === 'restart-cli' ? 'agents.launch.restartingApp' : 'agents.launch.restartCli')}
+        onClick={onRestartCli} disabled={busy || cliServiceRestarting || !enabled || !cli}
+        title={cliServiceRestarting ? t('agents.launch.restartingCliDetail') : cli?.detail ?? t('agents.launch.unavailable')}>
+        {cliServiceRestarting ? <LoaderCircle size={16} className="spin" /> : <RefreshCw size={16} />}
+        {t(cliServiceRestarting ? 'agents.launch.restartingCli' : 'agents.launch.restartCli')}
       </button> : null}
       {harness?.running ? <button type="button" className="danger-button agent-launch-button"
           disabled={busy} onClick={onStop} title={t('agents.deepseekLaunch.runningDetail', { pid: harness.pid ?? '—', mode: harness.mode ?? '—' })}>

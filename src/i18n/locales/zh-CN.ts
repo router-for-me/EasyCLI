@@ -1275,6 +1275,8 @@ export const zhCN = {
   'agents.launch.restartApp': '重启 App',
   'agents.launch.restartingApp': '重启中',
   'agents.launch.restartCli': '重启 CLI 服务',
+  'agents.launch.restartingCli': '等待任务结束',
+  'agents.launch.restartingCliDetail': 'Codex 会先等待进行中的任务结束再重启后台服务，可能需要约一分钟，期间可继续使用其他功能。',
   'agents.launch.restartCliTitle': '重启 Codex CLI 后台服务',
   'agents.launch.restartCliMessage': '重启后将加载最新配置和模型列表。',
   'agents.launch.restartCliWarning': '所有正在运行的 CLI 会话（含其他终端）都将中断，请等待任务完成后再重启。',

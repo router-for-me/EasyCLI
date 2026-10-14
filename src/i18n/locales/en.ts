@@ -1275,6 +1275,8 @@ export const en: Record<MessageKey, string> = {
   'agents.launch.restartApp': 'Restart App',
   'agents.launch.restartingApp': 'Restarting',
   'agents.launch.restartCli': 'Restart CLI Service',
+  'agents.launch.restartingCli': 'Waiting for tasks',
+  'agents.launch.restartingCliDetail': 'Codex waits for running tasks to finish before restarting the background service. This can take about a minute; other features remain available meanwhile.',
   'agents.launch.restartCliTitle': 'Restart Codex CLI background service',
   'agents.launch.restartCliMessage': 'Restarting loads the latest configuration and model list.',
   'agents.launch.restartCliWarning': 'All active CLI sessions, including those in other terminals, will be interrupted. Wait for tasks to finish before restarting.',

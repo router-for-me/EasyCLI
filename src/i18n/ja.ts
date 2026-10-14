@@ -1275,6 +1275,8 @@ export const jaOverrides = {
   'agents.launch.restartApp': 'App を再起動',
   'agents.launch.restartingApp': '再起動中',
   'agents.launch.restartCli': 'CLI サービスを再起動',
+  'agents.launch.restartingCli': 'タスク終了を待機中',
+  'agents.launch.restartingCliDetail': 'Codex は実行中のタスクの終了を待ってからバックグラウンドサービスを再起動します。1 分ほどかかる場合がありますが、その間も他の機能は使用できます。',
   'agents.launch.restartCliTitle': 'Codex CLI バックグラウンドサービスを再起動',
   'agents.launch.restartCliMessage': '再起動すると最新の設定とモデル一覧が読み込まれます。',
   'agents.launch.restartCliWarning': '他のターミナルを含むすべての実行中の CLI セッションが中断されます。タスクの完了を待ってから再起動してください。',
