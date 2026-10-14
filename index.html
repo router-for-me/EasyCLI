@@ -1,23 +1,9 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="light" data-theme-id="light" style="color-scheme: light; background: #ffffff">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <script>
-      (() => {
-        let savedTheme;
-        try {
-          savedTheme = localStorage.getItem('easy-cli-proxy-api.theme');
-        } catch {
-        }
-        const theme = savedTheme === 'light' || savedTheme === 'dark'
-          ? savedTheme
-          : window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-        document.documentElement.dataset.theme = theme;
-        document.documentElement.style.colorScheme = theme;
-        document.documentElement.style.backgroundColor = theme === 'dark' ? '#0b0d11' : '#ffffff';
-      })();
-    </script>
+
     <title>EasyCLIProxyAPI</title>
   </head>
   <body>

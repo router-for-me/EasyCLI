@@ -4,14 +4,14 @@ import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { createThemeController, type AppTheme, type ThemePreference } from './themeController';
 import { ThemePreferences } from './services/themePreferences';
+import { createThemeApplicator } from './themes/applyTheme';
+import type { ThemeSelection } from './themes/types';
+import { themeRegistry, type ThemeRegistry } from './themes/registry';
 
 export type { AppTheme, ThemePreference } from './themeController';
 
-const preferences = new ThemePreferences(() => window.localStorage);
-const WINDOW_BACKGROUND: Record<AppTheme, string> = {
-  light: '#ffffff',
-  dark: '#0b0d11',
-};
+const preferences = new ThemePreferences();
+const applyTheme = createThemeApplicator(document);
 
 export function detectThemePreference(): ThemePreference {
   return preferences.get();
@@ -19,34 +19,28 @@ export function detectThemePreference(): ThemePreference {
 
 export async function initializeThemePreferences(): Promise<void> {
   if (!isTauri()) return;
-  try {
-    await preferences.initialize({
-      load: () => invoke<ThemePreference | null>('get_theme_preference'),
-      save: (preference) => invoke('save_theme_preference', { preference }),
-    });
-  } catch {
-    console.error('Failed to load theme preference; using browser preference');
-  }
+  await preferences.initialize({
+    load: () => invoke<ThemeSelection | null>('get_theme_selection'),
+    save: (selection) => invoke('save_theme_selection', { selection }),
+  });
 }
 
-function applyTheme(theme: AppTheme): void {
-  document.documentElement.dataset.theme = theme;
-  document.documentElement.style.colorScheme = theme;
-  document.documentElement.style.backgroundColor = WINDOW_BACKGROUND[theme];
-  if (document.body) {
-    document.body.style.backgroundColor = WINDOW_BACKGROUND[theme];
-  }
+export function useThemePreferenceIssue() {
+  return useSyncExternalStore(preferences.subscribe, preferences.getIssue);
 }
+
+export const retryThemeSave = preferences.retry;
 
 let controller: ReturnType<typeof createThemeController> | undefined;
 
-export function initializeTheme() {
+export function initializeTheme(registry: ThemeRegistry = themeRegistry) {
   if (controller) return controller;
   const media = window.matchMedia?.('(prefers-color-scheme: dark)');
   controller = createThemeController({
     readPreference: detectThemePreference,
-    savePreference(preference) {
-      preferences.set(preference);
+    readSystemThemes: preferences.getSystemThemes,
+    savePreference(preference, remembered) {
+      preferences.set(preference, remembered);
     },
     readMediaTheme: () => media?.matches ? 'dark' : 'light',
     listenMedia(listener) {
@@ -67,7 +61,7 @@ export function initializeTheme() {
         document.removeEventListener('visibilitychange', visible);
       };
     },
-    applyTheme,
+    applyTheme: (_appearance, definition) => applyTheme(definition),
     async connectNative() {
       if (!isTauri()) return null;
       const currentWindow = getCurrentWindow();
@@ -80,8 +74,8 @@ export function initializeTheme() {
           ? invoke<AppTheme | null>('get_linux_system_theme')
           : currentWindow.theme(),
         listen: (listener) => currentWindow.onThemeChanged(({ payload }) => listener(payload)),
-        async setBackground(theme) {
-          const background = WINDOW_BACKGROUND[theme];
+        async setBackground(_appearance, definition) {
+          const background = definition.windowBackground;
           await Promise.allSettled([
             currentWindow.setBackgroundColor(background),
             currentWebview.setBackgroundColor(background),
@@ -89,7 +83,7 @@ export function initializeTheme() {
         },
       };
     },
-  });
+  }, registry);
   return controller;
 }
 
@@ -97,6 +91,20 @@ export function useThemePreference() {
   const themeController = initializeTheme();
   const preference = useSyncExternalStore(themeController.subscribe, themeController.getPreference);
   return [preference, themeController.setPreference] as const;
+}
+
+export function useSystemThemes() {
+  const themeController = initializeTheme();
+  return useSyncExternalStore(themeController.subscribe, themeController.getSystemThemes);
+}
+
+export function useResolvedThemeId() {
+  const themeController = initializeTheme();
+  return useSyncExternalStore(themeController.subscribe, themeController.getResolvedThemeId);
+}
+
+export function setSystemTheme(id: string) {
+  initializeTheme().setSystemTheme(id);
 }
 
 if (import.meta.hot) {

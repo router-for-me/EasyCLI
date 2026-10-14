@@ -174,7 +174,7 @@ export function UsageActivityChart({ timeline, range }: UsageActivityChartProps)
           {chart.timeTicks.map((tick, index) => <text key={tick.getTime()} className="usage-activity-time" x={chart.left + trendTimePosition(tick, chart.start, chart.end) * chart.plotWidth} y="149" textAnchor={index === 0 ? 'start' : index === chart.timeTicks.length - 1 ? 'end' : 'middle'}>{formatTrendAxisLabel({ start: tick }, series.bucket, locale, { compactSameDay: chart.compactSameDay, showTime: chart.showTime })}</text>)}
         </svg>
         {series.totals.requests === 0 && <div className="usage-activity-empty">{t('usage.empty')}</div>}
-        {active && activeBar && <div className="usage-activity-tooltip" style={{ left: `${Math.max(0, Math.min(width - Math.min(224, width), activeBar.center - 112))}px` }} aria-hidden="true">
+        {active && activeBar && <div className="usage-activity-tooltip" data-theme-surface="overlay" style={{ left: `${Math.max(0, Math.min(width - Math.min(224, width), activeBar.center - 112))}px` }} aria-hidden="true">
           <strong>{formatTrendRangeLabel(active, locale, series.bucket)}</strong>
           <span className="usage-activity-tooltip-total">{t('usage.analysis.activityTotal', { count: formatNumber(active.requests) })}</span>
           {statusItems.map((item) => <div key={item.status}><span><i className={`usage-activity-dot usage-activity-${item.status}`} />{item.label}</span><b>{formatNumber(item.count)}</b></div>)}
