@@ -597,19 +597,20 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
   const viewState = viewStateByClient[viewMode][selected] ?? DEFAULT_AGENT_VIEW_STATE;
   const activeSubpage = viewState.subpage === 'sessions' && (embedded || selected !== 'codex')
     ? DEFAULT_AGENT_SUBPAGE : viewState.subpage;
-  const updateViewState = (patch: Partial<AgentViewState>) => {
+  const updateViewStateForClient = (client: AgentClientId, patch: Partial<AgentViewState>) => {
     setViewStateByClient((current) => {
       const next = {
         ...current,
         [viewMode]: {
           ...current[viewMode],
-          [selected]: { ...(current[viewMode][selected] ?? DEFAULT_AGENT_VIEW_STATE), ...patch },
+          [client]: { ...(current[viewMode][client] ?? DEFAULT_AGENT_VIEW_STATE), ...patch },
         },
       };
       agentViewStateCache = next;
       return next;
     });
   };
+  const updateViewState = (patch: Partial<AgentViewState>) => updateViewStateForClient(selected, patch);
   const setActiveSubpage = (subpage: AgentSubpageId) => {
     if (subpage !== activeSubpage) requestAppNavigation(() => updateViewState({ subpage }));
   };
@@ -1666,8 +1667,8 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
     }
     let active = true;
     pending.then(
-      () => { if (active) setConfigurationNotice(t('agents.launch.cliServiceRestarted')); },
-      (requestError) => { if (active) setLaunchError(String(requestError)); },
+      () => { if (active) updateViewStateForClient('codex', { configurationNotice: t('agents.launch.cliServiceRestarted') }); },
+      (requestError) => { if (active) updateViewStateForClient('codex', { launchError: String(requestError) }); },
     ).finally(() => { if (active) setCliServiceRestarting(false); });
     return () => { active = false; };
   }, []);
