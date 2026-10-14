@@ -555,6 +555,19 @@ function createState(scenario: BrowserMockScenario) {
       pid: null as number | null,
       mode: null as string | null,
     },
+    workbuddyStatus: {
+      running: true,
+      ready: true,
+      host: '127.0.0.1',
+      port: 8788,
+      pid: 58921 as number | null,
+      pythonPath: 'C:\\Python312\\python.exe',
+      accountsCount: 2,
+      baseUrl: 'http://127.0.0.1:8788/v1',
+      accountsDir: 'C:\\EasyCLIProxyAPI\\workbuddy-proxy\\accounts',
+      message: 'WorkBuddy proxy is running at http://127.0.0.1:8788/v1',
+      error: null as string | null,
+    },
     thinkingAliases: [
       {
         position: { section: 'oauth-model-alias', providerIndex: null, modelIndex: 0 },
@@ -1361,6 +1374,59 @@ export function createBrowserMockRuntime(
         state.deepSeekStatus = { running: true, pid: 43110, mode: 'web' };
         return clone(state.deepSeekStatus);
       }
+      case 'get_workbuddy_proxy_status': return clone(state.workbuddyStatus);
+      case 'start_workbuddy_proxy': {
+        state.workbuddyStatus.running = true;
+        state.workbuddyStatus.ready = true;
+        state.workbuddyStatus.pid = 58921;
+        return clone(state.workbuddyStatus);
+      }
+      case 'stop_workbuddy_proxy': {
+        state.workbuddyStatus.running = false;
+        state.workbuddyStatus.ready = false;
+        state.workbuddyStatus.pid = null;
+        return clone(state.workbuddyStatus);
+      }
+      case 'restart_workbuddy_proxy': {
+        state.workbuddyStatus.running = true;
+        state.workbuddyStatus.ready = true;
+        state.workbuddyStatus.pid = 58921;
+        return clone(state.workbuddyStatus);
+      }
+      case 'detect_workbuddy_desktop_accounts': return [
+        {
+          fileName: 'workbuddy-desktop-ai.info',
+          filePath: 'C:\\Users\\Mock\\AppData\\Local\\CodeBuddyExtension\\Data\\Public\\auth\\workbuddy-desktop-ai.info',
+          uid: '6461aca0-1e34-4f9b-8888-4a4c9a286ef0',
+          nickname: 'MockUser',
+          realm: 'intl',
+          domain: 'www.workbuddy.ai',
+          encrypted: true,
+          lastModified: '2026-10-14 12:00:00',
+        },
+      ];
+      case 'import_workbuddy_desktop_account': return { ok: true, imported: 1 };
+      case 'start_workbuddy_oauth': return {
+        state: 'mock-wb-state-123',
+        authUrl: 'https://www.workbuddy.ai/login?mock=1',
+        realm: 'intl',
+        platform: 'CLI',
+      };
+      case 'poll_workbuddy_oauth': {
+        if (!state.authFiles.some((file) => file.name === 'workbuddy-wb_mock_user.json')) {
+          state.authFiles.push({
+            name: 'workbuddy-wb_mock_user.json', provider: 'workbuddy', type: 'workbuddy', source: 'file',
+            auth_index: `mock-workbuddy-${state.authFiles.length + 1}`, priority: 0, disabled: false, modtime: Date.now(),
+          });
+        }
+        return {
+          status: 'success',
+          uid: 'wb_mock_user',
+          accessToken: 'mock-wb-token',
+          expiresIn: 2592000,
+        };
+      }
+      case 'sync_workbuddy_provider_to_cpa': return 'WorkBuddy successfully synchronized as OpenAI-compatible provider at http://127.0.0.1:8788/v1';
       case 'list_agent_config_backups': return {
         versions: [{
           id: 'mock-backup-2026-09-25', createdAt: isoHoursAgo(5), fileCount: 2,
