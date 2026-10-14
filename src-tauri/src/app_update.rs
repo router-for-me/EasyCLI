@@ -2116,22 +2116,144 @@ pub(crate) fn run_portable_update_helper(descriptor_path: &Path) -> Result<(), S
     ))
 }
 
-#[cfg(target_os = "macos")]
-fn run_macos_update_command(command: &mut Command, action: &str) -> Result<(), String> {
-    let output = command
-        .output()
+#[cfg(any(target_os = "macos", test))]
+pub(crate) fn macos_update_command_timeout(command: &Command) -> Duration {
+    let program = command.get_program();
+    if program == "diskutil" {
+        return Duration::from_secs(10);
+    }
+    if program == "hdiutil"
+        && command
+            .get_args()
+            .next()
+            .is_some_and(|arg| arg == "detach")
+    {
+        return Duration::from_secs(15);
+    }
+    Duration::from_secs(120)
+}
+
+// Commands can leave descendants holding their output pipes after exiting. Read
+// nonblocking pipes on the calling thread so the same deadline covers both the
+// process and EOF, without leaving detached reader threads behind.
+#[cfg(any(target_os = "macos", all(unix, test)))]
+fn set_macos_update_pipe_nonblocking(pipe: &impl std::os::fd::AsRawFd) -> std::io::Result<()> {
+    let fd = pipe.as_raw_fd();
+    // SAFETY: the pipe owns a live descriptor for the duration of both calls.
+    let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+    if flags == -1 || unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } == -1 {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+#[cfg(any(target_os = "macos", test))]
+pub(crate) fn drain_macos_update_output(
+    pipe: &mut impl std::io::Read,
+    output: &mut Vec<u8>,
+) -> std::io::Result<bool> {
+    let mut buffer = [0; 4096];
+    // Bound both retained diagnostics and work per poll. A continuously writing
+    // process must not starve the other pipe or the deadline check.
+    for _ in 0..16 {
+        match pipe.read(&mut buffer) {
+            Ok(0) => return Ok(true),
+            Ok(count) => {
+                let keep = count.min((64 * 1024usize).saturating_sub(output.len()));
+                output.extend_from_slice(&buffer[..keep]);
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => return Ok(false),
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(false)
+}
+
+#[cfg(any(target_os = "macos", all(unix, test)))]
+pub(crate) fn run_macos_update_command_with_timeout(
+    command: &mut Command,
+    action: &str,
+    timeout: Duration,
+) -> Result<(), String> {
+    use std::os::unix::process::CommandExt;
+
+    command
+        .process_group(0)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = command
+        .spawn()
         .map_err(|error| format!("Failed to {action}: {error}"))?;
-    if output.status.success() {
+    let mut stdout = child.stdout.take().expect("stdout was piped");
+    let mut stderr = child.stderr.take().expect("stderr was piped");
+    let mut stdout_bytes = Vec::new();
+    let mut stderr_bytes = Vec::new();
+    let deadline = Instant::now() + timeout;
+    let result = (|| -> Result<_, String> {
+        set_macos_update_pipe_nonblocking(&stdout)
+            .and_then(|_| set_macos_update_pipe_nonblocking(&stderr))
+            .map_err(|error| format!("Failed to read {action} output: {error}"))?;
+        let mut status = None;
+        let mut stdout_eof = false;
+        let mut stderr_eof = false;
+        loop {
+            if !stdout_eof {
+                stdout_eof = drain_macos_update_output(&mut stdout, &mut stdout_bytes)
+                    .map_err(|error| format!("Failed to read {action} output: {error}"))?;
+            }
+            if !stderr_eof {
+                stderr_eof = drain_macos_update_output(&mut stderr, &mut stderr_bytes)
+                    .map_err(|error| format!("Failed to read {action} output: {error}"))?;
+            }
+            if status.is_none() {
+                status = child
+                    .try_wait()
+                    .map_err(|error| format!("Failed to {action}: {error}"))?;
+            }
+            if stdout_eof && stderr_eof {
+                if let Some(status) = status {
+                    return Ok(status);
+                }
+            }
+            if Instant::now() >= deadline {
+                return Err(format!(
+                    "Failed to {action}: timed out after {}s",
+                    timeout.as_secs_f64()
+                ));
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+    })();
+    if result.is_err() {
+        // The group is private to this command. Kill descendants too, including
+        // when the direct child has already exited but a pipe is still open.
+        // SAFETY: spawn succeeded with process_group(0), so this is its group ID.
+        unsafe {
+            libc::kill(-(child.id() as libc::pid_t), libc::SIGKILL);
+        }
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+    let status = result?;
+    if status.success() {
         return Ok(());
     }
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&stderr_bytes);
+    let stdout = String::from_utf8_lossy(&stdout_bytes);
     let details = [stderr.trim(), stdout.trim()]
         .into_iter()
         .filter(|text| !text.is_empty())
         .collect::<Vec<_>>()
         .join("; ");
-    Err(format!("Failed to {action} ({}): {details}", output.status))
+    Err(format!("Failed to {action} ({status}): {details}"))
+}
+
+#[cfg(target_os = "macos")]
+fn run_macos_update_command(command: &mut Command, action: &str) -> Result<(), String> {
+    let timeout = macos_update_command_timeout(command);
+    run_macos_update_command_with_timeout(command, action, timeout)
 }
 
 #[cfg(target_os = "macos")]
@@ -2213,6 +2335,8 @@ pub(crate) fn eject_macos_update_dmg_with_commands(
 ) -> Result<(), String> {
     let mut last_error = String::new();
     // Spotlight or security scanning can briefly hold the newly mounted image busy.
+    // However, if diskutil times out (e.g. wedged storagekitd XPC daemon), skip
+    // remaining diskutil attempts and immediately fall back to hdiutil detach.
     for attempt in 0..3 {
         if attempt > 0 {
             wait(Duration::from_millis(500));
@@ -2221,7 +2345,18 @@ pub(crate) fn eject_macos_update_dmg_with_commands(
         eject.arg("eject").arg(mount_dir);
         match run(&mut eject, "Eject application update DMG") {
             Ok(()) => return Ok(()),
-            Err(error) => last_error = error,
+            Err(error) => {
+                if error.contains("Unable to find disk")
+                    || error.contains("Failed to find disk")
+                {
+                    return Ok(());
+                }
+                let stop_retrying = error.contains("timed out");
+                last_error = error;
+                if stop_retrying {
+                    break;
+                }
+            }
         }
     }
 
@@ -2246,10 +2381,13 @@ pub(crate) fn cleanup_macos_update_dmg_with_commands(
     let mount_dir = work_dir.join("mount");
     if mount_dir.exists() {
         if let Err(error) = eject_macos_update_dmg_with_commands(&mount_dir, run, wait) {
-            eprintln!("Application update DMG cleanup deferred: {error}");
-            return;
+            if fs::remove_dir(&mount_dir).is_err() {
+                eprintln!("Application update DMG cleanup deferred: {error}");
+                return;
+            }
+        } else {
+            let _ = fs::remove_dir(&mount_dir);
         }
-        let _ = fs::remove_dir(&mount_dir);
     }
     let _ = fs::remove_file(work_dir.join("update.dmg"));
 }
@@ -2466,6 +2604,7 @@ fn cleanup_macos_update_payload(descriptor_path: &Path, descriptor: &MacosUpdate
     let _ = fs::remove_file(&descriptor.ack_path);
     let _ = fs::remove_file(portable_update_helper_ack_path(&descriptor.work_dir));
     let _ = fs::remove_file(descriptor_path);
+    let _ = fs::remove_dir(&descriptor.work_dir);
 }
 
 #[cfg(target_os = "macos")]

@@ -235,6 +235,183 @@ fn macos_dmg_cleanup_preserves_busy_images_and_retries_later() {
     fs::remove_dir_all(root).unwrap();
 }
 
+#[test]
+fn macos_dmg_eject_skips_remaining_diskutil_retries_on_timeout() {
+    let mount_dir = Path::new("/private/tmp/update with spaces/mount");
+    let mut eject_attempts = 0;
+    let mut force_attempts = 0;
+    let mut waits = Vec::new();
+    eject_macos_update_dmg_with_commands(
+        mount_dir,
+        |command, _| {
+            if command.get_program() == "diskutil" {
+                eject_attempts += 1;
+                return Err("Failed to Eject application update DMG: timed out after 10s".to_string());
+            }
+            assert_eq!(command.get_program(), "hdiutil");
+            force_attempts += 1;
+            Ok(())
+        },
+        |duration| waits.push(duration),
+    )
+    .unwrap();
+    assert_eq!(eject_attempts, 1);
+    assert_eq!(force_attempts, 1);
+    assert!(waits.is_empty());
+}
+
+#[test]
+fn macos_dmg_cleanup_removes_archive_when_mount_dir_was_already_unmounted() {
+    let root = agent_test_home("macos-dmg-cleanup-already-unmounted");
+    let mount_dir = root.join("mount");
+    let archive = root.join("update.dmg");
+    fs::create_dir_all(&mount_dir).unwrap();
+    fs::write(&archive, b"disk image").unwrap();
+
+    cleanup_macos_update_dmg_with_commands(
+        &root,
+        |_, _| Err("Unable to find disk for mount".to_string()),
+        |_| panic!("Already unmounted directory should not wait between diskutil retries"),
+    );
+    assert!(!mount_dir.exists());
+    assert!(!archive.exists());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn eject_macos_update_dmg_does_not_retry_when_volume_already_unmounted() {
+    let mount_dir = Path::new("/private/tmp/update with spaces/mount");
+    for message in ["Unable to find disk", "Failed to find disk"] {
+        let mut eject_attempts = 0;
+        let mut force_attempts = 0;
+        let mut waits = Vec::new();
+        eject_macos_update_dmg_with_commands(
+            mount_dir,
+            |command, _| {
+                if command.get_program() == "diskutil" {
+                    eject_attempts += 1;
+                    return Err(format!(
+                        "Failed to Eject application update DMG: {message} for {}",
+                        mount_dir.display()
+                    ));
+                }
+                force_attempts += 1;
+                panic!("hdiutil detach -force must not be called when volume is already unmounted");
+            },
+            |duration| waits.push(duration),
+        )
+        .unwrap();
+        assert_eq!(eject_attempts, 1);
+        assert_eq!(force_attempts, 0);
+        assert!(waits.is_empty());
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn macos_update_command_runner_terminates_hung_processes_on_timeout() {
+    let mut command = Command::new("sh");
+    command.args(["-c", "sleep 30; true"]);
+    let started = Instant::now();
+    let error = run_macos_update_command_with_timeout(
+        &mut command,
+        "Eject application update DMG",
+        Duration::from_millis(100),
+    )
+    .unwrap_err();
+    assert!(error.contains("timed out"));
+    assert!(started.elapsed() < Duration::from_secs(5));
+}
+
+#[test]
+fn macos_update_command_deadlines_distinguish_detach_from_other_commands() {
+    assert_eq!(
+        macos_update_command_timeout(&Command::new("diskutil")),
+        Duration::from_secs(10)
+    );
+    let mut detach = Command::new("hdiutil");
+    detach.args(["detach", "-force", "/tmp/mount"]);
+    assert_eq!(
+        macos_update_command_timeout(&detach),
+        Duration::from_secs(15)
+    );
+    let mut attach = Command::new("hdiutil");
+    attach.arg("attach");
+    assert_eq!(
+        macos_update_command_timeout(&attach),
+        Duration::from_secs(120)
+    );
+    for program in ["ditto", "codesign", "spctl"] {
+        assert_eq!(
+            macos_update_command_timeout(&Command::new(program)),
+            Duration::from_secs(120)
+        );
+    }
+}
+
+#[test]
+fn macos_update_output_drain_bounds_memory_and_work_per_poll() {
+    let mut pipe = std::io::Cursor::new(vec![b'x'; 256 * 1024]);
+    let mut output = Vec::new();
+    assert!(!drain_macos_update_output(&mut pipe, &mut output).unwrap());
+    assert_eq!(pipe.position(), 64 * 1024);
+    assert_eq!(output.len(), 64 * 1024);
+    for _ in 0..3 {
+        assert!(!drain_macos_update_output(&mut pipe, &mut output).unwrap());
+        assert_eq!(output.len(), 64 * 1024);
+    }
+    assert!(drain_macos_update_output(&mut pipe, &mut output).unwrap());
+}
+
+#[cfg(unix)]
+#[test]
+fn macos_update_command_timeout_also_covers_inherited_pipes_after_parent_exit() {
+    let mut command = Command::new("sh");
+    command.args(["-c", "sleep 30 & exit 0"]);
+    let started = Instant::now();
+    let error = run_macos_update_command_with_timeout(
+        &mut command,
+        "inherited pipe test",
+        Duration::from_millis(200),
+    )
+    .unwrap_err();
+    assert!(error.contains("timed out"), "{error}");
+    assert!(started.elapsed() < Duration::from_secs(5));
+}
+
+#[cfg(unix)]
+#[test]
+fn macos_update_command_captures_failure_details_from_both_pipes() {
+    let mut command = Command::new("sh");
+    command.args([
+        "-c",
+        "printf stdout-detail; printf stderr-detail >&2; exit 7",
+    ]);
+    let error = run_macos_update_command_with_timeout(
+        &mut command,
+        "diagnostic test",
+        Duration::from_secs(5),
+    )
+    .unwrap_err();
+    assert!(error.contains("stdout-detail"), "{error}");
+    assert!(error.contains("stderr-detail"), "{error}");
+    assert!(error.contains("7"), "{error}");
+    assert!(!error.contains("timed out"), "{error}");
+}
+
+#[cfg(unix)]
+#[test]
+fn macos_update_command_drains_large_output_without_deadlocking() {
+    let mut command = Command::new("sh");
+    command.args(["-c", "dd if=/dev/zero bs=4096 count=64 2>/dev/null; (dd if=/dev/zero bs=4096 count=64 2>/dev/null) >&2"]);
+    run_macos_update_command_with_timeout(
+        &mut command,
+        "large output test",
+        Duration::from_secs(5),
+    )
+    .unwrap();
+}
+
 fn portable_update_test_asset(version: &str, arch: &str) -> PortableUpdateAsset {
     let (_, display, suffix) = portable_update_asset_platform().unwrap();
     let name = format!("EasyCLIProxyAPI-v{version}-{display}-{arch}.{suffix}");
