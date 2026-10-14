@@ -324,6 +324,8 @@ pub(crate) async fn install_core_version(
         let gui_config_state = app.state::<GuiConfigState>();
         let config = gui_config_state.snapshot()?;
         let proxy_url = config.proxy_url.clone();
+        let rollback_dir = core_base_dir()?.join("cpa-core.rollback");
+        ensure_core_rollback_available(&rollback_dir)?;
         let token = CancellationToken::new();
         state.start(token.clone(), version.clone())?;
 
@@ -341,7 +343,6 @@ pub(crate) async fn install_core_version(
         ));
 
         let result = staged_result.and_then(|staged| {
-            let rollback_dir = core_base_dir()?.join("cpa-core.rollback");
             let was_running = pause_core_for_install(&app, process_state.inner(), &config)?;
             let swap_and_restore = apply_staged_core_with_rollback(
                 &staged.install_dir,
@@ -2550,6 +2551,20 @@ pub(crate) fn reset_dir(path: &Path) -> Result<(), String> {
 const ROLLBACK_FILES_DIR: &str = "files";
 const ROLLBACK_ADDED_FILES: &str = "added-files.txt";
 
+fn ensure_core_rollback_available(rollback_dir: &Path) -> Result<(), String> {
+    match fs::symlink_metadata(rollback_dir) {
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!(
+            "Failed to inspect kernel rollback backup {}: {error}",
+            path_to_string(rollback_dir)
+        )),
+        Ok(_) => Err(format!(
+            "A previous kernel rollback backup is still present at {}. Restore it or move it to a safe location before retrying the update; it will not be overwritten",
+            path_to_string(rollback_dir)
+        )),
+    }
+}
+
 fn collect_relative_files(root: &Path, dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), String> {
     for entry in fs::read_dir(dir)
         .map_err(|err| format!("Failed to read directory {}: {err}", path_to_string(dir)))?
@@ -2579,10 +2594,17 @@ pub(crate) fn backup_core_for_rollback(
     staging_dir: &Path,
     rollback_dir: &Path,
 ) -> Result<bool, String> {
+    // Check even if the installed binary is missing: the retained backup may be
+    // the only remaining copy of the previous working installation.
+    ensure_core_rollback_available(rollback_dir)?;
     let Some(binary_path) = find_core_binary(install_dir) else {
         return Ok(false);
     };
-    reset_dir(rollback_dir)?;
+    // Exclusive creation also protects a backup that appears after the check.
+    fs::create_dir(rollback_dir).map_err(|error| format!(
+        "Failed to create kernel rollback backup {} without overwriting existing files: {error}",
+        path_to_string(rollback_dir)
+    ))?;
     let files_dir = rollback_dir.join(ROLLBACK_FILES_DIR);
 
     let mut staged_files = Vec::new();

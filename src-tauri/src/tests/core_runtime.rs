@@ -2,6 +2,59 @@ use super::support::*;
 use super::*;
 
 #[test]
+fn retry_must_preserve_backup_from_failed_rollback() {
+    let root = agent_test_home("review-preserve-failed-rollback");
+    let install = root.join("cpa-core");
+    let staging = root.join("cpa-core.staging");
+    let rollback = root.join("cpa-core.rollback");
+    fs::create_dir_all(&install).unwrap();
+    fs::create_dir_all(&staging).unwrap();
+    fs::write(install.join(core_binary_name()), b"working-original").unwrap();
+    fs::write(staging.join(core_binary_name()), b"broken-update").unwrap();
+    backup_core_for_rollback(&install, &staging, &rollback).unwrap();
+    // A failed restore leaves the new binary installed and the original in rollback.
+    fs::write(install.join(core_binary_name()), b"broken-update").unwrap();
+    let error = apply_staged_core_with_rollback(&install, &staging, &rollback, || {
+        panic!("a blocked update must not restart the kernel")
+    }).unwrap_err();
+    assert!(error.contains("will not be overwritten"));
+    assert_eq!(fs::read(install.join(core_binary_name())).unwrap(), b"broken-update");
+    assert!(staging.is_dir());
+
+    // A missing installed binary must not allow a subsequent successful update
+    // to delete the only remaining backup either.
+    fs::remove_file(install.join(core_binary_name())).unwrap();
+    assert!(apply_staged_core_with_rollback(&install, &staging, &rollback, || {
+        panic!("a missing installed binary must not bypass backup protection")
+    }).is_err());
+    let retained = fs::read(rollback.join("files").join(core_binary_name())).unwrap();
+    fs::remove_dir_all(root).unwrap();
+    assert_eq!(retained, b"working-original", "retry destroyed the recoverable original binary");
+}
+
+#[test]
+fn restored_rollback_allows_a_subsequent_successful_update() {
+    let root = agent_test_home("rollback-restore-then-retry");
+    let install = root.join("cpa-core");
+    let staging = root.join("cpa-core.staging");
+    let rollback = root.join("cpa-core.rollback");
+    fs::create_dir_all(&install).unwrap();
+    fs::create_dir_all(&staging).unwrap();
+    fs::write(install.join(core_binary_name()), b"working-original").unwrap();
+    fs::write(staging.join(core_binary_name()), b"working-update").unwrap();
+    backup_core_for_rollback(&install, &staging, &rollback).unwrap();
+    assert!(backup_core_for_rollback(&install, &staging, &rollback).is_err());
+    fs::write(install.join(core_binary_name()), b"broken-update").unwrap();
+    restore_core_rollback(&install, &rollback).unwrap();
+    assert_eq!(fs::read(install.join(core_binary_name())).unwrap(), b"working-original");
+    assert!(!rollback.exists());
+    apply_staged_core_with_rollback(&install, &staging, &rollback, || Ok(())).unwrap();
+    assert_eq!(fs::read(install.join(core_binary_name())).unwrap(), b"working-update");
+    assert!(!rollback.exists());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn core_process_starting_state_tracks_automatic_launch() {
     let state = CoreProcessState::new(true);
     assert!(state.is_starting());
