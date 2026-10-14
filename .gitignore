@@ -13,4 +13,5 @@ agent_docs/
 
 *.log
 *.tmp
+*.exe
 misc/
