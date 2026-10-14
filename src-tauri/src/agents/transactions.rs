@@ -304,17 +304,16 @@ fn relocated_configuration_root_allowed(path: &Path) -> bool {
     let Ok(canonical_path) = normalize_existing_path(path) else {
         return false;
     };
-    if std::env::temp_dir().ancestors().any(|ancestor| {
-        paths_equivalent(ancestor, path) || paths_equivalent(ancestor, &canonical_path)
-    }) {
+    if std::env::temp_dir()
+        .ancestors()
+        .any(|ancestor| ancestor == path)
+    {
         return true;
     }
     let Some(home) = user_home_directory() else {
         return false;
     };
-    if home.ancestors().any(|ancestor| {
-        paths_equivalent(ancestor, path) || paths_equivalent(ancestor, &canonical_path)
-    }) {
+    if home.ancestors().any(|ancestor| ancestor == path) {
         return true;
     }
 
