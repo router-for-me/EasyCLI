@@ -1724,7 +1724,7 @@ async fn codex_configuration_uses_public_v1_model_ids_for_selection_and_files() 
     let port = listener.local_addr().unwrap().port();
     let server = std::thread::spawn(move || {
         let mut paths = Vec::new();
-        for _ in 0..2 {
+        for _ in 0..3 {
             let (mut socket, _) = listener.accept().unwrap();
             socket.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
             let mut request = Vec::new();
@@ -1738,7 +1738,10 @@ async fn codex_configuration_uses_public_v1_model_ids_for_selection_and_files() 
             let path = request.split_whitespace().nth(1).unwrap().to_string();
             let body = if path == "/v1/models" {
                 assert!(request.to_lowercase().contains("authorization: bearer public-test-key\r\n"));
-                r#"{"data":[{"id":"public-model","alias":"not-an-id","slug":"not-public","context_length":64000},{"id":"another-model"}]}"#
+                r#"{"data":[{"id":"public-model","alias":"not-an-id","slug":"not-public"},{"id":"another-model"}]}"#
+            } else if path.starts_with("/v1/models?client_version=") {
+                assert!(request.to_lowercase().contains("authorization: bearer public-test-key\r\n"));
+                r#"{"models":[{"id":"public-model","context_window":1048576,"supported_reasoning_levels":["low","medium","high"],"default_reasoning_level":"medium"},{"id":"client-only-model","context_window":1048576}]}"#
             } else {
                 assert_eq!(path, "/v8/management/config.yaml");
                 "config-version: 8\n"
@@ -1747,6 +1750,8 @@ async fn codex_configuration_uses_public_v1_model_ids_for_selection_and_files() 
             paths.push(path);
         }
         assert!(paths.iter().any(|path| path == "/v1/models"));
+        assert!(paths.iter().any(|path| path.starts_with("/v1/models?client_version=")));
+        assert!(paths.iter().any(|path| path == "/v8/management/config.yaml"));
     });
     let config = GuiConfigFile {
         port,
@@ -1763,6 +1768,11 @@ async fn codex_configuration_uses_public_v1_model_ids_for_selection_and_files() 
     let mut written: Vec<_> = catalog["models"].as_array().unwrap().iter().map(|model| model["slug"].as_str().unwrap()).collect();
     written.sort();
     assert_eq!(ids, written);
+    let public_model = catalog["models"].as_array().unwrap().iter().find(|model| model["slug"] == "public-model").unwrap();
+    assert_eq!(public_model["context_window"], 1_048_576);
+    assert_eq!(public_model["max_context_window"], 1_048_576);
+    assert_eq!(public_model["default_reasoning_level"], "medium");
+    assert_eq!(public_model["supported_reasoning_levels"].as_array().unwrap().len(), 3);
 }
 
 #[test]

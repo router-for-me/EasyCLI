@@ -730,13 +730,10 @@ fn apply_runtime_metadata(model: &mut Map<String, Value>, runtime: &CodexRuntime
 /// Restricts the fallback reasoning levels to the ones the core reports for the
 /// model. Levels missing from the fallback template are never added, so an
 /// untrusted runtime cannot grant capabilities; it can only narrow them. A
-/// default level outside the narrowed list is replaced by the first kept level.
+/// default level outside a non-empty narrowed list is replaced by the first
+/// kept level. An explicit empty list or empty intersection clears the default.
 fn apply_runtime_reasoning_levels(model: &mut Map<String, Value>, runtime: &CodexRuntimeModel) {
-    let Some(levels) = runtime
-        .reasoning_levels
-        .as_ref()
-        .filter(|levels| !levels.is_empty())
-    else {
+    let Some(levels) = runtime.reasoning_levels.as_ref() else {
         return;
     };
     let supported = model
@@ -754,6 +751,8 @@ fn apply_runtime_reasoning_levels(model: &mut Map<String, Value>, runtime: &Code
         .cloned()
         .collect::<Vec<_>>();
     if supported.is_empty() {
+        model.insert("supported_reasoning_levels".to_string(), Value::Array(Vec::new()));
+        model.insert("default_reasoning_level".to_string(), Value::Null);
         return;
     }
     let kept = supported
@@ -894,9 +893,6 @@ pub(crate) fn parse_reasoning_levels(value: &Value) -> Option<Vec<String>> {
         .filter(|level| is_allowed_reasoning_level(level))
         .filter(|level| seen.insert(level.clone()))
         .collect::<Vec<_>>();
-    if levels.is_empty() {
-        return None;
-    }
     Some(levels)
 }
 
@@ -1931,7 +1927,24 @@ mod tests {
         }]}));
         let catalog = prepare_catalog_with_sources(&disjoint, &sources).unwrap();
         let model = &output_models(&catalog)[0];
+        assert!(reasoning_efforts(model).is_empty());
+        assert_eq!(model["default_reasoning_level"], Value::Null);
+
+        let absent = runtime(serde_json::json!({"models": [{
+            "id": "absent"
+        }]}));
+        let catalog = prepare_catalog_with_sources(&absent, &sources).unwrap();
+        let model = &output_models(&catalog)[0];
         assert_eq!(reasoning_efforts(model), ["low", "medium", "high"]);
         assert_eq!(model["default_reasoning_level"], "medium");
+
+        let empty = runtime(serde_json::json!({"models": [{
+            "id": "empty",
+            "supported_reasoning_levels": []
+        }]}));
+        let catalog = prepare_catalog_with_sources(&empty, &sources).unwrap();
+        let model = &output_models(&catalog)[0];
+        assert!(reasoning_efforts(model).is_empty());
+        assert_eq!(model["default_reasoning_level"], Value::Null);
     }
 }
