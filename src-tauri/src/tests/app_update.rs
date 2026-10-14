@@ -235,6 +235,94 @@ fn macos_dmg_cleanup_preserves_busy_images_and_retries_later() {
     fs::remove_dir_all(root).unwrap();
 }
 
+#[test]
+fn macos_dmg_eject_skips_remaining_diskutil_retries_on_timeout() {
+    let mount_dir = Path::new("/private/tmp/update with spaces/mount");
+    let mut eject_attempts = 0;
+    let mut force_attempts = 0;
+    let mut waits = Vec::new();
+    eject_macos_update_dmg_with_commands(
+        mount_dir,
+        |command, _| {
+            if command.get_program() == "diskutil" {
+                eject_attempts += 1;
+                return Err("Failed to Eject application update DMG: timed out after 10s".to_string());
+            }
+            assert_eq!(command.get_program(), "hdiutil");
+            force_attempts += 1;
+            Ok(())
+        },
+        |duration| waits.push(duration),
+    )
+    .unwrap();
+    assert_eq!(eject_attempts, 1);
+    assert_eq!(force_attempts, 1);
+    assert!(waits.is_empty());
+}
+
+#[test]
+fn macos_dmg_cleanup_removes_archive_when_mount_dir_was_already_unmounted() {
+    let root = agent_test_home("macos-dmg-cleanup-already-unmounted");
+    let mount_dir = root.join("mount");
+    let archive = root.join("update.dmg");
+    fs::create_dir_all(&mount_dir).unwrap();
+    fs::write(&archive, b"disk image").unwrap();
+
+    cleanup_macos_update_dmg_with_commands(
+        &root,
+        |_, _| Err("Unable to find disk for mount".to_string()),
+        |_| panic!("Already unmounted directory should not wait between diskutil retries"),
+    );
+    assert!(!mount_dir.exists());
+    assert!(!archive.exists());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn eject_macos_update_dmg_does_not_retry_when_volume_already_unmounted() {
+    let mount_dir = Path::new("/private/tmp/update with spaces/mount");
+    for message in ["Unable to find disk", "Failed to find disk"] {
+        let mut eject_attempts = 0;
+        let mut force_attempts = 0;
+        let mut waits = Vec::new();
+        eject_macos_update_dmg_with_commands(
+            mount_dir,
+            |command, _| {
+                if command.get_program() == "diskutil" {
+                    eject_attempts += 1;
+                    return Err(format!(
+                        "Failed to Eject application update DMG: {message} for {}",
+                        mount_dir.display()
+                    ));
+                }
+                force_attempts += 1;
+                panic!("hdiutil detach -force must not be called when volume is already unmounted");
+            },
+            |duration| waits.push(duration),
+        )
+        .unwrap();
+        assert_eq!(eject_attempts, 1);
+        assert_eq!(force_attempts, 0);
+        assert!(waits.is_empty());
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn macos_update_command_runner_terminates_hung_processes_on_timeout() {
+    let mut command = Command::new("sh");
+    command.args(["-c", "sleep 30; true"]);
+    let started = Instant::now();
+    let error = run_macos_update_command_with_timeout(
+        &mut command,
+        "Eject application update DMG",
+        Duration::from_millis(100),
+    )
+    .unwrap_err();
+    assert!(error.contains("timed out"));
+    assert!(started.elapsed() < Duration::from_secs(5));
+}
+
 fn portable_update_test_asset(version: &str, arch: &str) -> PortableUpdateAsset {
     let (_, display, suffix) = portable_update_asset_platform().unwrap();
     let name = format!("EasyCLIProxyAPI-v{version}-{display}-{arch}.{suffix}");
