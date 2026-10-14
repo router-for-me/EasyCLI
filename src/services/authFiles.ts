@@ -103,6 +103,7 @@ export const normalizeOAuthProvider = (value: string) => {
   if (provider === 'anti-gravity') return 'antigravity';
   if (provider === 'openai') return 'codex';
   if (provider === 'muse') return 'meta';
+  if (provider === 'codebuddy') return 'workbuddy';
   return provider;
 };
 

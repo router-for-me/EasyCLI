@@ -35,6 +35,7 @@ mod tray;
 mod usage;
 #[cfg(target_os = "windows")]
 mod windows_frame;
+mod workbuddy_proxy;
 
 #[cfg(test)]
 use configuration_watcher::nearest_existing_watch_directory;
@@ -2504,7 +2505,8 @@ fn main() {
         .manage(usage::UsageCollectorState::default())
         .manage(GuiConfigState::new(gui_config))
         .manage(MainWindowSizeState::new(initial_window_size))
-        .manage(AgentConfigStatusCache::default());
+        .manage(AgentConfigStatusCache::default())
+        .manage(workbuddy_proxy::WorkBuddyProxyState::default());
 
     let app = app.on_window_event(|window, event| {
         if window.label() != "main" {
@@ -2851,7 +2853,16 @@ fn main() {
             codex_sessions::apply_codex_session_index_cleanup,
             codex_sessions::context::get_codex_session_context,
             codex_sessions::context::save_codex_session_context,
-            codex_sessions::context::open_codex_session_rollout
+            codex_sessions::context::open_codex_session_rollout,
+            workbuddy_proxy::get_workbuddy_proxy_status,
+            workbuddy_proxy::start_workbuddy_proxy,
+            workbuddy_proxy::stop_workbuddy_proxy,
+            workbuddy_proxy::restart_workbuddy_proxy,
+            workbuddy_proxy::detect_workbuddy_desktop_accounts,
+            workbuddy_proxy::import_workbuddy_desktop_account,
+            workbuddy_proxy::start_workbuddy_oauth,
+            workbuddy_proxy::poll_workbuddy_oauth,
+            workbuddy_proxy::sync_workbuddy_provider_to_cpa
         ])
         .build(tauri::generate_context!())
         .expect("failed to build app");

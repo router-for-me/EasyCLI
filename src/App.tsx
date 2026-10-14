@@ -27,6 +27,7 @@ import {
   Sprout,
   Sun,
   X,
+  Zap,
 } from 'lucide-react';
 import appLogo from './assets/logo.jpg';
 import { CoreRuntimeProvider, useCoreRuntime } from './coreRuntime';
@@ -38,6 +39,7 @@ import { VersionManagementPage } from './pages/VersionManagementPage';
 import { OAuthManagementPage } from './pages/ManagementPages';
 import { QuotaPage } from './pages/QuotaPage';
 import { AgentsPage } from './pages/AgentsPage';
+import { WorkBuddyProxyPage } from './pages/WorkBuddyProxyPage';
 import { EasyModePage } from './pages/EasyModePage';
 import { UsageRecordsPage } from './pages/UsageRecordsPage';
 import { PluginsPage } from './pages/PluginsPage';
@@ -95,6 +97,12 @@ const pages = [
     labelKey: 'app.nav.agents',
     icon: Bot,
     component: AgentsPage,
+  },
+  {
+    id: 'workbuddy',
+    labelKey: 'app.nav.workbuddy',
+    icon: Zap,
+    component: WorkBuddyProxyPage,
   },
   {
     id: 'usage-records',

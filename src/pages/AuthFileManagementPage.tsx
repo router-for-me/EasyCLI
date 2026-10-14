@@ -34,6 +34,7 @@ import devinIcon from '../assets/icons/devin.svg';
 import kimiIcon from '../assets/icons/kimi-light.svg';
 import metaIcon from '../assets/icons/meta.svg';
 import vertexIcon from '../assets/icons/vertex.svg';
+import workbuddyIcon from '../assets/icons/workbuddy.png';
 import {
   formatDate,
   managementApi,
@@ -100,10 +101,12 @@ const providerIcons: Record<string, string> = {
   xai: grokIcon,
   devin: devinIcon,
   meta: metaIcon,
+  workbuddy: workbuddyIcon,
 };
 
 const providerName = (file: AuthFile) => {
   const value = normalizeOAuthProvider(readString(file, 'provider', 'type', 'account_type'));
+  if (value === 'workbuddy') return 'WorkBuddy';
   if (value === 'claude') return 'Claude';
   if (value === 'antigravity') return 'Antigravity';
   if (value === 'xai') return 'xAI';

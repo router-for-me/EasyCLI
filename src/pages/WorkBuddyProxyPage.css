@@ -1,0 +1,297 @@
+.workbuddy-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 24px 20px 48px;
+}
+
+.workbuddy-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.workbuddy-title-group {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.workbuddy-logo {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  object-fit: contain;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.workbuddy-title-group h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0;
+  line-height: 1.25;
+}
+
+.workbuddy-title-group p {
+  font-size: 0.875rem;
+  color: var(--text-secondary, #666);
+  margin: 4px 0 0;
+}
+
+.workbuddy-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  background: var(--bg-card-secondary, #f0f0f0);
+  border: 1px solid var(--border-color, #e0e0e0);
+}
+
+.workbuddy-status-pill.running {
+  background: rgba(34, 197, 94, 0.12);
+  color: #16a34a;
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+.workbuddy-status-pill.starting {
+  background: rgba(234, 179, 8, 0.12);
+  color: #ca8a04;
+  border-color: rgba(234, 179, 8, 0.3);
+}
+
+.workbuddy-status-pill.stopped {
+  background: rgba(100, 116, 139, 0.12);
+  color: #64748b;
+  border-color: rgba(100, 116, 139, 0.25);
+}
+
+.workbuddy-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.workbuddy-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+}
+
+.workbuddy-card {
+  background: var(--bg-card, #ffffff);
+  border: 1px solid var(--border-color, #e2e8f0);
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.workbuddy-card-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.workbuddy-card-title span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.workbuddy-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.workbuddy-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  background: var(--bg-subtle, #f8fafc);
+  padding: 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color, #edf2f7);
+}
+
+.workbuddy-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.workbuddy-metric-label {
+  font-size: 0.75rem;
+  color: var(--text-secondary, #718096);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.workbuddy-metric-value {
+  font-size: 0.95rem;
+  font-weight: 500;
+  font-family: var(--font-mono, monospace);
+  word-break: break-all;
+}
+
+.workbuddy-endpoints {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.workbuddy-endpoint-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--bg-subtle, #f8fafc);
+  border: 1px solid var(--border-color, #edf2f7);
+  border-radius: 8px;
+}
+
+.workbuddy-endpoint-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.workbuddy-endpoint-name {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-primary, #1a202c);
+}
+
+.workbuddy-endpoint-url {
+  font-size: 0.8125rem;
+  font-family: var(--font-mono, monospace);
+  color: var(--text-secondary, #4a5568);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.workbuddy-accounts-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.workbuddy-accounts-table th,
+.workbuddy-accounts-table td {
+  padding: 10px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-color, #e2e8f0);
+}
+
+.workbuddy-accounts-table th {
+  background: var(--bg-subtle, #f8fafc);
+  font-weight: 600;
+  color: var(--text-secondary, #4a5568);
+}
+
+.workbuddy-realm-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.workbuddy-realm-badge.intl {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.workbuddy-realm-badge.cn {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.workbuddy-models-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.workbuddy-model-item {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--bg-subtle, #f8fafc);
+  border: 1px solid var(--border-color, #edf2f7);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.workbuddy-model-name {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary, #1a202c);
+}
+
+.workbuddy-model-desc {
+  font-size: 0.75rem;
+  color: var(--text-secondary, #718096);
+}
+
+.workbuddy-config-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+  padding-top: 6px;
+}
+
+.workbuddy-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.workbuddy-form-group label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-secondary, #4a5568);
+}
+
+.workbuddy-form-group input,
+.workbuddy-form-group select {
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color, #cbd5e1);
+  background: var(--bg-input, #ffffff);
+  font-size: 0.875rem;
+  color: var(--text-primary, #0f172a);
+}
+
+.workbuddy-hint {
+  font-size: 0.8125rem;
+  color: var(--text-secondary, #718096);
+  margin: 0;
+}
+
+.workbuddy-notice-box {
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e40af;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
