@@ -662,6 +662,7 @@ export function ThinkingAliasesPage({ embedded = false }: { embedded?: boolean }
               {modelPickerOpen ? (
                 <div
                   className="thinking-model-list"
+                  data-theme-surface="overlay"
                   id="thinking-model-options"
                   role="listbox"
                   aria-label={t('aliases.availableModels')}

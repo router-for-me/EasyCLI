@@ -10,7 +10,7 @@ import { initializePrivacyMode } from './privacy';
 import './styles/index.css';
 
 async function bootstrap() {
-  await Promise.all([initializeUsagePreferences(), initializeThemePreferences(), initializePrivacyMode()]);
+  await Promise.all([initializeUsagePreferences(), initializeThemePreferences().then(() => initializeTheme()), initializePrivacyMode()]);
   if (import.meta.env.DEV && !isTauri()) {
     const { installBrowserMock } = await import('./mocks/browserMock');
     installBrowserMock();

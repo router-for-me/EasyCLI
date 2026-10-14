@@ -42,8 +42,8 @@
   --ui-accent: #0f766e;
   --ui-accent-strong: #0b5d57;
   --ui-accent-soft: #f0fdfa;
-  --ui-panel-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.05), 0 1px 2px -1px rgba(15, 23, 42, 0.03);
-  --ui-card-hover-shadow: 0 4px 14px -2px rgba(15, 23, 42, 0.08), 0 2px 6px -2px rgba(15, 23, 42, 0.04);
+  --ui-panel-shadow: 0 1px 3px 0 var(--theme-panel-shadow-color, rgba(15, 23, 42, 0.05)), 0 1px 2px -1px var(--theme-panel-shadow-color, rgba(15, 23, 42, 0.03));
+  --ui-card-hover-shadow: 0 4px 14px -2px var(--theme-panel-shadow-color, rgba(15, 23, 42, 0.08)), 0 2px 6px -2px var(--theme-panel-shadow-color, rgba(15, 23, 42, 0.04));
 }
 
 /* 2. Pure White Surface Application */
@@ -168,7 +168,7 @@ body, html, #root {
 }
 
 .client-api-card:hover {
-  background: #ffffff;
+  background: var(--theme-hover-background, #ffffff);
   border-color: var(--border-primary);
   box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04);
 }
@@ -192,7 +192,7 @@ body, html, #root {
 }
 
 .client-api-value-row code {
-  background: #ffffff;
+  background: var(--theme-surface, #ffffff);
   border: 1px solid var(--border-color);
   border-radius: 6px;
   cursor: text;
@@ -223,7 +223,7 @@ body, html, #root {
 
 .home-quick-card:hover {
   border-color: var(--ui-accent);
-  background: #ffffff;
+  background: var(--theme-hover-background, #ffffff);
   transform: translateY(-2px);
   box-shadow: var(--ui-card-hover-shadow);
 }
@@ -642,7 +642,7 @@ button.oauth-account-count:focus-visible {
 
 .usage-records-page {
   gap: clamp(8px, 1.5vh, 16px);
-  color: #1d1d1f;
+  color: var(--theme-text-primary, #1d1d1f);
 }
 
 .usage-records-page .usage-topbar {
@@ -654,13 +654,13 @@ button.oauth-account-count:focus-visible {
   height: 34px;
   border: 0;
   border-radius: 999px;
-  background: rgba(118, 118, 128, 0.12);
+  background: var(--theme-soft-surface, rgba(118, 118, 128, 0.12));
   box-shadow: none;
-  color: #1d1d1f;
+  color: var(--theme-text-primary, #1d1d1f);
 }
 
 .usage-records-page .usage-collector-state strong {
-  color: #1d1d1f;
+  color: var(--theme-text-primary, #1d1d1f);
   font-weight: 600;
 }
 
@@ -675,7 +675,7 @@ button.oauth-account-count:focus-visible {
 .usage-records-page .usage-events-panel {
   border: 0;
   border-radius: 18px;
-  background: #fff;
+  background: var(--theme-surface, #fff);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 10px 28px rgba(0, 0, 0, 0.045);
 }
 
@@ -772,7 +772,7 @@ button.oauth-account-count:focus-visible {
 }
 
 .usage-records-page .usage-section-heading strong {
-  color: #1d1d1f;
+  color: var(--theme-text-primary, #1d1d1f);
   font-weight: 650;
   letter-spacing: -0.02em;
 }
@@ -782,12 +782,12 @@ button.oauth-account-count:focus-visible {
   overflow: hidden;
   padding: 0;
   border-radius: 18px;
-  background: #d8d8de;
+  background: var(--theme-border, #d8d8de);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 10px 28px rgba(0, 0, 0, 0.045);
 }
 
 .usage-stat-card {
-  --usage-tone: #1d1d1f;
+  --usage-tone: var(--theme-text-primary, #1d1d1f);
   position: relative;
   justify-content: flex-start;
   gap: 8px;
@@ -795,7 +795,7 @@ button.oauth-account-count:focus-visible {
   padding: 16px 16px 14px;
   border: 0;
   border-radius: 0;
-  background: #fff;
+  background: var(--theme-surface, #fff);
   box-shadow: none;
 }
 
@@ -803,7 +803,7 @@ button.oauth-account-count:focus-visible {
   content: none;
 }
 
-.usage-stat-card.tone-requests { --usage-tone: #1d1d1f; }
+.usage-stat-card.tone-requests { --usage-tone: var(--theme-text-primary, #1d1d1f); }
 .usage-stat-card.tone-speed { --usage-tone: #007aff; }
 .usage-stat-card.tone-tokens { --usage-tone: #5856d6; }
 .usage-stat-card.tone-success { --usage-tone: #34c759; }
@@ -1024,7 +1024,7 @@ button.oauth-account-count:focus-visible {
 :root[data-theme='dark'] .usage-records-page .usage-section-heading strong,
 :root[data-theme='dark'] .usage-records-page .usage-collector-state,
 :root[data-theme='dark'] .usage-records-page .usage-collector-state strong {
-  color: #f5f5f7;
+  color: var(--theme-text-primary, #f5f5f7);
 }
 
 :root[data-theme='dark'] .usage-records-page .panel.usage-filter-panel {
@@ -1034,8 +1034,8 @@ button.oauth-account-count:focus-visible {
 
 :root[data-theme='dark'] .usage-records-page .usage-collector-state,
 :root[data-theme='dark'] .usage-records-page .usage-refresh-btn {
-  background: #2c2c2e;
-  color: #f5f5f7;
+  background: var(--theme-surface, #2c2c2e);
+  color: var(--theme-text-primary, #f5f5f7);
 }
 
 :root[data-theme='dark'] .usage-records-page .usage-filter-item select,
@@ -1049,18 +1049,18 @@ button.oauth-account-count:focus-visible {
 :root[data-theme='dark'] .usage-records-page .usage-health-panel,
 :root[data-theme='dark'] .usage-records-page .usage-events-panel,
 :root[data-theme='dark'] .usage-stat-card {
-  background: #1c1c1e;
+  background: var(--theme-surface, #1c1c1e);
   border-color: transparent;
   box-shadow: none;
 }
 
 :root[data-theme='dark'] .usage-records-page .usage-stat-grid {
-  background: #3a3a3c;
+  background: var(--theme-border, #3a3a3c);
   box-shadow: none;
 }
 
 :root[data-theme='dark'] .usage-stat-card.tone-requests {
-  --usage-tone: #f5f5f7;
+  --usage-tone: var(--theme-text-primary, #f5f5f7);
 }
 
 :root[data-theme='dark'] .usage-stat-card-label {
@@ -1101,7 +1101,7 @@ button.oauth-account-count:focus-visible {
 }
 
 :root[data-theme='dark'] .home-quick-icon {
-  background: rgba(15, 118, 110, 0.2);
+  background: var(--ui-accent-soft);
   color: #2dd4bf;
 }
 

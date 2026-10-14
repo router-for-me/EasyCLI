@@ -11,7 +11,7 @@
   color: var(--text-primary);
   box-shadow: 0 24px 80px #0004;
 }
-.credential-settings-dialog::backdrop { background: #0b122080; backdrop-filter: blur(3px); }
+.credential-settings-dialog::backdrop { background: var(--theme-scrim); backdrop-filter: blur(3px); }
 .credential-settings-dialog form { display: flex; flex: 1 1 auto; flex-direction: column; width: 100%; min-height: 0; }
 .credential-settings-heading, .credential-settings-footer { flex-shrink: 0; }
 .credential-settings-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px 24px; border-bottom: 1px solid var(--border-color); }

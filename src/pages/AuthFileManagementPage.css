@@ -107,7 +107,7 @@
 .auth-card-actions .auth-list-action:not(:disabled):hover { background: color-mix(in srgb, currentColor 8%, var(--bg-card)); border-color: currentColor; }
 .auth-list-main-actions { display: flex; align-items: center; justify-content: flex-end; flex: none; gap: 8px; margin-left: auto; padding-left: 0; border-left: 0; }
 .auth-list-switch { display: flex; align-items: center; flex: none; width: 40px; height: 24px; padding: 2px; border: 1px solid color-mix(in srgb, var(--auth-muted) 22%, var(--bg-card)); border-radius: 20px; background: color-mix(in srgb, var(--auth-muted) 28%, var(--bg-card)); cursor: pointer; }
-.auth-list-switch > span { display: block; width: 18px; height: 18px; flex-shrink: 0; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px #0002; transition: transform .15s; }
+.auth-list-switch > span { display: block; width: 18px; height: 18px; flex-shrink: 0; border-radius: 50%; background: var(--theme-control-thumb); box-shadow: 0 1px 3px #0002; transition: transform .15s; }
 .auth-list-switch[aria-checked="true"] { background: var(--auth-accent); border-color: var(--auth-accent); }
 .auth-list-switch[aria-checked="true"] > span { transform: translateX(16px); }
 .auth-list-switch:disabled { opacity: .5; cursor: default; }

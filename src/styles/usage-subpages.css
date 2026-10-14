@@ -1,26 +1,14 @@
 /* Shared surfaces for usage subpages; the overview keeps its own chart palette. */
 .usage-records-page .usage-tab-panel:not([aria-labelledby='usage-tab-overview']) {
-  --usage-page-surface: #ffffff;
-  --usage-page-soft: #fafafa;
-  --usage-page-hover: #f4f4f5;
-  --usage-page-text: #17212f;
-  --usage-page-muted: #526071;
-  --usage-page-border: #e4e7ec;
-  --bg-primary: var(--usage-page-surface);
-  --bg-card: var(--usage-page-surface);
-  --bg-secondary: var(--usage-page-soft);
-  --bg-tertiary: var(--usage-page-border);
-  --bg-hover: var(--usage-page-hover);
+  --usage-page-text: var(--theme-text-primary, #17212f);
+  --usage-page-muted: var(--theme-text-muted, #526071);
+  --usage-page-border: var(--theme-border, #e4e7ec);
   --text-primary: var(--usage-page-text);
   --text-secondary: var(--usage-page-text);
   --text-tertiary: var(--usage-page-muted);
   --text-quaternary: var(--usage-page-muted);
   --border-secondary: var(--usage-page-border);
   --border-color: var(--usage-page-border);
-  --theme-fff: var(--usage-page-surface);
-  --theme-fffdf8: var(--usage-page-surface);
-  --theme-f8f5ee: var(--usage-page-surface);
-  --theme-f4f1ea: var(--usage-page-surface);
   --theme-e3e1db: var(--usage-page-border);
   --theme-d8d4cc: var(--usage-page-border);
   --theme-eeeae2: var(--usage-page-border);
@@ -33,12 +21,9 @@
 }
 
 :root[data-theme='dark'] .usage-records-page .usage-tab-panel:not([aria-labelledby='usage-tab-overview']) {
-  --usage-page-surface: #222936;
-  --usage-page-soft: #2b3443;
-  --usage-page-hover: #333e4f;
-  --usage-page-text: #f4f7fb;
-  --usage-page-muted: #c0cbda;
-  --usage-page-border: #414d60;
+  --usage-page-text: var(--theme-text-primary, #f4f7fb);
+  --usage-page-muted: var(--theme-text-muted, #c0cbda);
+  --usage-page-border: var(--theme-border, #414d60);
 }
 
 .usage-records-page .usage-tab-panel:not([aria-labelledby='usage-tab-overview']) :is(
@@ -46,33 +31,38 @@
   .usage-data-management-panel, .usage-data-management-action,
   .usage-data-management-result > div, .usage-price-editor, .usage-price-sync-dialog
 ) {
-  background: var(--usage-page-surface);
+  background: var(--bg-card);
   border-color: var(--usage-page-border);
   color: var(--usage-page-text);
   box-shadow: 0 1px 3px rgb(0 0 0 / 3%);
 }
 
 .usage-records-page .usage-tab-panel .usage-pricing-table :is(th, td) {
-  background: var(--usage-page-surface);
+  background: var(--bg-card);
   color: var(--usage-page-text);
   border-bottom-color: var(--usage-page-border);
 }
 
 .usage-records-page .usage-tab-panel .usage-pricing-table tbody tr:hover td {
-  background: var(--usage-page-hover);
+  background: var(--bg-hover);
 }
 
 .usage-records-page .usage-tab-panel .usage-pricing-table th {
   font-weight: 650;
 }
 
+.usage-records-page .usage-tab-panel .usage-pricing-table :is(th, td:first-child) {
+  background: var(--theme-sticky-background, var(--bg-card));
+}
+
+.usage-records-page .usage-tab-panel .usage-pricing-table tbody tr:hover td:first-child {
+  background: var(--theme-sticky-hover-background, var(--bg-hover));
+}
+
 :root .usage-records-page .usage-tab-panel .usage-request-log {
-  --usage-log-surface: var(--usage-page-surface);
   --usage-log-text: var(--usage-page-text);
   --usage-log-muted: var(--usage-page-muted);
   --usage-log-line: var(--usage-page-border);
-  --usage-log-soft: var(--usage-page-soft);
-  --usage-log-hover: var(--usage-page-hover);
 }
 
 .usage-records-page .usage-tab-panel .usage-data-management-heading h2,
@@ -84,7 +74,7 @@
   input:not([type='checkbox']):not([type='radio']), select,
   .usage-price-row-actions button, .secondary-button
 ) {
-  background: var(--usage-page-surface);
+  background: var(--bg-card);
   color: var(--usage-page-text);
   border-color: var(--usage-page-border);
 }
@@ -95,7 +85,7 @@
 }
 
 .usage-records-page .usage-tab-panel .usage-price-row-actions button:hover {
-  background: var(--usage-page-hover);
+  background: var(--bg-hover);
 }
 
 /* One fixed-width control per filter. The menu fills the outer field. */
@@ -140,14 +130,14 @@
 
 .usage-records-page .usage-filter-item select option,
 .usage-records-page .usage-filter-item select optgroup {
-  background-color: var(--bg-primary);
+  background-color: var(--theme-overlay-surface, var(--bg-primary));
   color: var(--text-primary);
 }
 
 :root[data-theme='dark'] .usage-records-page .usage-filter-item select,
 :root[data-theme='dark'] .usage-records-page .usage-filter-item select option,
 :root[data-theme='dark'] .usage-records-page .usage-filter-item select optgroup {
-  background-color: var(--bg-card);
+  background-color: var(--theme-overlay-surface, var(--bg-card));
   color: var(--text-primary);
   color-scheme: dark;
 }
@@ -183,7 +173,7 @@
   position: sticky;
   top: 0;
   border: 0;
-  background: var(--usage-log-surface);
+  background: var(--theme-sticky-background, var(--bg-card));
   color: #3e4c5a;
   font-size: 13px;
   font-weight: 650;
@@ -220,7 +210,7 @@
   vertical-align: middle;
   padding: 14px 16px;
   border: 0;
-  background: var(--usage-log-surface);
+  background: var(--bg-card);
   color: var(--usage-log-text);
   box-shadow: inset 0 -1px 0 var(--usage-log-line);
 }
@@ -249,7 +239,7 @@ body.table-col-resizing .usage-records-page .usage-request-log .usage-events-tab
 }
 
 .usage-records-page .usage-request-log .usage-events-table tbody tr:hover td {
-  background: var(--usage-log-hover) !important;
+  background: var(--bg-hover) !important;
 }
 
 .usage-records-page .usage-request-log .usage-th-total,
@@ -330,7 +320,7 @@ body.table-col-resizing .usage-records-page .usage-request-log .usage-events-tab
 }
 
 .usage-records-page .usage-request-log .usage-result.canceled {
-  background: var(--usage-page-soft);
+  background: var(--bg-tertiary);
   color: var(--usage-page-muted);
 }
 

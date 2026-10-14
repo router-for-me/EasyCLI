@@ -265,6 +265,7 @@ export function AgentModelPicker({
           ref={menuRef}
           popover={dialogOverlay ? 'manual' : undefined}
           className={`agent-model-dropdown${editable ? ' agent-model-dropdown-editable' : ''}${menuClassName ? ` ${menuClassName}` : ''}`}
+          data-theme-surface="overlay"
           style={dropdownLayout
             ? { top: dropdownLayout.top, left: dropdownLayout.left, width: dropdownLayout.width, height: dropdownLayout.height }
             : { top: 0, left: 0, width: 0, height: 0, visibility: 'hidden' }}

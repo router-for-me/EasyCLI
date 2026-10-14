@@ -1,7 +1,7 @@
 /* Light-mode workspace surfaces. Keep the sidebar and semantic status colors separate. */
 :root:not([data-theme='dark']) {
-  --theme-faf9f5: #fff;
-  --bg-secondary: #fff;
+  --theme-faf9f5: var(--theme-soft-surface, #fff);
+  --bg-secondary: var(--theme-workspace-background, #fff);
 }
 
 :root:not([data-theme='dark']),
@@ -10,35 +10,35 @@
 :root:not([data-theme='dark']) .app-shell,
 :root:not([data-theme='dark']) .workspace,
 :root:not([data-theme='dark']) .workspace .content {
-  background: #fff;
+  background: var(--theme-workspace-background, #fff);
 }
 
 :root:not([data-theme='dark']) :is(.workspace, .config-dialog, dialog) {
-  --bg-primary: #fff;
-  --bg-secondary: #fff;
-  --bg-card: #fff;
-  --bg-tertiary: #fff;
-  --bg-quinary: #fff;
-  --bg-hover: #fff;
-  --theme-f0ede6: #fff;
-  --theme-f0eee8: #fff;
-  --theme-f2efe8: #fff;
-  --theme-f2f0ea: #fff;
-  --theme-f4f1ea: #fff;
-  --theme-f4f2ec: #fff;
-  --theme-f6f2ec: #fff;
-  --theme-f8f5ee: #fff;
-  --theme-f8f5ef: #fff;
-  --theme-f8f6f1: #fff;
-  --theme-faf8f2: #fff;
-  --theme-faf8f4: #fff;
-  --theme-faf9f5: #fff;
-  --theme-fffdf8: #fff;
-  --border-color: #dce3eb;
-  --border-secondary: #e5eaf0;
-  --text-secondary: #253449;
-  --text-tertiary: #475569;
-  --text-quaternary: #526174;
+  --bg-primary: var(--theme-surface, #fff);
+  --bg-secondary: var(--theme-workspace-background, #fff);
+  --bg-card: var(--theme-surface, #fff);
+  --bg-tertiary: var(--theme-soft-surface, #fff);
+  --bg-quinary: var(--theme-soft-surface, #fff);
+  --bg-hover: var(--theme-hover-background, #fff);
+  --theme-f0ede6: var(--theme-soft-surface, #fff);
+  --theme-f0eee8: var(--theme-soft-surface, #fff);
+  --theme-f2efe8: var(--theme-soft-surface, #fff);
+  --theme-f2f0ea: var(--theme-soft-surface, #fff);
+  --theme-f4f1ea: var(--theme-soft-surface, #fff);
+  --theme-f4f2ec: var(--theme-soft-surface, #fff);
+  --theme-f6f2ec: var(--theme-soft-surface, #fff);
+  --theme-f8f5ee: var(--theme-soft-surface, #fff);
+  --theme-f8f5ef: var(--theme-soft-surface, #fff);
+  --theme-f8f6f1: var(--theme-soft-surface, #fff);
+  --theme-faf8f2: var(--theme-soft-surface, #fff);
+  --theme-faf8f4: var(--theme-soft-surface, #fff);
+  --theme-faf9f5: var(--theme-soft-surface, #fff);
+  --theme-fffdf8: var(--theme-surface, #fff);
+  --border-color: var(--theme-border, #dce3eb);
+  --border-secondary: var(--theme-border-subtle, #e5eaf0);
+  --text-secondary: var(--theme-text-secondary, #253449);
+  --text-tertiary: var(--theme-text-tertiary, #475569);
+  --text-quaternary: var(--theme-text-muted, #526174);
 }
 
 :root:not([data-theme='dark']) .workspace :is(
@@ -46,12 +46,12 @@
   .plugin-tabs,
   .credential-quota, .usage-collector-state
 ) {
-  background: #fff;
+  background: var(--theme-surface, #fff);
   border: 1px solid var(--border-color);
 }
 
 :root:not([data-theme='dark']) .workspace .usage-stat-grid {
-  background: #fff;
+  background: var(--theme-surface, #fff);
   border: 1px solid var(--border-color);
   box-shadow: none;
 }
@@ -65,7 +65,7 @@
   .routing-segmented button, .plugin-tabs button,
   .usage-refresh-btn, .usage-price-row-actions button
 ) {
-  background: #fff;
+  background: var(--theme-surface, #fff);
   color: var(--text-secondary);
   border-color: var(--border-color);
   box-shadow: none;
@@ -75,7 +75,7 @@
   .agent-list-items button.active,
   .routing-segmented button.active, .plugin-tabs button.active
 ) {
-  background: #fff;
+  background: var(--theme-surface, #fff);
   border: 1px solid var(--ui-accent);
   color: var(--ui-accent-strong);
   box-shadow: none;
@@ -86,7 +86,7 @@
   border: 1px solid transparent;
   border-left: 3px solid var(--ui-accent);
   border-radius: 8px;
-  background: color-mix(in srgb, var(--ui-accent) 8%, #fff);
+  background: color-mix(in srgb, var(--ui-accent) 8%, var(--theme-surface, #fff));
   color: var(--ui-accent-strong);
   box-shadow: none;
 }
@@ -96,7 +96,7 @@
   .routing-segmented button, .plugin-tabs button,
   .agent-list-items button, .usage-refresh-btn, .usage-price-row-actions button
 ):hover:not(:disabled) {
-  background: #fff;
+  background: var(--theme-hover-background, #fff);
   border-color: var(--ui-accent);
   color: var(--ui-accent-strong);
 }
@@ -118,27 +118,19 @@
   box-shadow: none;
 }
 
-/* Do not let local subpage palettes bring the neutral fills back. */
+/* Usage pages share the workspace canvas rather than declaring a local palette. */
 :root:not([data-theme='dark']) .workspace .usage-tab-panel {
-  --usage-page-soft: #fff;
-  --usage-page-hover: #fff;
-  --bg-secondary: #fff;
+  --bg-secondary: var(--theme-workspace-background, #fff);
 }
 
-:root:not([data-theme='dark']) .workspace .usage-request-log {
-  --usage-log-soft: #fff;
-  --usage-log-hover: #f2fbf9;
-}
-
-/* The usage views and outer panels should read as clean white documents in light mode.
-   Remove neutral zebra fills, gray collector pills, and diffuse card shadows while
-   retaining borders and semantic colors for structure. */
+/* Layout wrappers reveal the workspace canvas. Only the cards paint a surface;
+   otherwise their square parents create seams around gaps and rounded corners. */
 :root:not([data-theme='dark']) .workspace :is(
   .usage-records-page,
   .usage-tab-panel,
   .usage-filter-panel
 ) {
-  background: #fff;
+  background: transparent;
 }
 
 :root:not([data-theme='dark']) .workspace .usage-records-page :is(
@@ -146,7 +138,7 @@
   .usage-health-panel,
   .usage-events-panel
 ) {
-  background: #fff;
+  background: var(--theme-surface, #fff);
   border: 1px solid var(--border-color);
   box-shadow: none;
 }
@@ -155,7 +147,7 @@
   .usage-filter-item,
   .usage-filter-toggle
 ) {
-  background: #fff;
+  background: var(--theme-surface, #fff);
   border-color: var(--border-color);
 }
 
@@ -163,29 +155,39 @@
   .usage-request-log .usage-events-table tbody tr td,
 :root:not([data-theme='dark']) .workspace .usage-records-page
   .usage-request-log .usage-events-table tbody tr:nth-child(even) td {
-  background: #fff;
+  background: var(--theme-surface, #fff);
 }
 
 :root:not([data-theme='dark']) .workspace .usage-records-page
   .usage-request-log .usage-events-table tbody tr:hover td {
-  background: #f2fbf9;
+  background: var(--theme-hover-background, #f2fbf9);
 }
 
 :root:not([data-theme='dark']) .workspace .usage-records-page
   .usage-pricing-table :is(th, td) {
-  background: #fff;
+  background: var(--theme-surface, #fff);
+}
+
+:root:not([data-theme='dark']) .workspace .usage-records-page
+  .usage-pricing-table :is(th, td:first-child) {
+  background: var(--theme-sticky-background, var(--theme-surface, #fff));
 }
 
 :root:not([data-theme='dark']) .workspace .usage-records-page
   .usage-pricing-table tbody tr:hover td {
-  background: #fff !important;
+  background: var(--theme-hover-background, #fff);
+}
+
+:root:not([data-theme='dark']) .workspace .usage-records-page
+  .usage-pricing-table tbody tr:hover td:first-child {
+  background: var(--theme-sticky-hover-background, var(--theme-hover-background, #fff));
 }
 
 :root:not([data-theme='dark']) .workspace .usage-records-page
   .usage-collector-state,
 :root:not([data-theme='dark']) .workspace .usage-records-page
   .usage-refresh-btn {
-  background: #fff;
+  background: var(--theme-surface, #fff);
   border: 1px solid var(--border-color);
 }
 

@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
-import { runInNewContext } from 'node:vm';
+import { createThemeRegistry, themeRegistry } from '../src/themes/registry';
+import type { SystemThemes, ThemeDefinition } from '../src/themes/types';
 import { createThemeController, type AppTheme, type NativeThemeSource, type ThemePreference } from '../src/themeController';
 
 function deferred<T>() {
@@ -16,16 +17,20 @@ async function settle() {
 
 function setup(options: {
   preference?: ThemePreference;
+  systemThemes?: SystemThemes;
   system?: AppTheme;
   media?: AppTheme;
   platform?: 'windows' | 'macos' | 'linux' | 'browser';
 } = {}) {
   let saved = options.preference ?? 'system';
+  let savedSystemThemes = options.systemThemes;
   let system: AppTheme | null = options.system ?? 'dark';
   let media = options.media ?? 'light';
   let displayed: AppTheme | undefined;
+  let displayedId: string | undefined;
   let shell: AppTheme | undefined;
   let backdrop: AppTheme | undefined;
+  let backdropColor: string | undefined;
   let mediaListener: (() => void) | undefined;
   let resumeListener: (() => void) | undefined;
   let nativeListener: ((theme: AppTheme) => void) | undefined;
@@ -43,12 +48,13 @@ function setup(options: {
       nativeListener = listener;
       return () => { nativeListener = undefined; removals++; };
     },
-    async setBackground(theme) { backdrop = theme; },
+    async setBackground(theme, definition) { backdrop = theme; backdropColor = definition.windowBackground; },
   };
   const connection = deferred<NativeThemeSource | null>();
   const controller = createThemeController({
     readPreference: () => saved,
-    savePreference(value) { saved = value; writes.push(value); },
+    readSystemThemes: () => savedSystemThemes ?? { light: 'light', dark: 'dark' },
+    savePreference(value, remembered) { saved = value; savedSystemThemes = remembered; writes.push(value); },
     readMediaTheme: () => media,
     listenMedia(listener) {
       mediaListener = listener;
@@ -58,15 +64,18 @@ function setup(options: {
       resumeListener = listener;
       return () => { resumeListener = undefined; removals++; };
     },
-    applyTheme(theme) { displayed = theme; },
+    applyTheme(theme, definition) { displayed = theme; displayedId = definition.id; },
     connectNative: () => connection.promise,
   });
   return {
     controller, native, writes, nativeWrites,
     get displayed() { return displayed; },
+    get displayedId() { return displayedId; },
     get shell() { return shell; },
     get backdrop() { return backdrop; },
+    get backdropColor() { return backdropColor; },
     get saved() { return saved; },
+    get savedSystemThemes() { return savedSystemThemes; },
     get removals() { return removals; },
     setSystem(theme: AppTheme | null) { system = theme; },
     emitNative(theme: AppTheme) { shell = theme; nativeListener?.(theme); },
@@ -338,30 +347,211 @@ describe('theme preferences and native synchronization', () => {
   });
 });
 
-describe('first paint', () => {
-  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-  const script = html.match(/<script>([\s\S]*?)<\/script>/)![1];
-  for (const [saved, dark, expected] of [
-    [null, true, 'dark'], ['system', true, 'dark'], ['system', false, 'light'],
-    ['light', true, 'light'], ['dark', false, 'dark'], ['invalid', true, 'dark'],
-  ] as const) {
-    test(`saved ${saved}, dark system ${dark} → ${expected}`, () => {
-      const root = { dataset: {} as Record<string, string>, style: {} };
-      runInNewContext(script, {
-        localStorage: { getItem: () => saved },
-        window: { matchMedia: () => ({ matches: dark }) },
-        document: { documentElement: root },
-      });
-      expect(root.dataset.theme).toBe(expected);
+describe('desktop first paint', () => {
+  test('starts in light and never reads the abandoned browser preference', () => {
+    const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+    expect(html).toContain('data-theme="light"');
+    expect(html).toContain('data-theme-id="light"');
+    expect(html).not.toContain('localStorage');
+    expect(html).not.toContain('prefers-color-scheme');
+  });
+});
+
+describe('registered themes', () => {
+  test('manual selection and restart preserve explicit system assignments', async () => {
+    const systemThemes = { light: 'warm-sand-light', dark: 'midnight-dark' };
+    const app = setup({ preference: 'sakura-light', systemThemes });
+    await app.connect();
+    expect(app.controller.getSystemThemes()).toEqual(systemThemes);
+    app.controller.setPreference('graphite-dark');
+    expect(app.savedSystemThemes).toEqual(systemThemes);
+    const restarted = setup({ preference: app.saved, systemThemes: app.savedSystemThemes });
+    await restarted.connect();
+    expect(restarted.controller.getSystemThemes()).toEqual(systemThemes);
+    expect(restarted.displayedId).toBe('graphite-dark');
+    app.controller.dispose(); restarted.controller.dispose();
+  });
+  test('resolved selection notifies on system changes and can be frozen when following stops', async () => {
+    const app = setup({ system: 'light', systemThemes: { light: 'sakura-light', dark: 'midnight-dark' } });
+    await app.connect();
+    const seen: string[] = [];
+    const unsubscribe = app.controller.subscribe(() => seen.push(app.controller.getResolvedThemeId()));
+    app.setSystem('dark'); app.emitNative('dark'); await settle();
+    expect(seen).toContain('midnight-dark');
+    app.controller.setPreference(app.controller.getResolvedThemeId());
+    app.setSystem('light'); app.emitNative('light'); await settle();
+    expect(app.displayedId).toBe('midnight-dark');
+    unsubscribe(); app.controller.dispose();
+  });
+  test('assignment supersedes stale native reads and ignores invalid or disposed writes', async () => {
+    const app = setup({ system: 'light' });
+    const reading = deferred<AppTheme>();
+    let calls = 0;
+    app.native.readTheme = () => ++calls === 1 ? reading.promise : Promise.resolve('light');
+    await app.connect();
+    app.controller.setSystemTheme('sakura-light');
+    reading.resolve('dark'); await settle();
+    expect(app.displayedId).toBe('sakura-light');
+    const writes = app.writes.length;
+    for (const id of ['system', 'removed-theme', 'sakura-light']) app.controller.setSystemTheme(id);
+    expect(app.writes.length).toBe(writes);
+    app.controller.dispose(); app.controller.setSystemTheme('midnight-dark');
+    expect(app.writes.length).toBe(writes);
+  });
+  test('system assignments apply immediately only for the active system appearance', async () => {
+    const app = setup({ system: 'light' });
+    await app.connect();
+    app.controller.setSystemTheme('midnight-dark');
+    expect(app.displayedId).toBe('light');
+    app.controller.setSystemTheme('sakura-light');
+    expect(app.displayedId).toBe('sakura-light');
+    app.resume(); await settle();
+    app.emitNative('light'); await settle();
+    expect(app.displayedId).toBe('sakura-light');
+    app.setSystem('dark'); app.emitNative('dark'); await settle();
+    expect(app.displayedId).toBe('midnight-dark');
+    app.setSystem('light'); app.emitNative('light'); await settle();
+    expect(app.displayedId).toBe('sakura-light');
+    app.controller.setSystemTheme('warm-sand-light');
+    expect(app.displayedId).toBe('warm-sand-light');
+    app.controller.dispose();
+  });
+  for (const platform of ['windows', 'macos', 'linux'] as const) {
+    test(`${platform}: follows the assigned light/dark themes without rewriting preferences on system changes`, async () => {
+      const app = setup({ platform, preference: 'light', system: 'dark' });
+      await app.connect();
+      app.controller.setSystemTheme('sakura-light');
+      app.controller.setSystemTheme('midnight-dark');
+      app.controller.setPreference('system');
+      await settle();
+      expect(app.displayedId).toBe('midnight-dark');
+      expect(app.backdropColor).toBe('#101827');
+      expect(app.saved).toBe('system');
+      expect(app.savedSystemThemes).toEqual({ light: 'sakura-light', dark: 'midnight-dark' });
+      const writeCount = app.writes.length;
+      app.setSystem('light'); app.emitNative('light');
+      await settle();
+      expect(app.displayedId).toBe('sakura-light');
+      expect(app.backdropColor).toBe('#FDE8EF');
+      app.setSystem('dark'); app.resume();
+      await settle();
+      expect(app.displayedId).toBe('midnight-dark');
+      expect(app.writes.length).toBe(writeCount);
+      const restarted = setup({ platform, preference: app.saved, systemThemes: app.savedSystemThemes, system: 'light' });
+      await restarted.connect();
+      expect(restarted.displayedId).toBe('sakura-light');
+      app.controller.dispose(); restarted.controller.dispose();
     });
   }
-  test('blocked storage still uses the system theme before React loads', () => {
-    const root = { dataset: {} as Record<string, string>, style: {} };
-    runInNewContext(script, {
-      localStorage: { getItem() { throw new Error('blocked'); } },
-      window: { matchMedia: () => ({ matches: true }) },
-      document: { documentElement: root },
-    });
-    expect(root.dataset.theme).toBe('dark');
+  test('assigns each appearance independently without changing manual selection', async () => {
+    const app = setup({ preference: 'midnight-dark', system: 'dark' });
+    await app.connect();
+    expect(app.controller.getSystemThemes()).toEqual({ light: 'light', dark: 'dark' });
+    app.controller.setSystemTheme('midnight-dark');
+    app.controller.setSystemTheme('sakura-light');
+    expect(app.displayedId).toBe('midnight-dark');
+    expect(app.controller.getPreference()).toBe('midnight-dark');
+    app.controller.setPreference('sakura-light');
+    app.controller.setPreference('warm-sand-light');
+    expect(app.controller.getSystemThemes()).toEqual({ light: 'sakura-light', dark: 'midnight-dark' });
+    app.controller.setPreference('system');
+    await settle();
+    expect(app.displayedId).toBe('midnight-dark');
+    app.setSystem('light'); app.emitNative('light');
+    await settle();
+    expect(app.displayedId).toBe('sakura-light');
+    app.controller.setSystemTheme('light');
+    await settle();
+    expect(app.displayedId).toBe('light');
+    expect(app.savedSystemThemes).toEqual({ light: 'light', dark: 'midnight-dark' });
+    app.controller.dispose();
+  });
+  test('falls back per appearance without overwriting unavailable history', async () => {
+    const remembered = { light: 'removed-light', dark: 'midnight-dark' };
+    const app = setup({ system: 'light', systemThemes: remembered });
+    await app.connect();
+    expect(app.displayedId).toBe('light');
+    app.setSystem('dark'); app.emitNative('dark');
+    await settle();
+    expect(app.displayedId).toBe('midnight-dark');
+    expect(app.controller.getSystemThemes()).toEqual(remembered);
+    expect(app.writes).toEqual([]);
+    app.controller.dispose();
+  });
+  test('ignores a stale system read after selecting a different registered theme', async () => {
+    const app = setup({ systemThemes: { light: 'sakura-light', dark: 'midnight-dark' } });
+    const reading = deferred<AppTheme>();
+    app.native.readTheme = () => reading.promise;
+    await app.connect();
+    app.controller.setPreference('warm-sand-light');
+    reading.resolve('dark');
+    await settle();
+    expect(app.displayedId).toBe('warm-sand-light');
+    expect(app.backdropColor).toBe('#F7F3EC');
+    expect(app.savedSystemThemes).toEqual({ light: 'sakura-light', dark: 'midnight-dark' });
+    app.controller.dispose();
+  });
+  test('uses remembered themes for the media fallback when the desktop theme API fails', async () => {
+    const app = setup({ systemThemes: { light: 'sakura-light', dark: 'midnight-dark' } });
+    app.native.readTheme = async () => { throw new Error('unavailable'); };
+    await app.connect();
+    expect(app.displayedId).toBe('sakura-light');
+    app.emitMedia('dark');
+    await settle();
+    expect(app.displayedId).toBe('midnight-dark');
+    expect(app.writes).toEqual([]);
+    app.controller.dispose();
+  });
+  const otherDark: ThemeDefinition = {
+    id: 'test-dark', nameKey: 'app.theme.dark', appearance: 'dark', order: 1,
+    windowBackground: '#102030', tokens: { accent: '#aabbcc' },
+  };
+  const registry = createThemeRegistry([...themeRegistry.themes, otherDark]);
+  test('applies different IDs with the same appearance and keeps manual selection on system changes', async () => {
+    const applied: ThemeDefinition[] = [];
+    const backgrounds: string[] = [];
+    const nativeWrites: (AppTheme | null)[] = [];
+    let listener: ((theme: AppTheme) => void) | undefined;
+    const controller = createThemeController({
+      readPreference: () => 'dark', savePreference() {}, readMediaTheme: () => 'light',
+      listenMedia: () => () => {}, listenResume: () => () => {},
+      applyTheme: (_, theme) => { applied.push(theme); },
+      connectNative: async () => ({
+        explicitSystemAppearance: false,
+        async setTheme(theme) { nativeWrites.push(theme); },
+        async readTheme() { return 'light'; },
+        async listen(callback) { listener = callback; return () => {}; },
+        async setBackground(_, theme) { backgrounds.push(theme.windowBackground); },
+      }),
+    }, registry);
+    await settle();
+    controller.setPreference('test-dark');
+    await settle();
+    expect(applied.at(-1)?.id).toBe('test-dark');
+    expect(backgrounds.at(-1)).toBe('#102030');
+    listener?.('light');
+    await settle();
+    expect(controller.getPreference()).toBe('test-dark');
+    expect(nativeWrites.at(-1)).toBe('dark');
+    controller.setPreference('system');
+    await settle();
+    expect(applied.at(-1)?.id).toBe('light');
+    controller.setPreference('unregistered');
+    expect(controller.getPreference()).toBe('system');
+    controller.dispose();
+  });
+  test('unknown persisted IDs use fixed light without losing the stored selection', async () => {
+    const applied: string[] = [];
+    let media: (() => void) | undefined;
+    const controller = createThemeController({
+      readPreference: () => 'removed-dark', savePreference() {}, readMediaTheme: () => 'dark',
+      listenMedia(callback) { media = callback; return () => {}; }, listenResume: () => () => {},
+      applyTheme: (_, theme) => { applied.push(theme.id); }, connectNative: async () => null,
+    }, registry);
+    await settle();
+    media?.();
+    expect(controller.getPreference()).toBe('removed-dark');
+    expect(applied).toEqual(['light']);
+    controller.dispose();
   });
 });

@@ -1,0 +1,20 @@
+/* Shared background roles. Theme definitions can override these without
+   knowing page/component class names or changing data visualization colors. */
+:root {
+  --theme-overlay-surface: var(--bg-card);
+  --theme-scrim: #2d2a266b;
+  --theme-scrollbar-thumb: color-mix(in srgb, var(--text-tertiary) 26%, transparent);
+  --theme-scrollbar-hover: color-mix(in srgb, var(--text-tertiary) 42%, transparent);
+  --theme-control-thumb: #ffffff;
+}
+
+:root[data-theme='dark'] {
+  --theme-scrim: #030814a6;
+  --theme-control-thumb: #f8fafc;
+}
+
+/* Native option lists are floating surfaces even when their trigger sits on
+   a translucent card. The OS still controls native picker chrome. */
+option, optgroup {
+  background-color: var(--theme-overlay-surface);
+}

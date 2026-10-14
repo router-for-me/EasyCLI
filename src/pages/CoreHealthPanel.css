@@ -32,7 +32,7 @@
 .core-health-error { color: var(--error-color); }
 .core-health-table-wrap { max-height: 320px; overflow: auto; scrollbar-width: thin; }
 .core-health-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 12px; }
-.core-health-table th { position: sticky; top: 0; z-index: 1; padding: 10px 12px; background: var(--bg-card); color: var(--text-quaternary); font-size: 11px; font-weight: 500; text-align: left; box-shadow: 0 1px 0 var(--border-secondary); }
+.core-health-table th { position: sticky; top: 0; z-index: 1; padding: 10px 12px; background: var(--theme-sticky-background, var(--bg-card)); color: var(--text-quaternary); font-size: 11px; font-weight: 500; text-align: left; box-shadow: 0 1px 0 var(--border-secondary); }
 .core-health-table th:first-child { width: 38%; padding-left: 24px; }
 .core-health-table th:nth-child(2) { width: 16%; }
 .core-health-table th:nth-child(3) { width: 25%; }

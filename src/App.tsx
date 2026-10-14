@@ -1,4 +1,5 @@
 import { MessageNotice } from './appNotice';
+import { ThemeSelector } from './components/ThemeSelector';
 import { WindowFrame } from './components/WindowFrame';
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { invoke } from '@tauri-apps/api/core';
@@ -17,15 +18,12 @@ import {
   Lock,
   LogIn,
   MessageCircle,
-  Monitor,
-  Moon,
   Network,
   PackageOpen,
   Puzzle,
   ServerCog,
   Settings,
   Sprout,
-  Sun,
   X,
 } from 'lucide-react';
 import appLogo from './assets/logo.jpg';
@@ -51,13 +49,6 @@ import { useDialogFocusTrap } from './components/useDialogFocusTrap';
 
 const QQ_CONTACT_URL = 'https://qm.qq.com/q/3queDaIG';
 const DISCORD_SERVER_URL = 'https://discord.gg/PxvX4D9kgs';
-
-// Order matters: light, dark, system — matches the Easy Mode selector.
-const themeOptions = [
-  { value: 'light', icon: Sun, labelKey: 'app.theme.light', titleKey: 'app.theme.switchToLight' },
-  { value: 'dark', icon: Moon, labelKey: 'app.theme.dark', titleKey: 'app.theme.switchToDark' },
-  { value: 'system', icon: Monitor, labelKey: 'app.theme.system', titleKey: 'app.theme.switchToSystem' },
-] as const;
 
 const pages = [
   {
@@ -163,6 +154,7 @@ function AppContent() {
   const [active, setActive] = useState<PageId>('home');
   const [languageMenuOpen, setLanguageMenuOpen] = useState(false);
   const [theme, setTheme] = useThemePreference();
+  const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const [privacyMode, setPrivacyMode] = usePrivacyMode();
   const [windowsClosePrompt, setWindowsClosePrompt] = useState<WindowsClosePrompt | null>(null);
   const closeDialogRef = useDialogFocusTrap<HTMLElement>({
@@ -424,10 +416,11 @@ function AppContent() {
                     aria-haspopup="listbox"
                     aria-expanded={languageMenuOpen}
                     aria-controls="sidebar-language-list"
-                    onClick={() => setLanguageMenuOpen((open) => !open)}
+                    onClick={() => { setThemeMenuOpen(false); setLanguageMenuOpen((open) => !open); }}
                     onKeyDown={(event) => {
                       if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
                       event.preventDefault();
+                      setThemeMenuOpen(false);
                       setLanguageMenuOpen(true);
                       window.requestAnimationFrame(() => {
                         const options = languageMenuRef.current?.querySelectorAll<HTMLButtonElement>('[role="option"]');
@@ -443,6 +436,7 @@ function AppContent() {
                     <div
                       id="sidebar-language-list"
                       className="sidebar-language-list"
+                      data-theme-surface="overlay"
                       role="listbox"
                       aria-label={t('app.language')}
                       onKeyDown={handleLanguageListKeyDown}
@@ -484,25 +478,8 @@ function AppContent() {
                     ? <EyeOff size={14} strokeWidth={1.75} aria-hidden="true" />
                     : <Eye size={14} strokeWidth={1.75} aria-hidden="true" />}
                 </button>
-                <div
-                  className="sidebar-theme-selector"
-                  role="group"
-                  aria-label={t('app.theme.label')}
-                >
-                  {themeOptions.map(({ value, icon: ThemeIcon, labelKey, titleKey }) => (
-                    <button
-                      key={value}
-                      type="button"
-                      className={theme === value ? 'active' : ''}
-                      aria-pressed={theme === value}
-                      aria-label={t(labelKey)}
-                      title={t(titleKey)}
-                      onClick={() => setTheme(value)}
-                    >
-                      <ThemeIcon size={14} strokeWidth={1.75} aria-hidden="true" />
-                    </button>
-                  ))}
-                </div>
+                <ThemeSelector value={theme} onChange={setTheme} open={themeMenuOpen}
+                  onOpenChange={(open) => { setThemeMenuOpen(open); if (open) setLanguageMenuOpen(false); }} />
                 </div>
               </div>
             </div>

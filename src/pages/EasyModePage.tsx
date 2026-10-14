@@ -1,3 +1,4 @@
+import { ThemeSelector } from '../components/ThemeSelector';
 import {
   useCallback,
   useEffect,
@@ -16,10 +17,7 @@ import {
   ExternalLink,
   Languages,
   LoaderCircle,
-  Monitor,
-  Moon,
   RefreshCw,
-  Sun,
   X,
 } from "lucide-react";
 import appLogo from "../assets/logo.jpg";
@@ -178,6 +176,7 @@ export function EasyModePage({
   const guideTooltipRef = useRef<HTMLElement | null>(null);
   const [guideCardPosition, setGuideCardPosition] = useState<{ top: number; left: number } | null>(null);
   const [langMenuOpen, setLangMenuOpen] = useState(false);
+  const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const langMenuRef = useRef<HTMLDivElement>(null);
   const langButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -738,38 +737,8 @@ export function EasyModePage({
 
         <div className="simple-mode-topbar-right">
           {setTheme ? (
-            <div className="simple-mode-theme-group" role="group" aria-label={t("app.theme.label")}>
-              <button
-                type="button"
-                className={theme === "light" ? "active" : ""}
-                title={t("easyMode.theme.light")}
-                aria-label={t("easyMode.theme.light")}
-                aria-pressed={theme === "light"}
-                onClick={() => setTheme("light")}
-              >
-                <Sun size={15} />
-              </button>
-              <button
-                type="button"
-                className={theme === "dark" ? "active" : ""}
-                title={t("easyMode.theme.dark")}
-                aria-label={t("easyMode.theme.dark")}
-                aria-pressed={theme === "dark"}
-                onClick={() => setTheme("dark")}
-              >
-                <Moon size={15} />
-              </button>
-              <button
-                type="button"
-                className={theme === "system" ? "active" : ""}
-                title={t("app.theme.switchToSystem")}
-                aria-label={t("app.theme.system")}
-                aria-pressed={theme === "system"}
-                onClick={() => setTheme("system")}
-              >
-                <Monitor size={15} />
-              </button>
-            </div>
+            <ThemeSelector value={theme ?? 'light'} onChange={setTheme} open={themeMenuOpen}
+              onOpenChange={(open) => { setThemeMenuOpen(open); if (open) setLangMenuOpen(false); }} />
           ) : null}
 
           <div ref={langMenuRef} className="simple-mode-lang-dropdown">
@@ -777,7 +746,7 @@ export function EasyModePage({
               ref={langButtonRef}
               type="button"
               className="simple-mode-lang-btn"
-              onClick={() => setLangMenuOpen(!langMenuOpen)}
+              onClick={() => { setThemeMenuOpen(false); setLangMenuOpen(!langMenuOpen); }}
               title={t("easyMode.language.switch")}
               aria-label={t("easyMode.language.switch")}
               aria-haspopup="listbox"
@@ -786,6 +755,7 @@ export function EasyModePage({
               onKeyDown={(event) => {
                 if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
                 event.preventDefault();
+                setThemeMenuOpen(false);
                 setLangMenuOpen(true);
                 window.requestAnimationFrame(() => {
                   const options = langMenuRef.current?.querySelectorAll<HTMLButtonElement>('[role="option"]');
@@ -798,7 +768,7 @@ export function EasyModePage({
               <ChevronDown size={13} />
             </button>
             {langMenuOpen ? (
-              <div id="simple-mode-language-list" className="simple-mode-lang-menu" role="listbox" aria-label={t("easyMode.language.switch")} onKeyDown={handleLanguageListKeyDown}>
+              <div id="simple-mode-language-list" className="simple-mode-lang-menu" data-theme-surface="overlay" role="listbox" aria-label={t("easyMode.language.switch")} onKeyDown={handleLanguageListKeyDown}>
                 {languageOptions.map((opt) => (
                   <button
                     key={opt.value}
@@ -1252,6 +1222,7 @@ export function EasyModePage({
         <aside
           ref={guideTooltipRef}
           className="guide-interactive-card"
+          data-theme-surface="overlay"
           style={{
             top: guideCardPosition ? `${guideCardPosition.top}px` : "0px",
             left: guideCardPosition ? `${guideCardPosition.left}px` : "0px",

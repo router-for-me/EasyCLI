@@ -71,10 +71,14 @@ const coversCenterOf = (locator) => locator.evaluate(el => {
     await page.keyboard.press('Tab');
     assert.equal(await page.locator('.window-close').evaluate(el => el.matches(':focus-visible')), true);
     await fs.mkdir('bin-work', { recursive: true });
-    await page.locator('.sidebar-theme-selector button').nth(0).click();
+    await page.locator('.theme-selector-trigger[data-appearance="light"]').click();
+    await page.locator('.theme-selector-option[data-theme-id="light"]').click();
+    await page.keyboard.press('Escape');
     await page.waitForFunction(() => document.documentElement.dataset.theme === 'light');
     await page.screenshot({ path: 'bin-work/windows-immersive-light.png' });
-    await page.locator('.sidebar-theme-selector button').nth(1).click();
+    await page.locator('.theme-selector-trigger[data-appearance="dark"]').click();
+    await page.locator('.theme-selector-option[data-theme-id="dark"]').click();
+    await page.keyboard.press('Escape');
     await page.waitForFunction(() => document.documentElement.dataset.theme === 'dark');
     await page.screenshot({ path: 'bin-work/windows-immersive-dark.png' });
 
