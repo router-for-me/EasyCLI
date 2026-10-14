@@ -842,52 +842,45 @@ fn extract_uid_from_jwt(jwt: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-/// Synchronizes WorkBuddy Reverse Proxy as an OpenAI-compatible provider in EasyCLIProxyAPI's config.yaml.
-pub(crate) fn sync_workbuddy_provider_to_cpa_sync(
+pub(crate) const WORKBUDDY_MODEL_NAMES: &[&str] = &[
+    "default-model",
+    "fast-model",
+    "balanced-model",
+    "primary-model",
+    "deep-model",
+    "deepseek-v4.1-flash",
+    "claude-3-5-sonnet-20241022",
+    "claude-3-7-sonnet",
+    "gpt-4o",
+    "gpt-4o-mini",
+    "deepseek-chat",
+    "deepseek-reasoner",
+];
+
+/// Injects or refreshes the workbuddy openai-compatibility group in a v8 config document.
+///
+/// Kernel v8 validates every `openai-compatibility` entry with `expandV8Groups`, which
+/// rejects any group whose `keys` is missing or is not a sequence. Older builds of this
+/// GUI wrote a bare `api-key` field instead, so this also repairs such legacy entries.
+pub(crate) fn apply_workbuddy_provider(
+    doc: &mut serde_norway::Value,
     port: u16,
     api_key: Option<&str>,
-) -> Result<String, String> {
-    let install_dir = core_install_dir()?;
-    let config_path = install_dir.join(CORE_CONFIG_FILE);
-
-    if !config_path.is_file() {
-        return Ok("Kernel configuration file not found yet; skipping sync".to_string());
-    }
-
-    let _lock = lock_core_config_file()?;
-    let content = fs::read_to_string(&config_path)
-        .map_err(|e| format!("Failed to read kernel configuration: {e}"))?;
-
-    let mut doc: serde_norway::Value = serde_norway::from_str(&content)
-        .map_err(|e| format!("Failed to parse YAML configuration: {e}"))?;
-
+) -> Result<(), String> {
     let base_url = format!("http://127.0.0.1:{port}/v1");
     let key_value = api_key.unwrap_or_default();
 
-    let models_list = vec![
-        "default-model",
-        "fast-model",
-        "balanced-model",
-        "primary-model",
-        "deep-model",
-        "deepseek-v4.1-flash",
-        "claude-3-5-sonnet-20241022",
-        "claude-3-7-sonnet",
-        "gpt-4o",
-        "gpt-4o-mini",
-        "deepseek-chat",
-        "deepseek-reasoner",
-    ];
-
-    let models_json: Vec<Value> = models_list
+    let models_json: Vec<Value> = WORKBUDDY_MODEL_NAMES
         .iter()
         .map(|m| json!({ "name": m }))
         .collect();
 
+    // Kernel v8 requires every openai-compatibility group to carry a `keys` sequence;
+    // a bare `api-key` field makes the whole config unloadable.
     let new_provider_group = json!({
         "name": "workbuddy",
         "base-url": base_url,
-        "api-key": key_value,
+        "keys": [ { "api-key": key_value } ],
         "models": models_json
     });
 
@@ -935,11 +928,56 @@ pub(crate) fn sync_workbuddy_provider_to_cpa_sync(
         groups_seq.push(new_provider_yaml);
     }
 
+    // Repair any pre-existing provider group that was written without `keys`.
+    for item in groups_seq.iter_mut() {
+        let Some(map) = item.as_mapping_mut() else { continue };
+        if map.contains_key(&yaml_key("keys")) {
+            continue;
+        }
+        let legacy_key = map
+            .remove(&yaml_key("api-key"))
+            .and_then(|v| v.as_str().map(str::to_string))
+            .unwrap_or_default();
+        map.insert(
+            yaml_key("keys"),
+            serde_norway::Value::Sequence(vec![serde_norway::Value::Mapping({
+                let mut entry = serde_norway::Mapping::new();
+                entry.insert(yaml_key("api-key"), serde_norway::Value::String(legacy_key));
+                entry
+            })]),
+        );
+    }
+
+    Ok(())
+}
+
+/// Synchronizes WorkBuddy Reverse Proxy as an OpenAI-compatible provider in EasyCLIProxyAPI's config.yaml.
+pub(crate) fn sync_workbuddy_provider_to_cpa_sync(
+    port: u16,
+    api_key: Option<&str>,
+) -> Result<String, String> {
+    let install_dir = core_install_dir()?;
+    let config_path = install_dir.join(CORE_CONFIG_FILE);
+
+    if !config_path.is_file() {
+        return Ok("Kernel configuration file not found yet; skipping sync".to_string());
+    }
+
+    let _lock = lock_core_config_file()?;
+    let content = fs::read_to_string(&config_path)
+        .map_err(|e| format!("Failed to read kernel configuration: {e}"))?;
+
+    let mut doc: serde_norway::Value = serde_norway::from_str(&content)
+        .map_err(|e| format!("Failed to parse YAML configuration: {e}"))?;
+
+    apply_workbuddy_provider(&mut doc, port, api_key)?;
+
     let new_content = serde_norway::to_string(&doc)
         .map_err(|e| format!("Failed to render updated YAML: {e}"))?;
 
     write_core_config_if_changed(&config_path, &new_content)?;
 
+    let base_url = format!("http://127.0.0.1:{port}/v1");
     Ok(format!("WorkBuddy successfully synchronized as OpenAI-compatible provider at {base_url}"))
 }
 
@@ -1042,4 +1080,103 @@ pub(crate) fn stop_workbuddy_proxy_sync(
     let mut guard = proxy_state.process.lock().map_err(|e| e.to_string())?;
     *guard = None;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const V8_TEMPLATE: &str = "config-version: 8\nserver:\n  host: 127.0.0.1\n  port: 8319\n";
+
+    fn provider_groups(doc: &serde_norway::Value) -> &Vec<serde_norway::Value> {
+        doc["api-keys"]["openai-compatibility"]
+            .as_sequence()
+            .expect("openai-compatibility must be a sequence")
+    }
+
+    // Kernel v8 `expandV8Groups` rejects a group whose `keys` is absent, which makes the
+    // entire config unloadable and the kernel exit immediately. Any injected entry must
+    // therefore always carry a `keys` sequence.
+    #[test]
+    fn injects_workbuddy_group_with_keys_sequence() {
+        let mut doc: serde_norway::Value = serde_norway::from_str(V8_TEMPLATE).unwrap();
+        apply_workbuddy_provider(&mut doc, 8788, None).unwrap();
+
+        let groups = provider_groups(&doc);
+        assert_eq!(groups.len(), 1, "exactly one injected provider group");
+        let group = groups[0].as_mapping().unwrap();
+        assert_eq!(group[&yaml_key("name")].as_str(), Some("workbuddy"));
+        assert_eq!(
+            group[&yaml_key("base-url")].as_str(),
+            Some("http://127.0.0.1:8788/v1")
+        );
+        assert!(
+            group[&yaml_key("keys")].as_sequence().is_some(),
+            "keys must be a sequence"
+        );
+        assert!(
+            !group.contains_key(&yaml_key("api-key")),
+            "v8 groups must not use the legacy bare api-key field"
+        );
+    }
+
+    #[test]
+    fn populates_all_supported_models() {
+        let mut doc: serde_norway::Value = serde_norway::from_str(V8_TEMPLATE).unwrap();
+        apply_workbuddy_provider(&mut doc, 8788, None).unwrap();
+
+        let group = provider_groups(&doc)[0].as_mapping().unwrap();
+        let names: Vec<&str> = group[&yaml_key("models")]
+            .as_sequence()
+            .unwrap()
+            .iter()
+            .map(|m| m[&yaml_key("name")].as_str().unwrap())
+            .collect();
+        assert_eq!(names, WORKBUDDY_MODEL_NAMES.to_vec());
+    }
+
+    #[test]
+    fn is_idempotent_and_refreshes_in_place() {
+        let mut doc: serde_norway::Value = serde_norway::from_str(V8_TEMPLATE).unwrap();
+        apply_workbuddy_provider(&mut doc, 8788, None).unwrap();
+        apply_workbuddy_provider(&mut doc, 9999, Some("secret")).unwrap();
+
+        let groups = provider_groups(&doc);
+        assert_eq!(groups.len(), 1, "refresh must not duplicate the group");
+        let group = groups[0].as_mapping().unwrap();
+        assert_eq!(
+            group[&yaml_key("base-url")].as_str(),
+            Some("http://127.0.0.1:9999/v1")
+        );
+        let key = &group[&yaml_key("keys")].as_sequence().unwrap()[0];
+        assert_eq!(key[&yaml_key("api-key")].as_str(), Some("secret"));
+    }
+
+    // Configs written by earlier GUI builds used a bare `api-key`, which the kernel
+    // refuses to load. The repair path must convert them so a start succeeds again.
+    #[test]
+    fn repairs_legacy_group_written_with_bare_api_key() {
+        let legacy = "config-version: 8\napi-keys:\n  openai-compatibility:\n  - name: workbuddy\n    base-url: http://127.0.0.1:8788/v1\n    api-key: ''\n    models:\n    - name: default-model\n";
+        let mut doc: serde_norway::Value = serde_norway::from_str(legacy).unwrap();
+        apply_workbuddy_provider(&mut doc, 8788, None).unwrap();
+
+        let groups = provider_groups(&doc);
+        assert_eq!(groups.len(), 1);
+        let group = groups[0].as_mapping().unwrap();
+        assert!(group[&yaml_key("keys")].as_sequence().is_some());
+        assert!(!group.contains_key(&yaml_key("api-key")));
+    }
+
+    #[test]
+    fn preserves_unrelated_openai_compat_providers() {
+        let existing = "config-version: 8\napi-keys:\n  openai-compatibility:\n  - name: openrouter\n    base-url: https://openrouter.ai/api/v1\n    keys:\n    - api-key: sk-or\n";
+        let mut doc: serde_norway::Value = serde_norway::from_str(existing).unwrap();
+        apply_workbuddy_provider(&mut doc, 8788, None).unwrap();
+
+        let names: Vec<&str> = provider_groups(&doc)
+            .iter()
+            .map(|g| g[&yaml_key("name")].as_str().unwrap())
+            .collect();
+        assert_eq!(names, vec!["openrouter", "workbuddy"]);
+    }
 }

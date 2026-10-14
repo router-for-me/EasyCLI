@@ -15,3 +15,11 @@ agent_docs/
 *.tmp
 *.exe
 misc/
+
+# Local runtime state produced by running the GUI from the repository root.
+oauth/
+usage-records/
+workbuddy-proxy/
+config.toml
+/plugins/
+

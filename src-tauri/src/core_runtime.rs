@@ -1538,11 +1538,12 @@ pub(crate) fn start_core_process_inner(
         ));
     }
 
+    let config_path = merge_core_config_for_start(&install_dir, gui_config)?;
+    // Runs after the merge so the merged template cannot drop the provider entry.
     let _ = workbuddy_proxy::sync_workbuddy_provider_to_cpa_sync(
         workbuddy_proxy::DEFAULT_WORKBUDDY_PORT,
         None,
     );
-    let config_path = merge_core_config_for_start(&install_dir, gui_config)?;
     let config_path = path_to_string(&config_path);
     let log_path = core_start_log_path(&install_dir, &gui_config.auth_dir)?;
     let start_once = || {
