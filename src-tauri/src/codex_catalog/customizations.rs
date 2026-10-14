@@ -420,6 +420,7 @@ mod tests {
             context_source: "template",
             input_modalities: None,
             default_reasoning_level: None,
+            reasoning_levels: None,
             hidden: false,
         }
     }

@@ -887,13 +887,26 @@ pub(crate) async fn fetch_codex_runtime_models(
 pub(crate) async fn fetch_codex_catalog_runtime_models(
     config: &GuiConfigFile,
 ) -> Result<Vec<codex_catalog::CodexRuntimeModel>, String> {
-    let (runtime, content) = tokio::join!(
-        fetch_agent_model_payload(config.port, effective_agent_api_key(config)),
+    let api_key = effective_agent_api_key(config);
+    let (runtime, client_models, content) = tokio::join!(
+        fetch_agent_model_payload(config.port, api_key),
+        fetch_codex_runtime_models(config.port, api_key),
         fetch_management_config_yaml(config),
     );
     // Codex selection and its written catalog must use the public /v1/models
-    // IDs, not the alternate catalog selected by client_version.
+    // IDs, not the alternate catalog selected by client_version. That catalog
+    // is still the only place where the core reports context windows and
+    // reasoning levels for OAuth-backed models, so it fills metadata gaps for
+    // slugs present in both lists. Its absence must not block the public list.
     let mut runtime = codex_catalog::parse_public_models(&runtime?)?;
+    match client_models {
+        Ok(client_models) => {
+            codex_catalog::merge_codex_client_metadata(&mut runtime, &client_models)
+        }
+        Err(error) => {
+            eprintln!("Codex client model metadata unavailable, using catalog defaults: {error}")
+        }
+    }
     codex_catalog::apply_configured_context_limits(&mut runtime, &content?)?;
     Ok(runtime)
 }
