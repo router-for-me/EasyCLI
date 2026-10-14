@@ -2018,6 +2018,7 @@ fn startup_preserves_all_user_owned_yaml_and_only_applies_gui_managed_values() {
         usage_statistics_enabled: false,
         redis_usage_queue_retention_seconds: 180,
         usage_statistics_disabled: Some(true),
+        image_generation_user_selected: false,
         request_log: true,
         plugins_enabled: true,
         routing_strategy: "fill-first".to_string(),
@@ -2172,6 +2173,46 @@ fn startup_merge_can_shrink_template_api_key_sequence() {
 }
 
 
+
+#[test]
+fn startup_codex_api_keys_disable_chat_image_generation() {
+    let config = GuiConfigFile::default();
+    let template = "config-version: 8\nmultimedia: {disable-image-generation: false}\n";
+    for version in [7, 8] {
+        for mode in [None, Some("false"), Some("null"), Some("'OFF'"), Some("true"), Some("chat"), Some("passthrough")] {
+            let provider = if version == 8 {
+                "api-keys: {codex: [{name: relay, keys: [{api-key: test-key}]}]}\n"
+            } else {
+                "codex-api-key: [{api-key: test-key, base-url: 'https://example.invalid/v1'}]\n"
+            };
+            let policy = mode.map(|mode| if version == 8 {
+                format!("multimedia: {{disable-image-generation: {mode}}}\n")
+            } else {
+                format!("disable-image-generation: {mode}\n")
+            }).unwrap_or_default();
+            let current = format!("config-version: {version}\n{provider}{policy}");
+            for target_template in [template, "port: 8317\n"] {
+                let merged = merge_core_config_yaml(target_template, Some(&current), &config).unwrap();
+                let document: serde_norway::Value = serde_norway::from_str(&merged).unwrap();
+                let expected: serde_norway::Value = serde_norway::from_str(match mode {
+                    Some("true") => "true",
+                    Some("passthrough") => "passthrough",
+                    _ => "chat",
+                }).unwrap();
+                let actual = document.get("multimedia").and_then(|value| value.get("disable-image-generation"))
+                    .or_else(|| document.get("disable-image-generation")).unwrap();
+                assert_eq!(actual, &expected, "version={version}, mode={mode:?}");
+                assert_eq!(merge_core_config_yaml(target_template, Some(&merged), &config).unwrap(), merged);
+            }
+        }
+    }
+    for provider in ["", "api-keys: {codex: []}\n", "api-keys: {codex: [{name: empty, keys: []}]}\n", "api-keys: {claude: [{keys: [{api-key: test-key}]}]}\n"] {
+        let current = format!("{template}{provider}");
+        let merged = merge_core_config_yaml(template, Some(&current), &config).unwrap();
+        let document: serde_norway::Value = serde_norway::from_str(&merged).unwrap();
+        assert_eq!(document["multimedia"]["disable-image-generation"], false);
+    }
+}
 
 #[test]
 fn startup_merge_repairs_disabled_fields_rejected_by_native_provider_keys() {

@@ -322,6 +322,34 @@ pub(crate) fn merge_core_config_yaml(
     }
     startup_config.usage_statistics_enabled = config.usage_statistics_disabled != Some(true);
     let managed = apply_gui_managed_settings(&base, &startup_config)?;
+    let managed = patch_core_yaml_document(&managed, |document| {
+        if config.image_generation_user_selected { return Ok(false); }
+        let Some(root) = document.as_mapping() else { return Ok(false); };
+        let has_codex_keys = nested_yaml_value(root, &["api-keys", "codex"])
+            .and_then(serde_norway::Value::as_sequence)
+            .is_some_and(|groups| groups.iter().any(|group| {
+                group.get("keys").and_then(serde_norway::Value::as_sequence)
+                    .is_some_and(|keys| !keys.is_empty())
+            }))
+            || yaml_mapping_value(root, "codex-api-key")
+                .and_then(serde_norway::Value::as_sequence)
+                .is_some_and(|keys| !keys.is_empty());
+        let image_mode = nested_yaml_value(root, &["multimedia", "disable-image-generation"])
+            .or_else(|| yaml_mapping_value(root, "disable-image-generation"));
+        let auto_injects = image_mode.is_none_or(|value| {
+            value.is_null() || value.as_bool() == Some(false)
+                || value.as_str().is_some_and(|mode| {
+                    matches!(mode.trim().to_ascii_lowercase().as_str(), "" | "false" | "0" | "off" | "no")
+                })
+        });
+        if !has_codex_keys || !auto_injects { return Ok(false); }
+        set_core_yaml_schema_value(
+            document,
+            &["disable-image-generation"],
+            &["multimedia", "disable-image-generation"],
+            serde_norway::Value::String("chat".into()),
+        )
+    })?.unwrap_or(managed);
     sanitize_unsupported_provider_disabled_yaml(&managed)
 }
 
@@ -1986,6 +2014,11 @@ pub(crate) fn write_gui_config_to_path(
         set_codex_table_item(root, "usage_statistics_disabled", value(true));
     } else {
         root.remove("usage_statistics_disabled");
+    }
+    if config.image_generation_user_selected {
+        set_codex_table_item(root, "image-generation-user-selected", value(true));
+    } else {
+        root.remove("image-generation-user-selected");
     }
     for (key, item) in [
         ("locale", value(config.locale.as_str())),
