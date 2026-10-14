@@ -444,6 +444,9 @@ pub(crate) async fn update_codex_model_catalog_inner(
     let path = codex_model_catalog_override_path(app)?;
     write_bytes_atomically(&path, catalog_json.as_bytes())?;
     let changed = codex_catalog::activate_catalog_json(&catalog_json)?;
+    if changed {
+        request_codex_model_catalog_refresh();
+    }
     Ok(CodexModelCatalogUpdateResult {
         outcome: if changed { "updated" } else { "unchanged" }.to_string(),
     })

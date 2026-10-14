@@ -1,7 +1,7 @@
 import { MessageNotice } from '../appNotice';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Check, LoaderCircle, RefreshCw, RotateCcw, Search, X } from 'lucide-react';
+import { Check, LoaderCircle, RefreshCw, Search, X } from 'lucide-react';
 import { useI18n } from '../i18n';
 import { useDialogFocusTrap } from '../components/useDialogFocusTrap';
 import {
@@ -133,12 +133,6 @@ export function CodexModelCatalogDialog({ onClose, onSaved }: CodexModelCatalogD
     onEscape: () => setDiscardConfirmOpen(false),
   });
 
-  const restoreModel = () => {
-    if (!activeModel) return;
-    updateActive(() => cloneCodexModelConfiguration(activeModel.defaults));
-    setNotice(t('agents.catalog.restored'));
-  };
-
   const restoreAll = async () => {
     if (loading || saving) return;
     if (await load(true)) setNotice(t('agents.catalog.restored'));
@@ -249,9 +243,6 @@ export function CodexModelCatalogDialog({ onClose, onSaved }: CodexModelCatalogD
                       {activeCustomized ? ` · ${t('agents.catalog.customized')}` : ''}
                     </span>
                   </div>
-                  <button type="button" className="secondary-button compact-button" onClick={restoreModel} disabled={!activeCustomized || saving}>
-                    <RotateCcw size={15} />{t('agents.catalog.resetModel')}
-                  </button>
                 </div>
 
                 <div className="codex-catalog-form">

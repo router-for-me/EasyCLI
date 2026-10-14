@@ -434,6 +434,61 @@ mod tests {
     }
 
     #[test]
+    fn cloud_catalog_refresh_and_restart_preserve_user_overrides() {
+        let mut state = CatalogState {
+            sources: parse_sources(MODEL_CATALOG_JSON).unwrap(),
+            json: MODEL_CATALOG_JSON.to_string(),
+            customizations: Default::default(),
+        };
+        let runtime = parse_public_models(&serde_json::json!({"data": [
+            {"id": "gpt-6.1-sol"}
+        ]})).unwrap();
+        let snapshot = snapshot_for_state(&runtime, &state).unwrap();
+        let mut configuration = snapshot.models[0].configuration.clone();
+        configuration.insert("context_window".into(), serde_json::json!(128_000));
+        configuration.insert("auto_compact_token_limit".into(), serde_json::json!(100_000));
+        configuration.insert("default_reasoning_level".into(), serde_json::json!("high"));
+        configuration.insert("base_instructions".into(), serde_json::json!("User instructions"));
+        let path = temporary_path();
+        save_for_state(&path, &runtime, CatalogEditorRequest {
+            revision: snapshot.revision,
+            models: vec![CatalogEditorModelRequest {
+                slug: "gpt-6.1-sol".into(), configuration,
+            }],
+        }, &mut state).unwrap();
+
+        let mut cloud: Value = serde_json::from_str(MODEL_CATALOG_JSON).unwrap();
+        cloud["catalog_revision"] = serde_json::json!(state.sources.revision + 1);
+        let model = cloud["models"].as_array_mut().unwrap().iter_mut()
+            .find(|model| model["slug"] == "gpt-6.1-sol").unwrap();
+        model["context_window"] = serde_json::json!(600_000);
+        model["description"] = serde_json::json!("Updated cloud description");
+        let cloud = serde_json::to_string(&cloud).unwrap();
+        assert!(state.activate(&cloud, parse_sources(&cloud).unwrap()));
+        let restarted = CatalogState {
+            sources: parse_sources(&cloud).unwrap(),
+            json: cloud,
+            customizations: decode_customizations(&std::fs::read(&path).unwrap()).unwrap(),
+        };
+        for current in [&state, &restarted] {
+            let snapshot = snapshot_for_state(&runtime, current).unwrap();
+            assert_eq!(snapshot.models[0].defaults["context_window"], 600_000);
+            assert_eq!(snapshot.models[0].configuration["context_window"], 128_000);
+            let catalog = prepare_catalog_with_customizations(
+                &runtime, &current.sources, &current.customizations,
+            ).unwrap();
+            let generated: Value = serde_json::from_str(&catalog.json).unwrap();
+            let model = &generated["models"][0];
+            assert_eq!(model["context_window"], 128_000);
+            assert_eq!(model["auto_compact_token_limit"], 100_000);
+            assert_eq!(model["default_reasoning_level"], "high");
+            assert_eq!(model["base_instructions"], "User instructions");
+            assert_eq!(model["description"], "Updated cloud description");
+        }
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
     fn saving_visible_models_preserves_unavailable_models_and_allows_visible_reset() {
         let mut state = CatalogState {
             sources: parse_sources(MODEL_CATALOG_JSON).unwrap(),

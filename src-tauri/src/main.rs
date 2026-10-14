@@ -2580,15 +2580,9 @@ fn main() {
             if let Err(error) = load_codex_model_catalog_override(app.handle()) {
                 eprintln!("Failed to load Codex model catalog update file; using bundled catalog: {error}");
             }
-            let catalog_update_app = app.handle().clone();
             if let Err(error) = load_codex_model_customizations(app.handle()) {
                 eprintln!("Failed to load Codex custom model configuration: {error}");
             }
-            tauri::async_runtime::spawn(async move {
-                if let Err(error) = update_codex_model_catalog_inner(&catalog_update_app).await {
-                    eprintln!("Failed to update Codex model catalog in the background; continuing with current catalog: {error}");
-                }
-            });
             if let Err(error) = restore_main_window_size(app.handle()) {
                 eprintln!("{error}");
             }
