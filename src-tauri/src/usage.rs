@@ -5701,6 +5701,7 @@ mod tests {
             window_height: None,
             auth_dir: String::new(),
             auth_dir_user_selected: false,
+            image_generation_user_selected: false,
             api_keys: Vec::new(),
             api_access_remarks: Vec::new(),
             management_secret_key: "123456".to_string(),
