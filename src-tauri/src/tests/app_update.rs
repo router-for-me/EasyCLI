@@ -323,6 +323,95 @@ fn macos_update_command_runner_terminates_hung_processes_on_timeout() {
     assert!(started.elapsed() < Duration::from_secs(5));
 }
 
+#[test]
+fn macos_update_command_deadlines_distinguish_detach_from_other_commands() {
+    assert_eq!(
+        macos_update_command_timeout(&Command::new("diskutil")),
+        Duration::from_secs(10)
+    );
+    let mut detach = Command::new("hdiutil");
+    detach.args(["detach", "-force", "/tmp/mount"]);
+    assert_eq!(
+        macos_update_command_timeout(&detach),
+        Duration::from_secs(15)
+    );
+    let mut attach = Command::new("hdiutil");
+    attach.arg("attach");
+    assert_eq!(
+        macos_update_command_timeout(&attach),
+        Duration::from_secs(120)
+    );
+    for program in ["ditto", "codesign", "spctl"] {
+        assert_eq!(
+            macos_update_command_timeout(&Command::new(program)),
+            Duration::from_secs(120)
+        );
+    }
+}
+
+#[test]
+fn macos_update_output_drain_bounds_memory_and_work_per_poll() {
+    let mut pipe = std::io::Cursor::new(vec![b'x'; 256 * 1024]);
+    let mut output = Vec::new();
+    assert!(!drain_macos_update_output(&mut pipe, &mut output).unwrap());
+    assert_eq!(pipe.position(), 64 * 1024);
+    assert_eq!(output.len(), 64 * 1024);
+    for _ in 0..3 {
+        assert!(!drain_macos_update_output(&mut pipe, &mut output).unwrap());
+        assert_eq!(output.len(), 64 * 1024);
+    }
+    assert!(drain_macos_update_output(&mut pipe, &mut output).unwrap());
+}
+
+#[cfg(unix)]
+#[test]
+fn macos_update_command_timeout_also_covers_inherited_pipes_after_parent_exit() {
+    let mut command = Command::new("sh");
+    command.args(["-c", "sleep 30 & exit 0"]);
+    let started = Instant::now();
+    let error = run_macos_update_command_with_timeout(
+        &mut command,
+        "inherited pipe test",
+        Duration::from_millis(200),
+    )
+    .unwrap_err();
+    assert!(error.contains("timed out"), "{error}");
+    assert!(started.elapsed() < Duration::from_secs(5));
+}
+
+#[cfg(unix)]
+#[test]
+fn macos_update_command_captures_failure_details_from_both_pipes() {
+    let mut command = Command::new("sh");
+    command.args([
+        "-c",
+        "printf stdout-detail; printf stderr-detail >&2; exit 7",
+    ]);
+    let error = run_macos_update_command_with_timeout(
+        &mut command,
+        "diagnostic test",
+        Duration::from_secs(5),
+    )
+    .unwrap_err();
+    assert!(error.contains("stdout-detail"), "{error}");
+    assert!(error.contains("stderr-detail"), "{error}");
+    assert!(error.contains("7"), "{error}");
+    assert!(!error.contains("timed out"), "{error}");
+}
+
+#[cfg(unix)]
+#[test]
+fn macos_update_command_drains_large_output_without_deadlocking() {
+    let mut command = Command::new("sh");
+    command.args(["-c", "dd if=/dev/zero bs=4096 count=64 2>/dev/null; (dd if=/dev/zero bs=4096 count=64 2>/dev/null) >&2"]);
+    run_macos_update_command_with_timeout(
+        &mut command,
+        "large output test",
+        Duration::from_secs(5),
+    )
+    .unwrap();
+}
+
 fn portable_update_test_asset(version: &str, arch: &str) -> PortableUpdateAsset {
     let (_, display, suffix) = portable_update_asset_platform().unwrap();
     let name = format!("EasyCLIProxyAPI-v{version}-{display}-{arch}.{suffix}");
