@@ -10,21 +10,28 @@
 
 .theme-selector-trigger {
   position: relative;
-  display: grid;
-  place-items: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
   height: 28px;
-  padding: 0 4px;
+  padding: 0 7px;
   border: 1px solid var(--sidebar-popover-edge);
   border-radius: 7px;
   background: var(--sidebar-popover-bg);
   box-shadow: var(--shadow-sm);
+  color: var(--sidebar-text-strong);
+  font: inherit;
+  font-size: var(--font-size-meta);
+  font-weight: 500;
+  white-space: nowrap;
   cursor: pointer;
 }
 .theme-selector-trigger:focus-visible { outline: 2px solid var(--sidebar-focus); outline-offset: 2px; }
-.theme-selector-trigger .theme-thumbnail { width: 30px; height: 20px; border-radius: 4px; }
-.theme-selector-trigger .theme-thumbnail-sidebar { width: 7px; padding: 3px 1px; gap: 2px; }
-.theme-selector-trigger .theme-thumbnail-content { padding: 3px 2px; gap: 2px; }
-.theme-selector-trigger .theme-thumbnail i { height: 2px; }
+.theme-selector-trigger > svg { flex: none; }
+.theme-selector-trigger:hover,
+.theme-selector-trigger[aria-expanded='true'] { background: var(--sidebar-hover-bg); border-color: var(--sidebar-icon); }
+.theme-selector-trigger[aria-expanded='true'] .theme-selector-chevron { transform: rotate(180deg); }
 .theme-selector-warning { position: absolute; top: 2px; right: 2px; width: 5px; height: 5px; border-radius: 50%; background: var(--amber-color); }
 
 .theme-selector-menu {

@@ -176,7 +176,7 @@ const assert = require('node:assert/strict');
       const controls = await page.locator('.sidebar-language-trigger, .sidebar-privacy-toggle, .theme-selector').evaluateAll(elements => elements.map(element => {
         const { x, right, width } = element.getBoundingClientRect(); return { x, right, width };
       }));
-      assert.ok(controls[0].width >= 48 && controls[1].width >= 28 && controls[2].width >= 36 && controls[2].width <= 48);
+      assert.ok(controls[0].width >= 48 && controls[1].width >= 28 && controls[2].width >= 80 && controls[2].width <= 140);
       assert.ok(controls[0].right < controls[1].x && controls[1].right < controls[2].x, `${locale} at ${width}: controls overlap`);
       selection = null;
     }

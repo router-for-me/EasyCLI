@@ -2564,8 +2564,7 @@
   animation: pulseDot 1.4s infinite ease-in-out;
 }
 
-.simple-mode-topbar-right .theme-selector-trigger,
-.simple-mode-topbar-right .theme-selector-system-toggle { width: 30px; height: 30px; flex-basis: 30px; }
+.simple-mode-topbar-right .theme-selector-trigger { height: 30px; }
 
 .simple-mode-lang-dropdown {
   position: relative;

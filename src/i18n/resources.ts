@@ -11,6 +11,10 @@ export const zhTW: Record<MessageKey, string> = {
   ...createTraditionalMessages(zhCN),
   "app.theme.lightGroup": "淺色主題",
   "app.theme.darkGroup": "深色主題",
+  'app.theme.triggerLabel': '外觀',
+
+  'app.theme.triggerHint': '切換日夜模式與主題外觀',
+
   "app.theme.current": "主題：{name}",
   "app.theme.unavailable": "主題無法使用",
   "app.theme.unavailableHint": "已儲存的主題無法使用，目前使用亮色。請選擇其他主題。",

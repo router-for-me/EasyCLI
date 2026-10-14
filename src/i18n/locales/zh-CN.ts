@@ -379,6 +379,10 @@ export const zhCN = {
   'app.language': '语言',
   "app.theme.lightGroup": "浅色主题",
   "app.theme.darkGroup": "深色主题",
+  'app.theme.triggerLabel': '外观',
+
+  'app.theme.triggerHint': '切换日夜模式与主题皮肤',
+
   "app.theme.current": "主题：{name}",
   "app.theme.unavailable": "主题不可用",
   "app.theme.unavailableHint": "已保存的主题不可用，当前使用亮色。请选择其他主题。",
