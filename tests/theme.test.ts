@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { createThemeRegistry, themeRegistry } from '../src/themes/registry';
+import { FIRST_PAINT_KEY, firstPaint } from '../src/themes/firstPaint';
 import type { SystemThemes, ThemeDefinition } from '../src/themes/types';
 import { createThemeController, type AppTheme, type NativeThemeSource, type ThemePreference } from '../src/themeController';
 
@@ -348,12 +349,35 @@ describe('theme preferences and native synchronization', () => {
 });
 
 describe('desktop first paint', () => {
-  test('starts in light and never reads the abandoned browser preference', () => {
-    const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
-    expect(html).toContain('data-theme="light"');
-    expect(html).toContain('data-theme-id="light"');
-    expect(html).not.toContain('localStorage');
-    expect(html).not.toContain('prefers-color-scheme');
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)![1];
+  const paint = (stored: Record<string, string>, media: AppTheme = 'light') => {
+    const root = { dataset: {} as Record<string, string>, style: {} as Record<string, string> };
+    new Function('localStorage', 'window', 'document', script)(
+      { getItem: (key: string) => stored[key] ?? null },
+      { matchMedia: () => ({ matches: media === 'dark' }) },
+      { documentElement: root },
+    );
+    return { theme: root.dataset.theme, background: root.style.backgroundColor };
+  };
+  const cache = (preference: ThemePreference, systemThemes: SystemThemes, applied: string) => ({
+    [FIRST_PAINT_KEY]: JSON.stringify(firstPaint(themeRegistry, preference, systemThemes, themeRegistry.get(applied)!)),
+  });
+
+  test('paints the cached theme before the app loads', () => {
+    expect(paint(cache('midnight-dark', { light: 'light', dark: 'dark' }, 'midnight-dark')))
+      .toEqual({ theme: 'dark', background: themeRegistry.get('midnight-dark')!.windowBackground });
+    const system = cache('system', { light: 'sakura-light', dark: 'graphite-dark' }, 'sakura-light');
+    expect(paint(system, 'dark')).toEqual({ theme: 'dark', background: themeRegistry.get('graphite-dark')!.windowBackground });
+    expect(paint(system, 'light')).toEqual({ theme: 'light', background: themeRegistry.get('sakura-light')!.windowBackground });
+  });
+
+  test('falls back to the previous cache and then to light', () => {
+    expect(paint({ 'easy-cli-proxy-api.theme': 'dark' })).toEqual({ theme: 'dark', background: '#0b0d11' });
+    expect(paint({ 'easy-cli-proxy-api.theme': 'system' }, 'dark')).toEqual({ theme: 'dark', background: '#0b0d11' });
+    expect(paint({}, 'dark')).toEqual({ theme: 'light', background: '#ffffff' });
+    expect(paint({ [FIRST_PAINT_KEY]: '{' }, 'dark')).toEqual({ theme: 'light', background: '#ffffff' });
+    expect(paint({ [FIRST_PAINT_KEY]: '{', 'easy-cli-proxy-api.theme': 'dark' })).toEqual({ theme: 'dark', background: '#0b0d11' });
   });
 });
 

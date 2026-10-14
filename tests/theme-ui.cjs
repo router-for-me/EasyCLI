@@ -9,7 +9,6 @@ const assert = require('node:assert/strict');
     let selection = null;
     page.on('pageerror', error => errors.push(String(error)));
     page.setDefaultTimeout(10000);
-    // Persistent IPC backend lives outside the WebView, just like the desktop file.
     await page.route('**/__theme_fixture_selection', async route => {
       if (route.request().method() === 'POST') selection = JSON.parse(route.request().postData());
       await route.fulfill({ json: selection });
@@ -123,6 +122,10 @@ const assert = require('node:assert/strict');
     for (const locale of ['zh-CN', 'zh-TW', 'en', 'ja']) for (const width of [1440, 1100, 900, 640]) {
       await page.setViewportSize({ width, height: 760 });
       await open(`platform=windows&locale=${locale}`); await nativeReady();
+      const systemDescription = await page.locator('.theme-selector-system-toggle').evaluate(element =>
+        element.getAttribute('aria-describedby').split(' ').map(id => document.getElementById(id).textContent));
+      assert.equal(systemDescription.length, 2);
+      assert.ok(systemDescription.every(text => text && !text.includes('，')), `${locale}: system hints must not contain hardcoded punctuation`);
       await trigger().focus(); await page.keyboard.press('Enter');
       assert.equal(await page.getByRole('option').count(), 3);
       const lightRow = await page.locator('.theme-selector-option[data-theme-id="light"]').boundingBox();
@@ -183,7 +186,6 @@ const assert = require('node:assert/strict');
     assert.equal((await color('.usage-analysis-card')).background, 'rgb(220, 232, 250)');
     assert.equal((await color('.panel-heading h2')).color, 'rgb(18, 37, 68)');
     assert.equal((await color('.panel-heading p')).color, 'rgb(35, 54, 85)');
-    // Panels animate their border; wait for the visible transition to complete.
     await page.waitForFunction(() => getComputedStyle(document.querySelector('.panel')).borderTopColor === 'rgb(69, 103, 137)');
     assert.equal(await trigger().innerText(), '', 'localized names must not widen the icon control');
     await chooseId('test-dark'); await saved('test-dark');
@@ -198,7 +200,6 @@ const assert = require('node:assert/strict');
     await chooseId('light'); await saved('light');
     assert.deepEqual(await color('.config-dialog'), base);
     assert.equal(await page.locator('html').evaluate(element => element.style.getPropertyValue('--theme-surface')), '');
-    // Keep heading and help pinned; pointer hover must never move the list.
     await chooseId('midnight-dark'); await saved('midnight-dark');
     await page.setViewportSize({ width: 1280, height: 320 });
     await trigger().click();

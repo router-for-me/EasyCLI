@@ -12,7 +12,6 @@ import '../../src/styles/index.css';
 const params = new URLSearchParams(location.search);
 const platform = params.get('platform') || 'windows';
 let saveError = params.has('save-error');
-// Stale browser data must not affect the desktop selection.
 localStorage.setItem('easy-cli-proxy-api.theme', 'dark');
 localStorage.setItem('easy-cli-proxy-api.locale', params.get('locale') || 'zh-CN');
 let system: AppTheme = params.get('system') === 'light' ? 'light' : 'dark';

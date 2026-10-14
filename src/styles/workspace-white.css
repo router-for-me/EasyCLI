@@ -118,13 +118,10 @@
   box-shadow: none;
 }
 
-/* Usage pages share the workspace canvas rather than declaring a local palette. */
 :root:not([data-theme='dark']) .workspace .usage-tab-panel {
   --bg-secondary: var(--theme-workspace-background, #fff);
 }
 
-/* Layout wrappers reveal the workspace canvas. Only the cards paint a surface;
-   otherwise their square parents create seams around gaps and rounded corners. */
 :root:not([data-theme='dark']) .workspace :is(
   .usage-records-page,
   .usage-tab-panel,

@@ -3,13 +3,9 @@ import { backdropImage } from './backdrop';
 import { themeMaterialTokens, themeOverlayRules, themeOverlayPalette } from './materials';
 
 export function createThemeApplicator(document: Document) {
-  // Clear the complete owned set, also after HMR/reinitialization in the same
-  // document. Unrelated inline properties remain untouched.
   const ownedProperties = [...Object.values(themeTokenProperties).flat(),
     '--theme-backdrop-image', '--theme-backdrop-color', '--theme-backdrop-sidebar',
     '--theme-backdrop-panel', '--theme-sticky-background', '--theme-sticky-hover-background'];
-  // Reuse our owned style after hot reload, so switching to a solid theme also
-  // removes rules left by a previous applicator instance.
   let overlayStyle = document.querySelector<HTMLStyleElement>('style[data-theme-materials]') ?? undefined;
   return (theme: ThemeDefinition) => {
     const root = document.documentElement;
@@ -45,7 +41,6 @@ export function createThemeApplicator(document: Document) {
         '--theme-backdrop-color': theme.tokens.workspaceBackground ?? theme.windowBackground,
         '--theme-backdrop-sidebar': theme.backdrop.sidebar,
         '--theme-backdrop-panel': theme.backdrop.panel,
-        // Fixed viewport coordinates keep sticky surfaces aligned with the canvas.
         '--theme-sticky-background': `${canvas} ${base}`,
         '--theme-sticky-hover-background': `linear-gradient(${hover}, ${hover}), ${canvas} ${base}`,
       })) {

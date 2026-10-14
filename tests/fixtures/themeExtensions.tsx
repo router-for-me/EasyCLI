@@ -3,7 +3,6 @@ import { ThemeSelector } from '../../src/components/ThemeSelector';
 import { useThemePreference } from '../../src/theme';
 import { createThemeRegistry, themeRegistry } from '../../src/themes/registry';
 
-// Test-only themes exercise extensions independently of the shipped palettes.
 export const extensionRegistry = createThemeRegistry([
   ...themeRegistry.themes,
   { id: 'test-light', nameKey: 'app.theme.unavailableHint', appearance: 'light', order: 1,

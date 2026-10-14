@@ -69,7 +69,6 @@
   scrollbar-width: none;
 }
 
-/* Hide only the scrollbar; wheel, trackpad and keyboard scrolling stay available. */
 .theme-selector-themes::-webkit-scrollbar {
   display: none;
   width: 0;

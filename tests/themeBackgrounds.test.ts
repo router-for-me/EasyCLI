@@ -3,9 +3,6 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { themeTokenProperties } from '../src/themes/types';
 
-// Only data/status paint and icon details can bypass background roles. These
-// exceptions preserve their existing meaning across themes, rather than making
-// every success indicator or data series inherit the selected theme's accent.
 const semanticPaint = new Set([
   'components/AuthFileUsageSummary.css|.auth-file-usage-metric.rate svg',
   'components/WindowFrame.css|.window-controls .window-close:hover',
@@ -27,8 +24,6 @@ const semanticPaint = new Set([
   'styles.css|.custom-mirror-dialog-list button:hover:not(:disabled)',
 ]);
 
-// Legacy hex-named variables are not automatically theme roles. Keep their
-// remaining uses limited to status indicators, data/category badges and icons.
 const semanticPalettePaint = new Set([
   'pages/PluginsPage.css|.plugin-badge.warning',
   'styles/feature-pages.css|.easy-mode-core-alert',
@@ -79,7 +74,6 @@ test('component backgrounds use shared roles; literal paint is limited to semant
   const source = fileURLToPath(new URL('../src/', import.meta.url));
   const violations: string[] = [];
   const themeRoles = new Set<string>(Object.values(themeTokenProperties).flat());
-  // These legacy scrollbar colors already derive from the themed text palette.
   const adaptiveLegacyColors = new Set(['--theme-8a847c', '--theme-7a746c']);
   for await (const path of new Bun.Glob('**/*.css').scan(source)) {
     if (path.startsWith('mocks/')) continue;
@@ -92,8 +86,6 @@ test('component backgrounds use shared roles; literal paint is limited to semant
             violations.push(`${key}: unthemed background variable ${dependency}`);
           }
         }
-        // Literal fallbacks inside a shared variable are allowed, including
-        // nested color functions. Paint outside that variable is still checked.
         let paint = value;
         while (paint.includes('var(')) {
           const start = paint.indexOf('var(');

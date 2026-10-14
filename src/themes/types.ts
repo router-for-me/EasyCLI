@@ -1,7 +1,6 @@
 import type { MessageKey } from '../i18n/resources';
 
 export type ThemeAppearance = 'light' | 'dark';
-// IDs are stable configuration values, never translated labels. `system` is reserved.
 export type ThemePreference = string;
 
 export const themeTokenProperties = {
@@ -9,7 +8,6 @@ export const themeTokenProperties = {
   surface: ['--theme-surface', '--bg-primary', '--bg-card', '--theme-fff', '--theme-ffffff', '--theme-fffdf8'],
   softSurface: [
     '--theme-soft-surface', '--bg-tertiary', '--bg-quinary', '--count-badge-bg',
-    // Older cards and nested panels still consume the original neutral palette.
     '--theme-f0ede6', '--theme-f0eee8', '--theme-f2efe8', '--theme-f2f0ea',
     '--theme-f4f1ea', '--theme-f4f2ec', '--theme-f6f2ec', '--theme-f8f5ee',
     '--theme-f8f5ef', '--theme-f8f6f1', '--theme-faf8f2', '--theme-faf8f4', '--theme-faf9f5',
@@ -39,7 +37,6 @@ export const themeTokenProperties = {
   sidebarSelected: ['--sidebar-selected-bg', '--sidebar-thumb-bg'],
   sidebarSelectedBorder: ['--sidebar-selected-border-color'],
   sidebarSelectedShadow: ['--sidebar-selected-shadow-color'],
-  // Floating surfaces share an opaque palette; these never use the canvas alpha.
   popoverBackground: ['--sidebar-popover-bg', '--theme-overlay-surface'],
   overlaySoftSurface: ['--theme-overlay-soft-surface'],
   overlayHoverBackground: ['--theme-overlay-hover-background'],
@@ -47,14 +44,12 @@ export const themeTokenProperties = {
   controlThumb: ['--theme-control-thumb'],
 } as const;
 
-// Color-only extension points. Keep layout and semantic status styling in their components.
 export type ThemeTokens = Partial<Record<keyof typeof themeTokenProperties, string>>;
 export type ThemeGradientStop = Readonly<{ color: string; at: number }>;
 export type ThemeGradient = Readonly<(
   | { kind: 'linear'; angle: number }
   | { kind: 'radial'; center: readonly [number, number]; size: readonly [number, number] }
 ) & { stops: readonly ThemeGradientStop[] }>;
-// Optional window artwork and surface colors; solid tokens remain the readable fallback.
 export type ThemeBackdrop = Readonly<{
   layers: readonly ThemeGradient[];
   sidebar: string;

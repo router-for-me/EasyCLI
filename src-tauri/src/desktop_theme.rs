@@ -52,10 +52,25 @@ fn write_selection(path: &std::path::Path, selection: &ThemeSelection) -> Result
     super::write_bytes_atomically(path, &content)
 }
 
-// This configuration intentionally does not migrate theme-preference.json.
+fn read_legacy_preference(path: &std::path::Path) -> Option<ThemeSelection> {
+    let content = std::fs::read(path).ok()?;
+    let preference: String = serde_json::from_slice(&content).ok()?;
+    matches!(preference.as_str(), "light" | "dark" | "system").then(|| ThemeSelection {
+        version: 1,
+        selected_id: preference,
+        last_light_id: None,
+        last_dark_id: None,
+    })
+}
+
+fn load_selection(directory: &std::path::Path) -> Result<Option<ThemeSelection>, String> {
+    Ok(read_selection(&directory.join("theme-selection.json"))?
+        .or_else(|| read_legacy_preference(&directory.join("theme-preference.json"))))
+}
+
 #[tauri::command]
 pub(crate) fn get_theme_selection() -> Result<Option<ThemeSelection>, String> {
-    read_selection(&super::core_base_dir()?.join("theme-selection.json"))
+    load_selection(&super::core_base_dir()?)
 }
 
 #[tauri::command]
@@ -127,8 +142,6 @@ mod tests {
         ));
         std::fs::create_dir_all(&directory).unwrap();
         let path = directory.join("theme-selection.json");
-        // An old configuration must not influence the new default.
-        std::fs::write(directory.join("theme-preference.json"), b"\"dark\"").unwrap();
         assert_eq!(read_selection(&path).unwrap(), None);
         for id in ["light", "dark", "system", "theme1-dark", "removed-theme"] {
             let selection = ThemeSelection {
@@ -185,6 +198,47 @@ mod tests {
             };
             assert!(invalid.validate().is_err());
         }
+    }
+
+    #[test]
+    fn migrates_the_previous_theme_preference_until_a_selection_is_saved() {
+        let directory = std::env::temp_dir().join(format!(
+            "ezcpa-theme-legacy-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&directory).unwrap();
+        let legacy = directory.join("theme-preference.json");
+        assert_eq!(load_selection(&directory).unwrap(), None);
+        for preference in ["light", "dark", "system"] {
+            std::fs::write(&legacy, format!("\"{preference}\"")).unwrap();
+            assert_eq!(
+                load_selection(&directory).unwrap(),
+                Some(ThemeSelection {
+                    version: 1,
+                    selected_id: preference.to_string(),
+                    last_light_id: None,
+                    last_dark_id: None,
+                })
+            );
+        }
+        for data in ["\"sepia\"", "{"] {
+            std::fs::write(&legacy, data).unwrap();
+            assert_eq!(load_selection(&directory).unwrap(), None);
+        }
+        std::fs::write(&legacy, b"\"dark\"").unwrap();
+        let selection = ThemeSelection {
+            version: 1,
+            selected_id: "sakura-light".to_string(),
+            last_light_id: None,
+            last_dark_id: Some("graphite-dark".to_string()),
+        };
+        write_selection(&directory.join("theme-selection.json"), &selection).unwrap();
+        assert_eq!(load_selection(&directory).unwrap(), Some(selection));
+        std::fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
