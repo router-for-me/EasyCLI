@@ -167,6 +167,8 @@ pub(crate) fn harness_api_metadata(item: &Value) -> Option<Value> {
                 "max_tokens",
                 "max_output_tokens",
                 "maxOutputTokens",
+                "max_completion_tokens",
+                "maxCompletionTokens",
             ][..],
         ),
         (
