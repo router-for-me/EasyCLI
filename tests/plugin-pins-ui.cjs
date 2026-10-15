@@ -1,6 +1,7 @@
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const assert = require('node:assert/strict');
 const path = require('node:path');
+const fs = require('node:fs');
 
 (async () => {
   const { createServer } = await import('vite');
@@ -18,6 +19,11 @@ const path = require('node:path');
       args: ['--no-proxy-server'],
     });
     const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+    const capture = async name => {
+      if (!process.env.PLUGIN_SCREENSHOT_DIR) return;
+      fs.mkdirSync(process.env.PLUGIN_SCREENSHOT_DIR, { recursive: true });
+      await page.screenshot({ path: path.join(process.env.PLUGIN_SCREENSHOT_DIR, name), fullPage: true });
+    };
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.addInitScript(() => { if (window === window.top) localStorage.setItem('easy-cli-proxy-api.locale', 'en'); });
@@ -30,11 +36,14 @@ const path = require('node:path');
     await pin().waitFor();
     assert.equal(await pin().isChecked(), false);
     assert.equal(await shortcut().count(), 0);
+    await capture('pin-off.png');
     await pin().check();
     await shortcut().waitFor();
+    await capture('pin-on.png');
     await shortcut().click();
     await page.frameLocator('iframe').getByRole('heading', { name: 'Request Inspector' }).waitFor();
     assert.equal(await shortcut().getAttribute('aria-current'), 'page');
+    await capture('pinned-page.png');
     assert.equal(await nav().getByRole('button', { name: 'Plugins', exact: true }).getAttribute('aria-current'), null);
     assert.equal(await page.locator('iframe').getAttribute('sandbox'), 'allow-scripts allow-same-origin allow-forms allow-popups');
     await page.getByRole('button', { name: 'Open in browser', exact: true }).click();
