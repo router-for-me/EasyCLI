@@ -1,6 +1,61 @@
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", target_os = "macos"))]
 use super::support::agent_test_home;
 use super::*;
+
+#[cfg(target_os = "macos")]
+fn deepseek_desktop_test_asar(version: &str) -> Vec<u8> {
+    let package = format!(r#"{{"name":"deepseek-harness","version":"{version}"}}"#);
+    let header = serde_json::to_vec(&serde_json::json!({
+        "files": { "package.json": { "offset": "0", "size": package.len() } }
+    }))
+    .unwrap();
+    let payload_size = (4 + header.len()).next_multiple_of(4) as u32;
+    let header_size = 4 + payload_size;
+    let mut archive = Vec::new();
+    for value in [4, header_size, payload_size, header.len() as u32] {
+        archive.extend_from_slice(&value.to_le_bytes());
+    }
+    archive.extend(header);
+    archive.resize(8 + header_size as usize, 0);
+    archive.extend_from_slice(package.as_bytes());
+    archive
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn deepseek_desktop_macos_version_reads_bundle_and_executable_paths() {
+    let home = agent_test_home("deepseek-desktop-macos-version");
+    let bundle = home.join("Custom/DeepSeek Harness.app");
+    let resources = bundle.join("Contents/Resources");
+    let executable = bundle.join("Contents/MacOS/DeepSeek Harness");
+    fs::create_dir_all(&resources).unwrap();
+    fs::create_dir_all(executable.parent().unwrap()).unwrap();
+    fs::write(&executable, []).unwrap();
+    fs::write(
+        resources.join("app.asar"),
+        deepseek_desktop_test_asar("1.2.3-beta.1"),
+    )
+    .unwrap();
+    assert_eq!(
+        read_deepseek_harness_desktop_version(&bundle).as_deref(),
+        Some("1.2.3-beta.1")
+    );
+    assert_eq!(
+        read_deepseek_harness_desktop_version(&executable).as_deref(),
+        Some("1.2.3-beta.1")
+    );
+    // A bundle without Resources/app.asar must not fall back to a sibling archive.
+    let empty = home.join("Custom/Empty.app");
+    fs::create_dir_all(empty.join("Contents")).unwrap();
+    fs::create_dir_all(home.join("Resources")).unwrap();
+    fs::write(
+        home.join("Resources/app.asar"),
+        deepseek_desktop_test_asar("9.9.9"),
+    )
+    .unwrap();
+    assert!(read_deepseek_harness_desktop_version(&empty).is_none());
+    fs::remove_dir_all(&home).unwrap();
+}
 
 #[test]
 fn deepseek_desktop_launch_targets_are_independent_of_cli_and_version() {

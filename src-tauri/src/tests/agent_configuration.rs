@@ -1880,16 +1880,17 @@ fn kimi_grok_and_zcode_use_cpa_runtime_context_windows() {
         AgentClient::KimiCode,
         AgentClient::GrokBuild,
         AgentClient::ZCode,
+        AgentClient::WorkBuddy,
+        AgentClient::OpenClaw,
+        AgentClient::Hermes,
+        AgentClient::OpenCode,
+        AgentClient::ClaudeCode,
+        AgentClient::ClaudeDesktop,
     ] {
         assert!(agent_uses_cpa_runtime_context_windows(client));
     }
     for client in [
-        AgentClient::ClaudeCode,
-        AgentClient::ClaudeDesktop,
         AgentClient::Codex,
-        AgentClient::OpenCode,
-        AgentClient::OpenClaw,
-        AgentClient::Hermes,
         AgentClient::DeepSeekHarness,
         AgentClient::Omp,
     ] {
@@ -2921,4 +2922,213 @@ fn claude_code_fable_mapping_is_independent_and_round_trips() {
     let inspected = inspect_claude_code_model_mappings(&path).unwrap().unwrap();
     assert_eq!(inspected.fable, "route-fable");
     assert!(inspected.fable_1m);
+}
+
+
+#[test]
+fn runtime_metadata_propagates_context_max_tokens_and_image_modality_across_harnesses() {
+    let payload = serde_json::json!({
+        "models": [{
+            "slug": "gemini-4-argon-high",
+            "context_window": 1_048_576,
+            "max_tokens": 65_536,
+            "input_modalities": ["text", "image"]
+        }]
+    });
+    let runtime = crate::codex_catalog::parse_runtime_models(&payload).unwrap();
+    let mut models = vec![AgentModelOption {
+        name: "gemini-4-argon-high".to_string(),
+        alias: None,
+        is_alias: false,
+        context_window: None,
+        input_modalities: None,
+        harness_metadata: None,
+    }];
+    crate::codex_catalog::merge_runtime_context_windows(&mut models, &runtime);
+    assert_eq!(models[0].context_window, Some(1_048_576));
+    assert_eq!(
+        models[0].input_modalities.as_deref(),
+        Some(&["text".to_string(), "image".to_string()][..])
+    );
+    assert_eq!(
+        models[0].harness_metadata.as_ref().and_then(|m| m["maxTokens"].as_u64()),
+        Some(65_536)
+    );
+
+    let opencode: serde_json::Value = serde_json::from_str(
+        &build_opencode_agent_config(None, "http://127.0.0.1:8317/v1", "test-key", "gemini-4-argon-high", &models).unwrap()
+    ).unwrap();
+    assert_eq!(
+        opencode["provider"]["cpa-gui"]["models"]["gemini-4-argon-high"]["limit"]["context"],
+        serde_json::json!(1_048_576)
+    );
+    assert_eq!(
+        opencode["provider"]["cpa-gui"]["models"]["gemini-4-argon-high"]["limit"]["output"],
+        serde_json::json!(65_536)
+    );
+
+    let kimi: toml::Value = toml::from_str(
+        &build_kimi_code_agent_config(None, "http://127.0.0.1:8317/v1", "test-key", "gemini-4-argon-high", &models).unwrap()
+    ).unwrap();
+    let kimi_entry = &kimi["models"]["cpa-gui/gemini-4-argon-high"];
+    assert_eq!(kimi_entry["max_context_size"].as_integer(), Some(1_048_576));
+    assert_eq!(kimi_entry["max_output_size"].as_integer(), Some(65_536));
+    assert_eq!(
+        kimi_entry["capabilities"],
+        toml::Value::Array(vec![
+            toml::Value::String("tool_use".to_string()),
+            toml::Value::String("image_in".to_string()),
+        ])
+    );
+
+    // Claude context resolution preserves configured/runtime limits and uses bundled values as fallback.
+    assert_eq!(
+        crate::claude_catalog::context_window_for("gemini-4-argon-high", Some(64_000)).unwrap(),
+        64_000
+    );
+    assert_eq!(
+        crate::claude_catalog::context_window_for("gemini-4-argon-high", None).unwrap(),
+        1_048_576
+    );
+
+    // OpenCode writes limit.output independently when only maxTokens metadata is present.
+    let output_only_models = vec![AgentModelOption {
+        name: "output-only-model".to_string(),
+        alias: None,
+        is_alias: false,
+        context_window: None,
+        input_modalities: None,
+        harness_metadata: Some(serde_json::json!({"maxTokens": 16_384})),
+    }];
+    let opencode_output_only: serde_json::Value = serde_json::from_str(
+        &build_opencode_agent_config(None, "http://127.0.0.1:8317/v1", "test-key", "output-only-model", &output_only_models).unwrap()
+    ).unwrap();
+    let opencode_limit = &opencode_output_only["provider"]["cpa-gui"]["models"]["output-only-model"]["limit"];
+    assert!(opencode_limit.get("context").is_none());
+    assert_eq!(opencode_limit["output"], serde_json::json!(16_384));
+
+    // Reconfiguring Kimi Code merges image_in into existing capability arrays while preserving custom entries.
+    let existing_kimi = r#"
+[models."cpa-gui/gemini-4-argon-high"]
+provider = "cpa-gui"
+model = "gemini-4-argon-high"
+max_context_size = 128000
+capabilities = ["tool_use", "custom_cap"]
+"#;
+    let kimi_reconfigured: toml::Value = toml::from_str(
+        &build_kimi_code_agent_config(Some(existing_kimi), "http://127.0.0.1:8317/v1", "test-key", "gemini-4-argon-high", &models).unwrap()
+    ).unwrap();
+    assert_eq!(
+        kimi_reconfigured["models"]["cpa-gui/gemini-4-argon-high"]["capabilities"],
+        toml::Value::Array(vec![
+            toml::Value::String("tool_use".to_string()),
+            toml::Value::String("custom_cap".to_string()),
+            toml::Value::String("image_in".to_string()),
+        ])
+    );
+
+    // Reconfiguring Kimi Code with explicit text-only modalities removes image_in while preserving custom entries,
+    // whereas unknown modalities (None) leave existing image_in intact.
+    let existing_kimi_with_image = r#"
+[models."cpa-gui/gemini-4-argon-high"]
+provider = "cpa-gui"
+model = "gemini-4-argon-high"
+max_context_size = 128000
+capabilities = ["tool_use", "custom_cap", "image_in"]
+"#;
+    let text_only_models = vec![AgentModelOption {
+        name: "gemini-4-argon-high".to_string(),
+        alias: None,
+        is_alias: false,
+        context_window: Some(1_048_576),
+        input_modalities: Some(vec!["text".to_string()]),
+        harness_metadata: None,
+    }];
+    let kimi_text_only: toml::Value = toml::from_str(
+        &build_kimi_code_agent_config(
+            Some(existing_kimi_with_image),
+            "http://127.0.0.1:8317/v1",
+            "test-key",
+            "gemini-4-argon-high",
+            &text_only_models,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        kimi_text_only["models"]["cpa-gui/gemini-4-argon-high"]["capabilities"],
+        toml::Value::Array(vec![
+            toml::Value::String("tool_use".to_string()),
+            toml::Value::String("custom_cap".to_string()),
+        ])
+    );
+
+    let unknown_modality_models = vec![AgentModelOption {
+        name: "gemini-4-argon-high".to_string(),
+        alias: None,
+        is_alias: false,
+        context_window: Some(1_048_576),
+        input_modalities: None,
+        harness_metadata: None,
+    }];
+    let kimi_unknown_modalities: toml::Value = toml::from_str(
+        &build_kimi_code_agent_config(
+            Some(existing_kimi_with_image),
+            "http://127.0.0.1:8317/v1",
+            "test-key",
+            "gemini-4-argon-high",
+            &unknown_modality_models,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        kimi_unknown_modalities["models"]["cpa-gui/gemini-4-argon-high"]["capabilities"],
+        toml::Value::Array(vec![
+            toml::Value::String("tool_use".to_string()),
+            toml::Value::String("custom_cap".to_string()),
+            toml::Value::String("image_in".to_string()),
+        ])
+    );
+
+    // Configured max-context-length applies to unmatched public aliases and when the runtime catalog is unavailable.
+    let mut public_models = vec![
+        AgentModelOption {
+            name: "gemini-4-argon-high".to_string(),
+            alias: None,
+            is_alias: false,
+            context_window: None,
+            input_modalities: None,
+            harness_metadata: None,
+        },
+        AgentModelOption {
+            name: "unmatched-public-alias".to_string(),
+            alias: None,
+            is_alias: true,
+            context_window: None,
+            input_modalities: None,
+            harness_metadata: None,
+        },
+    ];
+    let config_yaml = r#"
+codex-api-key:
+  - models:
+      - name: upstream-model
+        alias: unmatched-public-alias
+        max-context-length: 64000
+"#;
+    enrich_harness_context_windows(&mut public_models, &runtime, Some(config_yaml)).unwrap();
+    assert_eq!(public_models[0].context_window, Some(1_048_576));
+    assert_eq!(public_models[1].context_window, Some(64_000));
+
+    let mut offline_runtime_models = vec![AgentModelOption {
+        name: "unmatched-public-alias".to_string(),
+        alias: None,
+        is_alias: true,
+        context_window: None,
+        input_modalities: None,
+        harness_metadata: None,
+    }];
+    enrich_harness_context_windows(&mut offline_runtime_models, &[], Some(config_yaml)).unwrap();
+    assert_eq!(offline_runtime_models[0].context_window, Some(64_000));
 }

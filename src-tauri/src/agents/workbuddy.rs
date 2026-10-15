@@ -85,9 +85,13 @@ pub(crate) fn find_workbuddy_desktop_executable(home: &Path) -> Option<PathBuf> 
             }
         }
     }
+    #[cfg(all(target_os = "macos", not(test)))]
+    let roots = [PathBuf::from("/Applications"), home.join("Applications")];
+    #[cfg(all(target_os = "macos", test))]
+    let roots = [home.join("Applications")];
     #[cfg(target_os = "macos")]
     let found = find_workbuddy_macos_executable_in_roots(
-        &[PathBuf::from("/Applications"), home.join("Applications")],
+        &roots,
         read_workbuddy_bundle_executable,
     );
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]

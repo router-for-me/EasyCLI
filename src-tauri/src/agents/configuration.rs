@@ -3237,11 +3237,37 @@ pub(crate) fn build_opencode_agent_config(
     root.entry("$schema".to_string())
         .or_insert_with(|| serde_json::json!("https://opencode.ai/config.json"));
     let providers = ensure_json_object_entry(&mut root, "provider");
+    let existing_models = providers
+        .get(MANAGED_AGENT_PROVIDER_ID)
+        .and_then(serde_json::Value::as_object)
+        .and_then(|provider| provider.get("models"))
+        .and_then(serde_json::Value::as_object)
+        .cloned()
+        .unwrap_or_default();
     let models = ordered_agent_models(available_models, model)
         .into_iter()
         .map(|model| {
             let display_name = model.alias.as_deref().unwrap_or(&model.name).to_string();
-            (model.name, serde_json::json!({ "name": display_name }))
+            let mut entry = existing_models
+                .get(&model.name)
+                .and_then(serde_json::Value::as_object)
+                .cloned()
+                .unwrap_or_default();
+            entry.insert("name".to_string(), serde_json::json!(display_name));
+            if let Some(context_window) = model.context_window {
+                let limit = ensure_json_object_entry(&mut entry, "limit");
+                limit.insert("context".to_string(), serde_json::json!(context_window));
+            }
+            if let Some(max_tokens) = model
+                .harness_metadata
+                .as_ref()
+                .and_then(|meta| meta.get("maxTokens"))
+                .and_then(serde_json::Value::as_u64)
+            {
+                let limit = ensure_json_object_entry(&mut entry, "limit");
+                limit.insert("output".to_string(), serde_json::json!(max_tokens));
+            }
+            (model.name, serde_json::Value::Object(entry))
         })
         .collect::<serde_json::Map<_, _>>();
     let managed_provider = ensure_json_object_entry(providers, MANAGED_AGENT_PROVIDER_ID);
@@ -3628,16 +3654,20 @@ pub(crate) fn build_kimi_code_agent_config(
 
     let models = ensure_toml_child_table(document.as_table_mut(), "models");
     let prefix = format!("{MANAGED_AGENT_PROVIDER_ID}/");
+    let mut existing_tables = std::collections::HashMap::new();
     let stale = models
         .iter()
         .map(|(key, _)| key.to_string())
         .filter(|key| key.starts_with(&prefix))
         .collect::<Vec<_>>();
     for key in stale {
-        models.remove(&key);
+        if let Some(table) = models.remove(&key).and_then(|item| item.into_table().ok()) {
+            existing_tables.insert(key, table);
+        }
     }
     for option in ordered_agent_models(available_models, model) {
-        let mut entry = Table::new();
+        let alias_key = managed_model_alias(&option.name);
+        let mut entry = existing_tables.remove(&alias_key).unwrap_or_else(Table::new);
         entry.insert("provider", value(MANAGED_AGENT_PROVIDER_ID));
         entry.insert("model", value(option.name.clone()));
         entry.insert(
@@ -3649,10 +3679,42 @@ pub(crate) fn build_kimi_code_agent_config(
             .unwrap_or(200_000)
             .min(i64::MAX as u64) as i64;
         entry.insert("max_context_size", value(context));
-        let mut capabilities = Array::new();
-        capabilities.push("tool_use");
-        entry.insert("capabilities", value(capabilities));
-        models.insert(&managed_model_alias(&option.name), Item::Table(entry));
+        if let Some(max_tokens) = option
+            .harness_metadata
+            .as_ref()
+            .and_then(|meta| meta.get("maxTokens"))
+            .and_then(serde_json::Value::as_u64)
+        {
+            entry.insert("max_output_size", value(max_tokens.min(i64::MAX as u64) as i64));
+        }
+        let image_modality = option
+            .input_modalities
+            .as_ref()
+            .map(|modalities| modalities.iter().any(|modality| modality == "image"));
+        if let Some(capabilities) = entry.get_mut("capabilities").and_then(Item::as_array_mut) {
+            if !capabilities.iter().any(|item| item.as_str() == Some("tool_use")) {
+                capabilities.push("tool_use");
+            }
+            match image_modality {
+                Some(true) => {
+                    if !capabilities.iter().any(|item| item.as_str() == Some("image_in")) {
+                        capabilities.push("image_in");
+                    }
+                }
+                Some(false) => {
+                    capabilities.retain(|item| item.as_str() != Some("image_in"));
+                }
+                None => {}
+            }
+        } else if !entry.contains_key("capabilities") {
+            let mut capabilities = Array::new();
+            capabilities.push("tool_use");
+            if image_modality == Some(true) {
+                capabilities.push("image_in");
+            }
+            entry.insert("capabilities", value(capabilities));
+        }
+        models.insert(&alias_key, Item::Table(entry));
     }
     let rendered = document.to_string();
     toml::from_str::<toml::Value>(&rendered)

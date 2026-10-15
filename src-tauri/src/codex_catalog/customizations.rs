@@ -417,6 +417,7 @@ mod tests {
             description: None,
             context_window: None,
             max_context_window: None,
+            max_tokens: None,
             context_source: "template",
             input_modalities: None,
             default_reasoning_level: None,

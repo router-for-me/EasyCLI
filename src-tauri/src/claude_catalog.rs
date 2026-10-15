@@ -19,11 +19,8 @@ pub(crate) fn context_window_for(
     runtime_context_window: Option<u64>,
 ) -> Result<u64, String> {
     let catalog = catalog_state()?;
-    Ok(catalog
-        .context_windows
-        .get(&normalize_id(model_name))
-        .copied()
-        .or(runtime_context_window)
+    Ok(runtime_context_window
+        .or_else(|| catalog.context_windows.get(&normalize_id(model_name)).copied())
         .unwrap_or(catalog.fallback_context_window))
 }
 
