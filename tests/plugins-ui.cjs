@@ -159,7 +159,15 @@ const fs = require('node:fs');
     await sourceSelector.selectOption('id:offline');
     await page.getByRole('heading', { name: 'No matching plugins' }).waitFor();
     await page.getByText('Offline source: Fixture registry unavailable').waitFor();
-    await sourceSelector.selectOption('');
+    // Both local-card shortcuts must escape a previously selected registry.
+    for (const action of ['Find in store', 'Check for updates']) {
+      await sourceSelector.selectOption('id:offline');
+      await tab('Local plugins').click();
+      await card('Sample provider').getByRole('button', { name: action, exact: true }).click();
+      await card('Sample provider').waitFor();
+      assert.equal(await sourceSelector.inputValue(), '', `${action} clears the previous registry filter`);
+    }
+    await search.fill('');
     await page.getByRole('combobox', { name: 'Plugin store' }).selectOption('updates');
     assert.equal(await page.locator('.plugin-card').count(), 1);
     await page.getByRole('combobox', { name: 'Plugin store' }).selectOption('all');
