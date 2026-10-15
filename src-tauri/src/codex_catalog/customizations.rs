@@ -350,12 +350,11 @@ fn decode_customizations(content: &[u8]) -> Result<ModelCustomizations, String> 
 }
 
 pub(crate) fn load_customizations(path: &Path) -> Result<(), String> {
-    let content = match std::fs::read(path) {
-        Ok(content) => content,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+    let customizations = match std::fs::read(path) {
+        Ok(content) => decode_customizations(&content)?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Default::default(),
         Err(error) => return Err(format!("Failed to read Codex custom model configuration: {error}")),
     };
-    let customizations = decode_customizations(&content)?;
     let mut state = catalog_state()?
         .write()
         .map_err(|_| "Codex model catalog memory lock is poisoned")?;

@@ -36,6 +36,9 @@ pub(crate) fn resolve_pi_executable(
 static CODEX_CATALOG_SYNC_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 static CODEX_CATALOG_UPDATE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 static CODEX_CATALOG_REFRESH: tokio::sync::Notify = tokio::sync::Notify::const_new();
+static CODEX_CATALOG_FILE_SIGNATURES: std::sync::Mutex<
+    Option<HashMap<PathBuf, Option<(u64, Option<SystemTime>)>>>,
+> = std::sync::Mutex::new(None);
 
 #[derive(Clone, Copy)]
 enum AgentStatusDetectionTarget {
@@ -433,6 +436,8 @@ pub(crate) async fn update_codex_model_catalog_inner(
     let revision = codex_catalog::validate_catalog_json(&catalog_json)
         .map_err(|error| format!("GitHub Codex model catalog verification failed: {error}"))?;
 
+    let _sync_guard = CODEX_CATALOG_SYNC_LOCK.lock().await;
+    reload_changed_codex_catalog_files(app);
     if revision < codex_catalog::current_catalog_revision()?
         || codex_catalog::current_catalog_json()? == catalog_json
     {
@@ -443,6 +448,7 @@ pub(crate) async fn update_codex_model_catalog_inner(
 
     let path = codex_model_catalog_override_path(app)?;
     write_bytes_atomically(&path, catalog_json.as_bytes())?;
+    record_codex_catalog_file_signature(&path);
     let changed = codex_catalog::activate_catalog_json(&catalog_json)?;
     if changed {
         request_codex_model_catalog_refresh();
@@ -463,14 +469,24 @@ pub(crate) fn codex_model_catalog_override_path(app: &tauri::AppHandle) -> Resul
 }
 
 pub(crate) fn load_codex_model_catalog_override(app: &tauri::AppHandle) -> Result<(), String> {
-    let path = codex_model_catalog_override_path(app)?;
-    if !path.is_file() {
-        return Ok(());
+    load_codex_model_catalog_override_from_path(&codex_model_catalog_override_path(app)?)
+}
+
+fn load_codex_model_catalog_override_from_path(path: &Path) -> Result<(), String> {
+    let signature = codex_catalog_file_signature(path);
+    match fs::read_to_string(path) {
+        Ok(catalog_json) => {
+            codex_catalog::activate_catalog_json(&catalog_json)
+                .map_err(|error| format!("Invalid local Codex model catalog update file: {error}"))?;
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            codex_catalog::reset_to_embedded_catalog()?;
+        }
+        Err(error) => {
+            return Err(format!("Failed to read local Codex model catalog update file: {error}"));
+        }
     }
-    let catalog_json = fs::read_to_string(&path)
-        .map_err(|error| format!("Failed to read local Codex model catalog update file: {error}"))?;
-    codex_catalog::activate_catalog_json(&catalog_json)
-        .map_err(|error| format!("Invalid local Codex model catalog update file: {error}"))?;
+    store_codex_catalog_file_signature(path, signature);
     Ok(())
 }
 
@@ -479,14 +495,82 @@ fn codex_model_customizations_path(app: &tauri::AppHandle) -> Result<PathBuf, St
 }
 
 pub(crate) fn load_codex_model_customizations(app: &tauri::AppHandle) -> Result<(), String> {
-    codex_catalog::load_customizations(&codex_model_customizations_path(app)?)
+    load_codex_model_customizations_from_path(&codex_model_customizations_path(app)?)
+}
+
+fn load_codex_model_customizations_from_path(path: &Path) -> Result<(), String> {
+    let signature = codex_catalog_file_signature(path);
+    codex_catalog::load_customizations(path)?;
+    store_codex_catalog_file_signature(path, signature);
+    Ok(())
+}
+
+fn codex_catalog_file_signature(path: &Path) -> Option<(u64, Option<SystemTime>)> {
+    fs::metadata(path)
+        .ok()
+        .map(|metadata| (metadata.len(), metadata.modified().ok()))
+}
+
+fn store_codex_catalog_file_signature(path: &Path, signature: Option<(u64, Option<SystemTime>)>) -> bool {
+    let mut signatures = CODEX_CATALOG_FILE_SIGNATURES
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let signatures = signatures.get_or_insert_with(HashMap::new);
+    if signatures.get(path) == Some(&signature) {
+        return false;
+    }
+    signatures.insert(path.to_path_buf(), signature);
+    true
+}
+
+/// Records the size and modification time of a catalog source file and
+/// reports whether they differ from the previously recorded values.
+fn record_codex_catalog_file_signature(path: &Path) -> bool {
+    store_codex_catalog_file_signature(path, codex_catalog_file_signature(path))
+}
+
+fn codex_catalog_file_changed(path: &Path) -> bool {
+    let signature = codex_catalog_file_signature(path);
+    CODEX_CATALOG_FILE_SIGNATURES
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .as_ref()
+        .and_then(|signatures| signatures.get(path))
+        != Some(&signature)
+}
+
+/// Reloads the local catalog update file and the saved model customizations
+/// when they changed on disk after they were last loaded. Without this, the
+/// background synchronization keeps regenerating the Codex catalog from the
+/// copies read at startup and reverts external edits to these files.
+fn reload_changed_codex_catalog_files(app: &tauri::AppHandle) {
+    match codex_model_catalog_override_path(app) {
+        Ok(path) if codex_catalog_file_changed(&path) => {
+            if let Err(error) = load_codex_model_catalog_override(app) {
+                eprintln!("Failed to reload Codex model catalog update file; keeping the loaded catalog: {error}");
+            }
+        }
+        Ok(_) => {}
+        Err(error) => eprintln!("{error}"),
+    }
+    match codex_model_customizations_path(app) {
+        Ok(path) if codex_catalog_file_changed(&path) => {
+            if let Err(error) = load_codex_model_customizations(app) {
+                eprintln!("Failed to reload Codex custom model configuration; keeping the loaded configuration: {error}");
+            }
+        }
+        Ok(_) => {}
+        Err(error) => eprintln!("{error}"),
+    }
 }
 
 #[tauri::command]
 pub(crate) async fn get_codex_model_catalog_editor(
+    app: tauri::AppHandle,
     gui_config_state: tauri::State<'_, GuiConfigState>,
 ) -> Result<codex_catalog::CatalogEditorSnapshot, String> {
     let _sync_guard = CODEX_CATALOG_SYNC_LOCK.lock().await;
+    reload_changed_codex_catalog_files(&app);
     let config = gui_config_state.snapshot()?;
     let runtime_models = fetch_codex_catalog_runtime_models(&config).await?;
     codex_catalog::editor_snapshot(&runtime_models)
@@ -506,13 +590,13 @@ pub(crate) async fn save_codex_model_catalog_editor(
     request: codex_catalog::CatalogEditorRequest,
 ) -> Result<CodexCatalogEditorSaveResult, String> {
     let _sync_guard = CODEX_CATALOG_SYNC_LOCK.lock().await;
+    reload_changed_codex_catalog_files(&app);
     let config = gui_config_state.snapshot()?;
     let runtime_models = fetch_codex_catalog_runtime_models(&config).await?;
-    let snapshot = codex_catalog::save_customizations(
-        &codex_model_customizations_path(&app)?,
-        &runtime_models,
-        request,
-    )?;
+    let customizations_path = codex_model_customizations_path(&app)?;
+    let snapshot =
+        codex_catalog::save_customizations(&customizations_path, &runtime_models, request)?;
+    record_codex_catalog_file_signature(&customizations_path);
     let synchronization_error = prepare_codex_agent_models(&runtime_models)
         .and_then(|prepared| sync_prepared_codex_model_catalog(&app, &config, &prepared))
         .err();
@@ -989,6 +1073,7 @@ pub(crate) async fn refresh_applied_codex_model_catalog(
     config: &GuiConfigFile,
 ) -> Result<bool, String> {
     let _sync_guard = CODEX_CATALOG_SYNC_LOCK.lock().await;
+    reload_changed_codex_catalog_files(app);
     let runtime_models = fetch_codex_catalog_runtime_models(config).await?;
     let prepared = prepare_codex_agent_models(&runtime_models)?;
     sync_prepared_codex_model_catalog(app, config, &prepared)
@@ -1703,5 +1788,75 @@ pub(crate) fn format_agent_models_error(status: u16, body: &str) -> String {
             "Failed to get local model list ({status}): {}",
             truncate_for_error(body)
         )
+    }
+}
+
+#[cfg(test)]
+mod codex_catalog_file_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    fn temporary_path(name: &str) -> PathBuf {
+        static SEQUENCE: AtomicU64 = AtomicU64::new(0);
+        std::env::temp_dir().join(format!(
+            "cpa-codex-catalog-file-{name}-{}-{}.json",
+            std::process::id(),
+            SEQUENCE.fetch_add(1, Ordering::Relaxed)
+        ))
+    }
+
+    #[test]
+    fn catalog_source_file_changes_are_detected_after_loading() {
+        let path = temporary_path("signature");
+        let _ = fs::remove_file(&path);
+
+        assert!(record_codex_catalog_file_signature(&path));
+        assert!(!codex_catalog_file_changed(&path));
+
+        fs::write(&path, b"{\"version\":1,\"models\":{}}").unwrap();
+        assert!(codex_catalog_file_changed(&path));
+        assert!(record_codex_catalog_file_signature(&path));
+        assert!(!codex_catalog_file_changed(&path));
+        assert!(!record_codex_catalog_file_signature(&path));
+
+        fs::write(&path, b"{\"version\":1,\"models\":{\"a\":{}}}").unwrap();
+        assert!(codex_catalog_file_changed(&path));
+
+        fs::remove_file(&path).unwrap();
+        assert!(codex_catalog_file_changed(&path));
+    }
+
+    #[test]
+    fn invalid_customizations_file_does_not_record_signature_or_drop_loaded_state() {
+        let path = temporary_path("customizations");
+        let _ = fs::remove_file(&path);
+
+        fs::write(
+            &path,
+            r#"{"version":1,"models":{"cpa-test-reload-only-model":{"effective_context_window_percent":100}}}"#,
+        )
+        .unwrap();
+        load_codex_model_customizations_from_path(&path).unwrap();
+        assert!(!codex_catalog_file_changed(&path));
+
+        fs::write(&path, b"{invalid-json").unwrap();
+        assert!(codex_catalog_file_changed(&path));
+        assert!(load_codex_model_customizations_from_path(&path).is_err());
+        assert!(codex_catalog_file_changed(&path));
+
+        let runtime = codex_catalog::parse_public_models(&serde_json::json!({
+            "data": [{"id": "cpa-test-reload-only-model"}]
+        }))
+        .unwrap();
+        let prepared = codex_catalog::prepare_catalog(&runtime).unwrap();
+        let catalog: serde_json::Value = serde_json::from_str(&prepared.json).unwrap();
+        assert_eq!(
+            catalog["models"][0]["effective_context_window_percent"],
+            serde_json::json!(100)
+        );
+
+        fs::remove_file(&path).unwrap();
+        load_codex_model_customizations_from_path(&path).unwrap();
+        assert!(!codex_catalog_file_changed(&path));
     }
 }
