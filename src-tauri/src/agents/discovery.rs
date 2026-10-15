@@ -2480,7 +2480,7 @@ pub(crate) fn parse_codex_owl_app_version(content: &str) -> Option<String> {
     None
 }
 
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "windows", target_os = "macos"))]
 pub(crate) fn read_codex_asar_version(path: &Path) -> Option<String> {
     use std::io::{Read, Seek, SeekFrom};
 
@@ -2716,6 +2716,10 @@ pub(crate) fn agent_executable_directories_from_environment(
     registered.iter().cloned().for_each(&mut push);
     [
         home.join(".local/bin"),
+        home.join(".openclaw/bin"),
+        home.join(".kimi-code/bin"),
+        home.join(".grok/bin"),
+        home.join(".opencode/bin"),
         home.join(".npm-global/bin"),
         home.join(".bun/bin"),
         home.join(".cargo/bin"),

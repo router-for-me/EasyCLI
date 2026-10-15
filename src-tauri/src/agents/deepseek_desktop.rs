@@ -19,7 +19,19 @@ pub(crate) fn find_deepseek_harness_desktop_application(home: &Path) -> Option<P
         );
         find_windows_deepseek_harness_desktop(&local, &roots, &registrations)
     }
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
+    {
+        #[allow(unused_mut)]
+        let mut candidates = vec![
+            home.join("Applications/DeepSeek Harness.app/Contents/MacOS/DeepSeek Harness"),
+        ];
+        #[cfg(not(test))]
+        candidates.push(PathBuf::from(
+            "/Applications/DeepSeek Harness.app/Contents/MacOS/DeepSeek Harness",
+        ));
+        candidates.into_iter().find(|path| path.is_file())
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
         let _ = home;
         None
@@ -63,7 +75,11 @@ pub(crate) fn read_deepseek_harness_desktop_version(application: &Path) -> Optio
         read_codex_asar_version(&application.parent()?.join("resources/app.asar"))
             .or_else(|| read_windows_executable_version(application))
     }
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
+    {
+        read_codex_asar_version(&application.parent()?.parent()?.join("Resources/app.asar"))
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
         let _ = application;
         None

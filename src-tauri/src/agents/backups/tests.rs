@@ -1174,14 +1174,14 @@ fn linked_configuration_and_backup_directories_are_rejected() {
         fs::read_to_string(outside.0.join("config.toml")).unwrap(),
         "custom='outside'"
     );
-    fs::remove_dir(link).unwrap();
+    fs::remove_file(link).or_else(|_| fs::remove_dir(link)).unwrap();
     let data = agent_data_directory(&paths).unwrap();
     fs::create_dir_all(&data).unwrap();
     link_directory(&outside.0, &data.join("backups"));
     assert!(create_backup("codex", &home.0).is_err());
     assert!(list_backups("codex", &home.0).is_err());
     assert!(delete_backup("codex", &home.0, "1").is_err());
-    fs::remove_dir(data.join("backups")).unwrap();
+    fs::remove_file(data.join("backups")).or_else(|_| fs::remove_dir(data.join("backups"))).unwrap();
 }
 
 #[tokio::test]

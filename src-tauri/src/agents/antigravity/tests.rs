@@ -194,6 +194,11 @@ fn antigravity_cli_helper_uses_managed_credentials_and_model() {
     };
     fs::create_dir_all(binary.parent().unwrap()).unwrap();
     fs::write(&binary, []).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&binary, fs::Permissions::from_mode(0o755)).unwrap();
+    }
     let args = [
         "cpa".into(),
         "--cpa-antigravity-cli".into(),

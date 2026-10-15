@@ -23,6 +23,7 @@ pub(crate) struct CodexRuntimeModel {
     description: Option<String>,
     context_window: Option<u64>,
     max_context_window: Option<u64>,
+    max_tokens: Option<u64>,
     context_source: &'static str,
     input_modalities: Option<Vec<String>>,
     default_reasoning_level: Option<String>,
@@ -192,6 +193,17 @@ pub(crate) fn parse_runtime_models(payload: &Value) -> Result<Vec<CodexRuntimeMo
                 "maxContextLength",
             ],
         );
+        let max_tokens = positive_u64_field(
+            value,
+            &[
+                "max_tokens",
+                "maxTokens",
+                "max_output_tokens",
+                "maxOutputTokens",
+                "max_completion_tokens",
+                "maxCompletionTokens",
+            ],
+        );
         let input_modalities = parse_modalities(value);
         let default_reasoning_level =
             optional_string(value, &["default_reasoning_level", "defaultReasoningLevel"])
@@ -206,6 +218,7 @@ pub(crate) fn parse_runtime_models(payload: &Value) -> Result<Vec<CodexRuntimeMo
             description: description.clone(),
             context_window,
             max_context_window,
+            max_tokens,
             context_source: if context_window.or(max_context_window).is_some() {
                 "client"
             } else {
@@ -249,6 +262,20 @@ pub(crate) fn merge_runtime_context_windows(
             .or(runtime_model.max_context_window)
         {
             model.context_window = Some(context_window);
+        }
+        if model.input_modalities.is_none() {
+            model.input_modalities = runtime_model.input_modalities.clone();
+        }
+        if let Some(max_tokens) = runtime_model.max_tokens {
+            let mut metadata = model
+                .harness_metadata
+                .take()
+                .and_then(|value| value.as_object().cloned())
+                .unwrap_or_default();
+            metadata
+                .entry("maxTokens".to_string())
+                .or_insert_with(|| Value::from(max_tokens));
+            model.harness_metadata = Some(Value::Object(metadata));
         }
     }
 }

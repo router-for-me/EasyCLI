@@ -122,7 +122,10 @@ fn harness_context_enrichment_matches_codex_and_preserves_manual_overrides() {
     assert_eq!(models[1].context_window, Some(131072));
     assert_eq!(models[2].context_window, None);
     assert_eq!(models[1].input_modalities, Some(vec!["text".into()]));
-    assert_eq!(models[2].input_modalities, None);
+    assert_eq!(
+        models[2].input_modalities,
+        Some(vec!["text".into(), "image".into()])
+    );
     enrich_harness_context_windows(&mut models, &[], Some("codex-api-key:\n  - models:\n      - name: upstream-model\n        alias: vision\n        max-context-length: 64000\n")).unwrap();
     let snapshot = harness_editor_snapshot(&home, &models, 8317).unwrap();
     assert_eq!(snapshot.models[0].defaults["contextWindow"], 64000);
