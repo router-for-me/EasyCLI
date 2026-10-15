@@ -1,14 +1,7 @@
 use super::*;
 
 pub(super) fn agent_test_home(name: &str) -> PathBuf {
-    let path = std::env::temp_dir().join(format!(
-        "cpa-gui-agent-{name}-{}-{}",
-        std::process::id(),
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    ));
+    let path = crate::unique_test_temp_path(&format!("cpa-gui-agent-{name}"));
     fs::create_dir_all(&path).unwrap();
     path
 }
@@ -53,5 +46,28 @@ pub(super) fn test_codex_oauth_thinking_source(model: &str) -> ResolvedThinkingA
             channel: "codex",
             force_mapping: false,
         },
+    }
+}
+
+#[test]
+fn unique_test_temp_paths_do_not_collide_across_threads() {
+    let threads = (0..8)
+        .map(|_| {
+            std::thread::spawn(|| {
+                (0..500)
+                    .map(|_| crate::unique_test_temp_path("cpa-unique-path"))
+                    .collect::<Vec<_>>()
+            })
+        })
+        .collect::<Vec<_>>();
+    let mut seen = std::collections::HashSet::new();
+    for thread in threads {
+        for path in thread.join().unwrap() {
+            assert!(
+                seen.insert(path.clone()),
+                "duplicate test path {}",
+                path.display()
+            );
+        }
     }
 }

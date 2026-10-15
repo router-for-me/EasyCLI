@@ -15,6 +15,12 @@ Use the bottom toolbar or query parameters:
 | `?mock=error` | Main backend reads fail so error and retry UI can be inspected |
 | `?mock=off` | Disable mock IPC |
 | `?mock=running&mockDelay=500` | Delay each IPC call by 500 ms (maximum 5000 ms) |
+| `?mock=running&mockPluginPages=12` | Add 12 extra plugin pages (maximum 30) so the sidebar plugin submenu auto-collapses at normal window sizes |
+
+Plugin pages are native child webviews in the desktop app, which the browser cannot
+render. The mock keeps the show, bounds, hide and close state (with the owner token contract) and draws a dashed `[data-mock-plugin-webview]` placeholder over the reported
+bounds (hidden while the webview is hidden or closed). It never loads the page; its
+`data-mock-url`, `data-mock-reloads` and `data-mock-labels` attributes expose the simulated state for tests.
 
 The selected scenario is remembered locally; an explicit `mock` query overrides it.
 

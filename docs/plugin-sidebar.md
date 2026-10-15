@@ -15,12 +15,11 @@ uninstalled plugins and pages no longer declared by active plugins. Catalog
 errors and unsupported/stopped cores do not erase preferences. Uninstalling from
 the plugin card removes its pins immediately, even if unloading needs a restart.
 
-Navigation resolves the current menu index from its path. Opening a shortcut uses
-the existing native resource URL command, shared iframe restrictions and
-**Open in browser** action. A changed menu order between the catalog lookup and
-native URL lookup cannot silently open another page. Logos use existing asset
-URL validation with a generic plugin icon on failure. No plugin ABI change or
-plugin-specific application code is required.
+Navigation resolves the current menu index from its path. Pinned shortcuts and
+entries in the complete Plugins submenu use the same upstream route, active-page
+state and native WebView. Collapsing the complete submenu leaves pins accessible;
+unpinning removes only the shortcut. Logos use existing asset URL validation
+with a generic plugin icon on failure. No plugin ABI changes are required.
 
 The catalog refreshes when the plugin page announces a change, on window focus,
 and every 15 seconds while visible and pins exist. Stopping the core hides pins

@@ -39,10 +39,37 @@ const path = require('node:path');
     await waiting.waitFor();
     assert.equal(await waiting.isDisabled(), true);
     assert.equal(await page.getByRole('button', { name: 'Start CLI', exact: true }).isDisabled(), true);
+    await page.evaluate(() => {
+      localStorage.setItem('cpa-gui.agent-selected-client.v1', 'opencode');
+      window.fixtureRemount();
+    });
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     assert.equal(await calls('restart_codex_cli_daemon'), 1);
     await page.evaluate(() => { window.fixtureDeferredCommands = []; window.fixturePendingCommands.splice(0).forEach(entry => entry.resolve()); });
-    await page.getByText('Codex CLI background service restarted. Start Codex CLI again to use the latest configuration.', { exact: true }).waitFor();
+    const restarted = page.getByText('Codex CLI background service restarted. Start Codex CLI again to use the latest configuration.', { exact: true });
+    assert.equal(await restarted.count(), 0);
+    await page.getByText('Codex', { exact: true }).click();
+    await restarted.waitFor();
     assert.equal(await calls('restart_codex_cli_daemon'), 1);
+    await page.evaluate(() => {
+      window.fixtureDeferredCommands = ['restart_codex_cli_daemon'];
+      window.fixtureFailedCommands = ['restart_codex_cli_daemon'];
+    });
+    await restart().click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Restart service', exact: true }).click();
+    await page.getByRole('button', { name: 'Waiting for tasks', exact: true }).waitFor();
+    await page.evaluate(() => {
+      localStorage.setItem('cpa-gui.agent-selected-client.v1', 'opencode');
+      window.fixtureRemount();
+    });
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    await page.evaluate(() => {
+      window.fixtureDeferredCommands = [];
+      window.fixturePendingCommands.splice(0).forEach(entry => entry.resolve());
+    });
+    assert.equal(await page.getByText(/模拟后台刷新失败/).count(), 0);
+    await page.getByText('Codex', { exact: true }).click();
+    await page.getByText(/模拟后台刷新失败/).waitFor();
     await open('daemon-stopped');
     await restart().click();
     await page.getByText('The Codex CLI background service is not running. The latest configuration loads the next time Codex CLI starts.', { exact: true }).waitFor();

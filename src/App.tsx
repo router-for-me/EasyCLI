@@ -1,7 +1,7 @@
 import { MessageNotice } from './appNotice';
 import { ThemeSelector } from './components/ThemeSelector';
 import { WindowFrame } from './components/WindowFrame';
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import {
@@ -38,16 +38,24 @@ import { QuotaPage } from './pages/QuotaPage';
 import { AgentsPage } from './pages/AgentsPage';
 import { EasyModePage } from './pages/EasyModePage';
 import { UsageRecordsPage } from './pages/UsageRecordsPage';
-import { PluginResourcePage } from './pages/PluginResourcePage';
 import { PluginResourceIcon } from './components/PluginResourceIcon';
 import { usePinnedPluginResources } from './pluginPins';
-import { pluginPinKey, resourcePin } from './services/pluginPins';
 import { pluginText } from './i18n/plugins';
 import { PluginsPage } from './pages/PluginsPage';
+import { PluginResourcePage } from './pages/PluginResourcePage';
+import { PluginNavChildren, PluginNavToggle } from './components/SidebarPluginNav';
+import { usePluginNavLayout } from './components/usePluginNavLayout';
+import { usePluginNavEntries } from './usePluginNavEntries';
+import {
+  findPluginNavEntry,
+  isPluginRoute,
+  resolvePluginNavLayout,
+  type PluginNavOverride,
+} from './services/pluginNavigation';
 import { languageOptions, useI18n } from './i18n';
 import { AppUpdateDialog, AppUpdateProvider, useAppUpdate } from './appUpdate';
 import { appUpdateIndicatorState } from './appUpdateModel';
-import { canOpenAppPage, isAlwaysAvailablePage, requestAppNavigation } from './navigation';
+import { canOpenAppPage, requestAppNavigation } from './navigation';
 import { useThemePreference } from './theme';
 import { usePrivacyMode } from './privacy';
 import { useDialogFocusTrap } from './components/useDialogFocusTrap';
@@ -99,12 +107,6 @@ const pages = [
     component: UsageRecordsPage,
   },
   {
-    id: 'plugins',
-    labelKey: 'app.nav.plugins',
-    icon: Puzzle,
-    component: PluginsPage,
-  },
-  {
     id: 'config',
     labelKey: 'app.nav.config',
     icon: Settings,
@@ -116,9 +118,16 @@ const pages = [
     icon: PackageOpen,
     component: VersionManagementPageWrapper,
   },
+  {
+    id: 'plugins',
+    labelKey: 'app.nav.plugins',
+    icon: Puzzle,
+    component: PluginsPage,
+  },
 ] as const;
 
-type PageId = (typeof pages)[number]['id'] | `plugin:${string}`;
+type PageId = (typeof pages)[number]['id'];
+type AppPageId = PageId | `/plugin-pages/${string}`;
 type WindowsCloseAction = 'exit' | 'minimize-to-tray';
 type WindowsCloseBehavior = 'ask' | WindowsCloseAction;
 
@@ -156,7 +165,7 @@ function AppContent() {
   const { locale, setLocale, t } = useI18n();
   const { info: appUpdateInfo, hasUpdate, processing: appUpdateProcessing } = useAppUpdate();
   const { latest: coreLatest, hasUpdate: coreHasUpdate } = useCoreUpdate();
-  const [active, setActive] = useState<PageId>('home');
+  const [active, setActive] = useState<AppPageId>('home');
   const [languageMenuOpen, setLanguageMenuOpen] = useState(false);
   const [theme, setTheme] = useThemePreference();
   const [themeMenuOpen, setThemeMenuOpen] = useState(false);
@@ -174,9 +183,21 @@ function AppContent() {
   const { status } = useCoreRuntime();
   const coreReady = Boolean(status?.ready);
   const pinnedPages = usePinnedPluginResources(coreReady);
-  const pinnedPage = pinnedPages.find(entry => `plugin:${pluginPinKey(resourcePin(entry))}` === active);
-  const activePage = pages.find((page) => page.id === active) ?? pages[0];
-  const ActivePage = activePage.component;
+  const [navElement, setNavElement] = useState<HTMLElement | null>(null);
+  const { entries: pluginEntries, fetched: pluginEntriesFetched } = usePluginNavEntries(coreReady);
+  const pluginEntry = findPluginNavEntry(pluginEntries, active);
+  const navPages = pages.filter((page) => page.id !== 'easy');
+  const { layout: autoPluginLayout, compact: navCompact } = usePluginNavLayout(navElement, navPages.length + pinnedPages.length + (pinnedPages.length ? 1 : 0), pluginEntries.length);
+  const [pluginReload, setPluginReload] = useState(0);
+  const [pluginNavOverride, setPluginNavOverride] = useState<PluginNavOverride | null>(null);
+  useEffect(() => setPluginNavOverride(null), [autoPluginLayout, pluginEntries.length]);
+  const pluginNavLayout = navCompact
+    ? 'expanded'
+    : resolvePluginNavLayout(autoPluginLayout, pluginEntries.length, pluginNavOverride);
+  const pluginNavExpanded = pluginNavLayout === 'expanded';
+  const pluginChildActive = pluginEntries.some((entry) => entry.route === active);
+  const activePage = pages.find((page) => page.id === active);
+  const ActivePage = activePage?.component;
   const selectedLanguage = languageOptions.find((option) => option.value === locale)
     ?? languageOptions[0];
   const availableUpdateLabel = [
@@ -188,10 +209,20 @@ function AppContent() {
       : '',
   ].filter(Boolean).join(' · ');
   useEffect(() => {
-    if (!canOpenAppPage(active, coreReady) || (active.startsWith('plugin:') && !pinnedPage)) {
+    if (!canOpenAppPage(active, coreReady)) {
       setActive('home');
     }
-  }, [active, coreReady, pinnedPage]);
+  }, [active, coreReady]);
+
+  useEffect(() => {
+    if (!coreReady) void invoke('close_plugin_webview').catch(() => undefined);
+  }, [coreReady]);
+
+  useEffect(() => {
+    if (pluginEntriesFetched && isPluginRoute(active) && !pluginEntry) {
+      setActive('plugins');
+    }
+  }, [active, pluginEntry, pluginEntriesFetched]);
 
   useEffect(() => {
     if (!languageMenuOpen) return undefined;
@@ -273,16 +304,17 @@ function AppContent() {
     options[next]?.focus();
   };
 
-  const select = useCallback((pageId: PageId) => {
+  const select = useCallback((pageId: AppPageId) => {
     if (!canOpenAppPage(pageId, coreReady)) {
       return;
     }
     if (pageId !== active) requestAppNavigation(() => setActive(pageId));
+    else if (isPluginRoute(pageId)) setPluginReload((value) => value + 1);
   }, [active, coreReady]);
 
   useEffect(() => {
     const handleNavigate = (event: Event) => {
-      const customEvent = event as CustomEvent<PageId>;
+      const customEvent = event as CustomEvent<AppPageId>;
       if (customEvent.detail) {
         select(customEvent.detail);
       }
@@ -348,15 +380,22 @@ function AppContent() {
               </div>
             </div>
 
-            <nav className="nav-section" aria-label={t('app.navigation')}>
-              {pages.filter((page) => page.id !== 'easy').map((page) => {
+            <nav
+              ref={setNavElement}
+              className="nav-section"
+              aria-label={t('app.navigation')}
+              data-plugin-layout={pluginEntries.length ? pluginNavLayout : undefined}
+            >
+              {navPages.map((page) => {
                 const Icon = page.icon;
-                const isActive = page.id === active;
+                const hasPluginChildren = page.id === 'plugins' && pluginEntries.length > 0;
+                const isActive = page.id === active
+                  || (hasPluginChildren && !pluginNavExpanded && pluginChildActive);
                 const locked = !canOpenAppPage(page.id, coreReady);
                 const updateIndicator = page.id === 'versions'
                   ? appUpdateIndicatorState(hasUpdate, coreHasUpdate, appUpdateProcessing)
                   : null;
-                return (
+                const row = (
                   <button
                     key={page.id}
                     type="button"
@@ -366,7 +405,7 @@ function AppContent() {
                     ]
                       .filter(Boolean)
                       .join(' ')}
-                    aria-current={isActive ? 'page' : undefined}
+                    aria-current={page.id === active ? 'page' : undefined}
                     disabled={locked}
                     title={locked ? t('app.nav.lockedHint') : undefined}
                     onClick={() => select(page.id)}
@@ -388,18 +427,41 @@ function AppContent() {
                     ) : null}
                   </button>
                 );
+                if (!hasPluginChildren) return row;
+                return (
+                  <Fragment key={page.id}>
+                    <div className="nav-plugin-parent">
+                      {row}
+                      <PluginNavToggle
+                        expanded={pluginNavExpanded}
+                        onToggle={() => setPluginNavOverride({
+                          layout: pluginNavExpanded ? 'collapsed' : 'expanded',
+                          auto: autoPluginLayout,
+                          count: pluginEntries.length,
+                        })}
+                      />
+                    </div>
+                    {pluginNavExpanded ? (
+                      <PluginNavChildren
+                        entries={pluginEntries}
+                        active={active}
+                        locked={!coreReady}
+                        onSelect={(route) => select(route as AppPageId)}
+                      />
+                    ) : null}
+                  </Fragment>
+                );
               })}
-              {pinnedPages.length > 0 && <>
+              {pinnedPages.length > 0 && <div className="nav-pinned-plugins">
                 <div className="nav-plugin-heading">{pluginText('pinnedPlugins', locale)}</div>
-                {pinnedPages.map(entry => {
-                  const id: PageId = `plugin:${pluginPinKey(resourcePin(entry))}`;
-                  return <button key={id} type="button" className={active === id ? 'active' : ''}
-                    aria-current={active === id ? 'page' : undefined} title={`${entry.pluginTitle}: ${entry.description}`}
-                    onClick={() => select(id)}>
+                {pinnedPages.map(entry => (
+                  <button key={entry.route} type="button" className={active === entry.route ? 'active' : ''}
+                    aria-current={active === entry.route ? 'page' : undefined} title={`${entry.pluginTitle}: ${entry.description}`}
+                    onClick={() => select(entry.route as AppPageId)}>
                     <PluginResourceIcon entry={entry} /><span>{entry.label}</span>
-                  </button>;
-                })}
-              </>}
+                  </button>
+                ))}
+              </div>}
             </nav>
 
             <div className="sidebar-bottom">
@@ -506,10 +568,12 @@ function AppContent() {
 
         <div className="workspace">
           <main className="content">
-            {pinnedPage ? (
-              <PluginResourcePage key={pluginPinKey(resourcePin(pinnedPage))} entry={pinnedPage} onBack={() => select('plugins')} />
-            ) : isAlwaysAvailablePage(activePage.id) || coreReady ? (
-              activePage.id === 'easy' ? (
+            {!canOpenAppPage(active, coreReady) ? (
+              <CoreLockedPage />
+            ) : pluginEntry ? (
+              <PluginResourcePage key={pluginEntry.route} entry={pluginEntry} reloadToken={pluginReload} />
+            ) : ActivePage ? (
+              active === 'easy' ? (
                 <EasyModePage
                   onExit={() => select('home')}
                   theme={theme}
@@ -520,9 +584,7 @@ function AppContent() {
               ) : (
                 <ActivePage />
               )
-            ) : (
-              <CoreLockedPage />
-            )}
+            ) : null}
           </main>
         </div>
       </div>

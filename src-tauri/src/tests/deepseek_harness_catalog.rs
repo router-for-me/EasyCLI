@@ -49,6 +49,8 @@ fn request(snapshot: HarnessEditorSnapshot) -> HarnessEditorRequest {
 fn harness_api_defaults_support_aliases_and_model_maps_without_guessing() {
     let models = parse_agent_model_options(&json!({"data":[
         {"id":"original","alias":"alias","fork":true,"supported_input_modalities":[" TEXT ","IMAGE","image"],"max_output_tokens":8192,"reasoning_efforts":{"off":null,"high":"high"}},
+        {"id":"camel-modalities","supportedInputModalities":["text","image","audio"],"max_completion_tokens":65536},
+        {"id":"camel-tokens","maxCompletionTokens":32768},
         {"id":"empty","input_modalities":[]}, {"id":"gpt-known-name"}
     ]})).unwrap();
     assert_eq!(
@@ -61,7 +63,19 @@ fn harness_api_defaults_support_aliases_and_model_maps_without_guessing() {
         models[1].harness_metadata.as_ref().unwrap()["maxTokens"],
         8192
     );
-    assert!(models[2..]
+    assert_eq!(
+        models[2].input_modalities,
+        Some(vec!["text".into(), "image".into()])
+    );
+    assert_eq!(
+        models[2].harness_metadata.as_ref().unwrap()["maxTokens"],
+        65536
+    );
+    assert_eq!(
+        models[3].harness_metadata.as_ref().unwrap()["maxTokens"],
+        32768
+    );
+    assert!(models[3..]
         .iter()
         .all(|model| model.input_modalities.is_none()));
     let mapped =

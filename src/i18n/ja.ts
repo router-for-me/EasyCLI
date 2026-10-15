@@ -5,6 +5,7 @@ import { authFileListJa } from './authFileList';
 
 export const jaOverrides = {
   'app.nav.plugins': 'プラグイン',
+  'app.nav.pluginPages': 'プラグインページ',
   'oauth.vertex.title': 'Vertex JSON ログイン',
   'oauth.vertex.locationPlaceholder': 'us-central1',
   'oauth.vertex.cardHint': 'Google サービスアカウントの JSON をインポートして Vertex AI にログインします。',

@@ -3,9 +3,13 @@ import { themeTokenProperties, type ThemeDefinition, type ThemeTokens } from './
 const materialSlots = ['surface', 'softSurface', 'workspaceBackground', 'hoverBackground'] as const;
 
 export function themeMaterialTokens(theme: ThemeDefinition): Readonly<ThemeTokens> {
-  if (!theme.backdrop) return theme.tokens;
+  // A configured thumb applies to both states unless an active override is supplied.
+  const tokens = theme.tokens.controlActiveThumb === undefined && theme.tokens.controlThumb !== undefined
+    ? { ...theme.tokens, controlActiveThumb: theme.tokens.controlThumb }
+    : theme.tokens;
+  if (!theme.backdrop) return tokens;
   return {
-    ...theme.tokens,
+    ...tokens,
     surface: theme.backdrop.panel,
     softSurface: theme.backdrop.inset ?? theme.backdrop.panel,
     workspaceBackground: theme.backdrop.inset ?? theme.backdrop.panel,

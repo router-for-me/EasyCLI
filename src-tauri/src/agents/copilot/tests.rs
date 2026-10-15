@@ -28,14 +28,7 @@ fn copilot_vscode_template_rejects_missing_or_rotated_credentials_without_writes
 struct Home(PathBuf);
 impl Home {
     fn new() -> Self {
-        let path = env::temp_dir().join(format!(
-            "cpa-copilot-test-{}-{}",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let path = crate::unique_test_temp_path("cpa-copilot-test");
         fs::create_dir_all(&path).unwrap();
         Self(path)
     }
@@ -373,6 +366,75 @@ fn copilot_native_credential_rotation_and_template_preserve_user_models() {
     assert_eq!(updated[0], root[0]);
     assert_eq!(updated[1]["apiKey"], reference);
     assert_eq!(updated[1]["models"][0]["id"], "new-model");
+}
+
+#[test]
+fn copilot_vscode_registers_all_models_with_individual_capabilities() {
+    let path = Path::new("chatLanguageModels.json");
+    let mut models = ["gpt-model", "claude-model", "gemini-model", "custom-alias", "unknown-model"]
+        .map(|name| AgentModelOption {
+            name: name.into(), alias: None, is_alias: false, context_window: None,
+            input_modalities: None, harness_metadata: None,
+        }).to_vec();
+    models[0].context_window = Some(256_000);
+    models[0].input_modalities = Some(vec!["text".into(), "image".into()]);
+    models[1].context_window = Some(200_000);
+    models[1].input_modalities = Some(vec!["text".into()]);
+    models[2].context_window = Some(1_000_000);
+    models[2].input_modalities = Some(vec![]);
+    models[3].is_alias = true;
+    models[3].alias = Some("upstream-model".into());
+    models[3].context_window = Some(8_192);
+    models[4].context_window = Some(0);
+    models.push(models[0].clone());
+    let other = json!({"vendor": "openai", "name": "User provider", "models": [{"id": "user-model"}]});
+    let before = json!([other, {"vendor": "customendpoint", "name": GROUP_NAME,
+        "apiKey": "${input:chat.lm.secret.fixture}", "models": [{"id": "stale-model"}]}]).to_string();
+    let build = |existing: &str, selected: &str| build_copilot_config(
+        AgentClient::VscodeCopilot, path, Some(existing), "http://localhost/v1/",
+        "plaintext-key", selected, &models).unwrap();
+    let content = build(&before, "claude-model");
+    let root: Value = serde_json::from_str(&content).unwrap();
+    assert_eq!(root[0], other);
+    assert_eq!(root.as_array().unwrap().len(), 2);
+    assert_eq!(root[1]["apiKey"], "${input:chat.lm.secret.fixture}");
+    assert!(!content.contains("plaintext-key"));
+    let entries = root[1]["models"].as_array().unwrap();
+    assert_eq!(entries.iter().map(|m| m["id"].as_str().unwrap()).collect::<Vec<_>>(),
+        ["claude-model", "gpt-model", "gemini-model", "custom-alias", "unknown-model"]);
+    for (entry, (context, vision)) in entries.iter().zip([
+        (200_000, false), (256_000, true), (1_000_000, true), (8_192, true), (128_000, true),
+    ]) {
+        assert_eq!(entry["contextWindow"], context);
+        assert_eq!(entry["vision"], vision);
+        assert_eq!(entry["url"], "http://localhost/v1/chat/completions");
+        assert_eq!(entry["apiType"], "chat-completions");
+        assert_eq!(entry["toolCalling"], true);
+        assert!(entry["maxOutputTokens"].as_u64().unwrap() < context as u64);
+        assert!(entry.get("maxInputTokens").is_none());
+    }
+    assert_eq!(build(&content, "claude-model"), content);
+    let switched: Value = serde_json::from_str(&build(&content, "gemini-model")).unwrap();
+    assert_eq!(switched[1]["models"][0]["id"], "gemini-model");
+    assert_eq!(switched[1]["models"].as_array().unwrap().len(), 5);
+}
+
+#[test]
+fn copilot_vscode_keeps_uncatalogued_selection_and_defaults_to_vision() {
+    let path = Path::new("chatLanguageModels.json");
+    for models in [vec![], vec![AgentModelOption {
+        name: "available-model".into(), alias: None, is_alias: false,
+        context_window: None, input_modalities: None, harness_metadata: None,
+    }]] {
+        let content = build_copilot_config(AgentClient::VscodeCopilot, path, None,
+            "http://localhost/v1", "key", "selected-model", &models).unwrap();
+        let root: Value = serde_json::from_str(&content).unwrap();
+        let entries = root[0]["models"].as_array().unwrap();
+        assert_eq!(entries.len(), models.len() + 1);
+        assert_eq!(entries[0]["id"], "selected-model");
+        assert_eq!(entries[0]["vision"], true);
+        assert_eq!(entries[0]["contextWindow"], 128_000);
+    }
 }
 
 #[test]

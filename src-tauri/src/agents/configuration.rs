@@ -3762,6 +3762,21 @@ pub(crate) fn build_openclaw_agent_config(
                             serde_json::json!(context_window),
                         );
                     }
+                    if let Some(input_modalities) = model.input_modalities.as_ref() {
+                        entry.insert(
+                            "input".to_string(),
+                            serde_json::json!(input_modalities),
+                        );
+                    }
+                    if let Some(max_tokens) = model
+                        .harness_metadata
+                        .as_ref()
+                        .and_then(|metadata| metadata.get("maxTokens"))
+                    {
+                        entry
+                            .entry("maxTokens".to_string())
+                            .or_insert_with(|| max_tokens.clone());
+                    }
                     serde_json::Value::Object(entry)
                 })
                 .collect(),
