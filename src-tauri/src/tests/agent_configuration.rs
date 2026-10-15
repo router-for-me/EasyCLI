@@ -2922,3 +2922,15 @@ fn claude_code_fable_mapping_is_independent_and_round_trips() {
     assert_eq!(inspected.fable, "route-fable");
     assert!(inspected.fable_1m);
 }
+
+
+#[test]
+fn default_tauri_capability_grants_app_version() {
+    let raw = include_str!("../../capabilities/default.json");
+    let parsed: serde_json::Value = serde_json::from_str(raw).unwrap();
+    let permissions = parsed["permissions"].as_array().unwrap();
+    assert!(
+        permissions.iter().any(|entry| entry.as_str() == Some("core:app:allow-version")),
+        "src-tauri/capabilities/default.json must include core:app:allow-version"
+    );
+}
