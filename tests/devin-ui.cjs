@@ -16,6 +16,8 @@ const base = process.env.DEVIN_TEST_BASE_URL || 'http://127.0.0.1:1421';
     const calls = () => page.evaluate(() => window.devinFixture.calls);
     await open();
     await card().waitFor();
+    // `.oauth-card` counts built-in OAuth provider cards; the Vertex import card and plugin
+    // provider cards use their own classes so they never inflate this number.
     assert.equal(await page.locator('.oauth-card').count(), 7);
     await click('Sign In');
     await card().getByRole('textbox').waitFor();

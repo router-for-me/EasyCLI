@@ -14,12 +14,12 @@ export function VertexLoginCard() {
 
   return (
     <>
-      <section className="panel oauth-card vertex-login-card">
+      <section className="panel vertex-login-card">
         <div className="provider-title-row">
           <img src={vertexIcon} alt="" className="provider-logo" />
           <h2>{t('oauth.vertex.title')}</h2>
         </div>
-        <div className="oauth-card-body">
+        <div className="oauth-card-body vertex-login-card-body">
           <p className="oauth-hint">{t('oauth.vertex.cardHint')}</p>
         </div>
         <div className="button-row management-card-actions">

@@ -9,6 +9,19 @@ use objc2_foundation::NSString;
 #[cfg(target_os = "macos")]
 const MACOS_TRAY_ID: &str = "macos-tray";
 
+// The status bar needs its own artwork instead of the app icon. macOS menu bar
+// icons must be template images (opaque black + alpha) so the system can tint
+// them for light/dark menu bars and invert them while the menu is open; the
+// 1024px app icon makes an unreadable colored tile at 18pt.
+#[cfg(target_os = "macos")]
+const MACOS_TRAY_ICON: tauri::image::Image<'static> =
+    tauri::include_image!("icons/tray-macos.png");
+// Windows/Linux notification areas do not support template images, so they get
+// the same mark in a mid-tone teal sized for a 16-32px tray slot.
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+const DESKTOP_TRAY_ICON: tauri::image::Image<'static> =
+    tauri::include_image!("icons/tray-windows.png");
+
 #[cfg(target_os = "macos")]
 #[derive(Default)]
 pub(crate) struct MacosTrayClickState {
@@ -103,11 +116,8 @@ pub(crate) fn setup_macos_tray(app: &mut tauri::App<tauri::Wry>) -> tauri::Resul
     let double_click_interval = Duration::from_secs_f64(NSEvent::doubleClickInterval());
 
     let tray = TrayIconBuilder::with_id(MACOS_TRAY_ID)
-        .icon(
-            app.default_window_icon()
-                .cloned()
-                .expect("application icon is required for the tray"),
-        )
+        .icon(MACOS_TRAY_ICON)
+        .icon_as_template(true)
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(move |app_handle, event| match event.id().as_ref() {
@@ -594,11 +604,7 @@ pub(crate) fn setup_windows_tray(app: &mut tauri::App<tauri::Wry>) -> tauri::Res
     // as the first item provides the reliable restore path on Linux; Windows
     // additionally supports the double-click shortcut below.
     TrayIconBuilder::with_id(WINDOWS_TRAY_ID)
-        .icon(
-            app.default_window_icon()
-                .cloned()
-                .expect("application icon is required for the tray"),
-        )
+        .icon(DESKTOP_TRAY_ICON)
         .tooltip("EasyCLIProxyAPI")
         .menu(&menu)
         .show_menu_on_left_click(false)

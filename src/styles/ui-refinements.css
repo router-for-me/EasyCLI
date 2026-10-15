@@ -554,7 +554,11 @@ button.oauth-account-count:focus-visible {
   gap: 16px;
 }
 
-.oauth-card {
+/* OAuth provider cards: the built-in cards and the plugin/Vertex cards share the same
+   surface, but only the built-in ones carry `.oauth-card` so provider counts stay exact. */
+.oauth-card,
+.vertex-login-card,
+.plugin-oauth-card {
   display: flex;
   flex-direction: column;
   padding: 22px;
@@ -566,22 +570,34 @@ button.oauth-account-count:focus-visible {
 }
 
 .oauth-card .oauth-card-body,
-.oauth-card .oauth-hint {
+.oauth-card .oauth-hint,
+.vertex-login-card .oauth-card-body,
+.vertex-login-card .oauth-hint,
+.plugin-oauth-card .oauth-card-body,
+.plugin-oauth-card .oauth-hint {
   flex: 1;
 }
 
 .oauth-card .oauth-card-actions,
-.oauth-card > button.primary-button {
+.oauth-card > button.primary-button,
+.vertex-login-card .oauth-card-actions,
+.vertex-login-card > button.primary-button,
+.plugin-oauth-card .oauth-card-actions,
+.plugin-oauth-card > button.primary-button {
   margin-top: auto;
 }
 
-.oauth-card:hover {
+.oauth-card:hover,
+.vertex-login-card:hover,
+.plugin-oauth-card:hover {
   border-color: var(--border-primary);
   box-shadow: var(--ui-card-hover-shadow);
   transform: translateY(-1px);
 }
 
-.oauth-card .provider-logo {
+.oauth-card .provider-logo,
+.vertex-login-card .provider-logo,
+.plugin-oauth-card .provider-logo {
   border-radius: 10px;
   border: 1px solid var(--border-secondary);
   padding: 4px;

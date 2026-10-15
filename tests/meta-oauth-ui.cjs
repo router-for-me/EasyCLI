@@ -34,6 +34,8 @@ const base = process.env.META_OAUTH_TEST_BASE_URL || process.env.DEVIN_TEST_BASE
     };
 
     // Management view: Meta is a seventh OAuth provider, with device code and no callback input.
+    // `.oauth-card` counts built-in provider cards only; the Vertex import card carries
+    // `.vertex-login-card` and plugin cards carry `.plugin-oauth-card`.
     await open('locale=en');
     const card = managementCard();
     assert.equal(await page.locator('.oauth-card').count(), 7, 'Meta should add a seventh OAuth card');

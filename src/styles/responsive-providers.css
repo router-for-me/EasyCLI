@@ -337,13 +337,17 @@
 }
 
 .oauth-card .oauth-auth-url-actions,
-.oauth-card .management-card-actions {
+.oauth-card .management-card-actions,
+.vertex-login-card .management-card-actions,
+.plugin-oauth-card .management-card-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-.oauth-card .management-card-actions > button {
+.oauth-card .management-card-actions > button,
+.vertex-login-card .management-card-actions > button,
+.plugin-oauth-card .management-card-actions > button {
   flex: 1 1 auto;
 }
 
