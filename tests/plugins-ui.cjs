@@ -44,10 +44,21 @@ const fs = require('node:fs');
     assert.equal(await card('kiro').getByRole('button', { name: 'Sign in', exact: true }).count(), 0);
     assert.equal(await card('kiro').getByRole('button', { name: 'Uninstall kiro', exact: true }).count(), 0);
     assert.equal(await card('kiro').getByRole('button', { name: 'Disable', exact: true }).count(), 0);
-    assert.equal(await card('Unloaded provider').getByRole('button', { name: 'Find in store', exact: true }).count(), 0);
+    assert.equal(await card('Unloaded provider').getByRole('button', { name: 'Find in store', exact: true }).count(), 1);
     await card('Unloaded provider').getByRole('button', { name: 'Open logs', exact: true }).click();
     assert.equal(await page.evaluate(() => window.pluginsFixture.commands.some(call => call.command === 'open_core_logs_directory')), true);
     await noOverflow();
+    await card('Sample provider').getByRole('button', { name: 'Check for updates', exact: true }).click();
+    await page.getByText('sample..plugin: Some sources could not be checked.', { exact: false }).waitFor();
+    assert.equal(await tab('Plugin store').getAttribute('aria-current'), 'page');
+    assert.equal(await page.getByRole('searchbox').inputValue(), 'sample..plugin');
+    assert.equal((await installs()).length, 0, 'checking never installs');
+    await tab('Local plugins').click();
+    await card('Sample provider').getByRole('button', { name: 'Find in store', exact: true }).click();
+    await card('Sample provider').getByRole('button', { name: 'Update', exact: true }).waitFor();
+    assert.equal(await page.getByText('sample..plugin: Some sources could not be checked.', { exact: false }).count(), 0);
+    await tab('Local plugins').click();
+
 
     const searchInput = page.getByRole('searchbox');
     await searchInput.fill('qoder');
