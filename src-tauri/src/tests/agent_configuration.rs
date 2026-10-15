@@ -3026,4 +3026,109 @@ capabilities = ["tool_use", "custom_cap"]
             toml::Value::String("image_in".to_string()),
         ])
     );
+
+    // Reconfiguring Kimi Code with explicit text-only modalities removes image_in while preserving custom entries,
+    // whereas unknown modalities (None) leave existing image_in intact.
+    let existing_kimi_with_image = r#"
+[models."cpa-gui/gemini-4-argon-high"]
+provider = "cpa-gui"
+model = "gemini-4-argon-high"
+max_context_size = 128000
+capabilities = ["tool_use", "custom_cap", "image_in"]
+"#;
+    let text_only_models = vec![AgentModelOption {
+        name: "gemini-4-argon-high".to_string(),
+        alias: None,
+        is_alias: false,
+        context_window: Some(1_048_576),
+        input_modalities: Some(vec!["text".to_string()]),
+        harness_metadata: None,
+    }];
+    let kimi_text_only: toml::Value = toml::from_str(
+        &build_kimi_code_agent_config(
+            Some(existing_kimi_with_image),
+            "http://127.0.0.1:8317/v1",
+            "test-key",
+            "gemini-4-argon-high",
+            &text_only_models,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        kimi_text_only["models"]["cpa-gui/gemini-4-argon-high"]["capabilities"],
+        toml::Value::Array(vec![
+            toml::Value::String("tool_use".to_string()),
+            toml::Value::String("custom_cap".to_string()),
+        ])
+    );
+
+    let unknown_modality_models = vec![AgentModelOption {
+        name: "gemini-4-argon-high".to_string(),
+        alias: None,
+        is_alias: false,
+        context_window: Some(1_048_576),
+        input_modalities: None,
+        harness_metadata: None,
+    }];
+    let kimi_unknown_modalities: toml::Value = toml::from_str(
+        &build_kimi_code_agent_config(
+            Some(existing_kimi_with_image),
+            "http://127.0.0.1:8317/v1",
+            "test-key",
+            "gemini-4-argon-high",
+            &unknown_modality_models,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        kimi_unknown_modalities["models"]["cpa-gui/gemini-4-argon-high"]["capabilities"],
+        toml::Value::Array(vec![
+            toml::Value::String("tool_use".to_string()),
+            toml::Value::String("custom_cap".to_string()),
+            toml::Value::String("image_in".to_string()),
+        ])
+    );
+
+    // Configured max-context-length applies to unmatched public aliases and when the runtime catalog is unavailable.
+    let mut public_models = vec![
+        AgentModelOption {
+            name: "gemini-4-argon-high".to_string(),
+            alias: None,
+            is_alias: false,
+            context_window: None,
+            input_modalities: None,
+            harness_metadata: None,
+        },
+        AgentModelOption {
+            name: "unmatched-public-alias".to_string(),
+            alias: None,
+            is_alias: true,
+            context_window: None,
+            input_modalities: None,
+            harness_metadata: None,
+        },
+    ];
+    let config_yaml = r#"
+codex-api-key:
+  - models:
+      - name: upstream-model
+        alias: unmatched-public-alias
+        max-context-length: 64000
+"#;
+    enrich_harness_context_windows(&mut public_models, &runtime, Some(config_yaml)).unwrap();
+    assert_eq!(public_models[0].context_window, Some(1_048_576));
+    assert_eq!(public_models[1].context_window, Some(64_000));
+
+    let mut offline_runtime_models = vec![AgentModelOption {
+        name: "unmatched-public-alias".to_string(),
+        alias: None,
+        is_alias: true,
+        context_window: None,
+        input_modalities: None,
+        harness_metadata: None,
+    }];
+    enrich_harness_context_windows(&mut offline_runtime_models, &[], Some(config_yaml)).unwrap();
+    assert_eq!(offline_runtime_models[0].context_window, Some(64_000));
 }

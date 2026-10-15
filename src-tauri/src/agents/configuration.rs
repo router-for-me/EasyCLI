@@ -3687,21 +3687,29 @@ pub(crate) fn build_kimi_code_agent_config(
         {
             entry.insert("max_output_size", value(max_tokens.min(i64::MAX as u64) as i64));
         }
-        let supports_image = option
+        let image_modality = option
             .input_modalities
             .as_ref()
-            .is_some_and(|m| m.iter().any(|s| s == "image"));
+            .map(|modalities| modalities.iter().any(|modality| modality == "image"));
         if let Some(capabilities) = entry.get_mut("capabilities").and_then(Item::as_array_mut) {
             if !capabilities.iter().any(|item| item.as_str() == Some("tool_use")) {
                 capabilities.push("tool_use");
             }
-            if supports_image && !capabilities.iter().any(|item| item.as_str() == Some("image_in")) {
-                capabilities.push("image_in");
+            match image_modality {
+                Some(true) => {
+                    if !capabilities.iter().any(|item| item.as_str() == Some("image_in")) {
+                        capabilities.push("image_in");
+                    }
+                }
+                Some(false) => {
+                    capabilities.retain(|item| item.as_str() != Some("image_in"));
+                }
+                None => {}
             }
         } else if !entry.contains_key("capabilities") {
             let mut capabilities = Array::new();
             capabilities.push("tool_use");
-            if supports_image {
+            if image_modality == Some(true) {
                 capabilities.push("image_in");
             }
             entry.insert("capabilities", value(capabilities));
