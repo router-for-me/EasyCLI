@@ -8,6 +8,13 @@ describe('browser plugin mock', () => {
   test('exposes installed plugins, update catalog and a non-network resource page', async () => {
     const runtime = createBrowserMockRuntime('running');
     expect(await runtime.invoke('get_plugin_support')).toBe(true);
+    const catalog = await request(runtime, 'GET', '/plugins/store') as { plugins: { repository: string; version: string }[] };
+    const release = catalog.plugins[0];
+    const repository = release.repository.replace(/^https:\/\/github\.com\//, '');
+    expect(await runtime.invoke('get_plugin_latest_releases', { repositories: [repository, 'unknown/repository'] })).toEqual([
+      { repository, version: release.version, error: null },
+      { repository: 'unknown/repository', version: null, error: 'Invalid GitHub repository' },
+    ]);
     expect(await request(runtime, 'GET', '/plugins')).toMatchObject({
       plugins_enabled: true,
       plugins: [{ id: 'request-inspector', effective_enabled: true, menus: [{ menu: 'Inspector status' }] }],

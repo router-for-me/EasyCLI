@@ -95,6 +95,8 @@ Browse the plugin store to install, update or select a release version, configur
 and environment-based authentication, open pages and sign in to accounts provided by enabled plugins. Third-party
 installations require source review and a typed confirmation. The page detects unsupported core
 builds and shows a restart action when an installation or removal requires it.
+Refreshing the plugin store checks public GitHub releases directly, using the configured GitHub token
+or the app's `GITHUB_TOKEN` environment variable. Auth-required entries keep the core's authentication flow.
 
 ### Usage history and token analytics
 

@@ -128,12 +128,19 @@ export function createPluginMock(host: PluginMockHost) {
     const pluginRequest = command === 'management_request' && (
       path === '/plugins' || path.startsWith('/plugins/') || path === '/config/plugins' || path.startsWith('/config/plugins/')
     );
-    if (!pluginRequest && command !== 'get_plugin_support' && command !== 'get_plugin_resource_url') return { handled: false };
+    if (!pluginRequest && command !== 'get_plugin_support' && command !== 'get_plugin_resource_url' && command !== 'get_plugin_latest_releases') return { handled: false };
     if (host.scenario === 'error') throw new Error(`Browser Mock error scenario: ${command}`);
     if (!host.coreStatus.ready) throw new Error('Browser Mock: the core is not ready');
     initialize();
     const result = (value: unknown): PluginMockResult => ({ handled: true, value: clone(value) });
     if (command === 'get_plugin_support') return result(true);
+    if (command === 'get_plugin_latest_releases') {
+      const repositories = Array.isArray(payload.repositories) ? payload.repositories.map(text) : [];
+      return result(repositories.map(repository => {
+        const entry = CATALOG.find(entry => entry.repository.replace(/^https:\/\/github\.com\//, '') === repository);
+        return entry ? { repository, version: entry.version, error: null } : { repository, version: null, error: 'Invalid GitHub repository' };
+      }));
+    }
     if (command === 'get_plugin_resource_url') {
       const entry = plugin(text(payload.pluginId));
       const menu = Number.isInteger(payload.menuIndex) ? entry.menus[Number(payload.menuIndex)] : undefined;
@@ -154,7 +161,7 @@ export function createPluginMock(host: PluginMockHost) {
         const local = installed.get(entry.id);
         return { ...entry, ...plugin(entry.id), name: entry.name, version: entry.version,
           store_id: `${entry.source_id}/${entry.id}`, installed: Boolean(local), installed_version: local?.version ?? '',
-          installed_source_id: local?.sourceId ?? '', install_source_status: local ? 'match' : '',
+          installed_source_id: local?.sourceId ?? '', install_source_status: local ? 'matched' : '',
           update_available: Boolean(local && local.version !== entry.version),
         };
       }) });

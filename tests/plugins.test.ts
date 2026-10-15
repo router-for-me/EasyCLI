@@ -9,6 +9,7 @@ import {
 } from '../src/services/pluginResources';
 import {
   buildGitHubReleasesPageURL, isValidManualReleaseTag, supportsPluginVersionSelection,
+  isNewerPluginRelease, refreshPluginReleaseVersions,
 } from '../src/services/pluginReleaseVersions';
 import { buildPluginConfigDraft, buildPluginConfigPatch } from '../src/services/pluginConfigDraft';
 import { getPluginStatus, isPluginInstalled } from '../src/services/pluginStatus';
@@ -46,6 +47,42 @@ describe('plugin Management API', () => {
       } },
     ]);
     expect((requests[1] as { body: unknown }).body).not.toHaveProperty('old');
+  });
+
+  it('refreshes GitHub releases without reusing catalog versions or changing source identity', async () => {
+    const calls: string[][] = [];
+    mockIPC((command, args) => {
+      expect(command).toBe('get_plugin_latest_releases');
+      const repositories = args?.repositories as string[];
+      calls.push(repositories);
+      return repositories.map(repository => repository === 'example/offline'
+        ? { repository, version: null, error: 'GitHub API rate limited' }
+        : { repository, version: '3.0.0', error: null });
+    });
+    const store = normalizePluginStore({ plugins: [
+      { id: 'sample', source_id: 'official', repository: 'https://github.com/example/sample', install_type: 'github-release', version: '1.0.0', installed: true, installed_version: '2.0.0', install_source_status: 'matched' },
+      { id: 'sample', source_id: 'other', repository: 'example/sample', install_type: 'github-release', installed: true, installed_version: '2.0.0', install_source_status: 'different' },
+      { id: 'direct', install_type: 'direct', version: '1.0.0', repository: 'example/direct' },
+      { id: 'private', install_type: 'github-release', auth_required: true, repository: 'example/private' },
+      { id: 'offline', install_type: 'github-release', version: '1.0.0', repository: 'example/offline' },
+      { id: 'offline', source_id: 'mirror', install_type: 'github-release', version: '1.0.0', repository: 'https://github.com/example/offline' },
+      { id: 'untracked', install_type: 'github-release', repository: 'example/sample', installed: true, installed_version: '2.0.0', install_source_status: 'unrecognized' },
+    ], source_errors: [{ source_id: 'existing', message: 'Registry unavailable' }] });
+    const result = await refreshPluginReleaseVersions(store);
+    expect(calls.map(repositories => [...repositories].sort())).toEqual([['example/offline', 'example/sample']]);
+    expect(result.plugins[0]).toMatchObject({ storeId: 'official/sample', version: '3.0.0', updateAvailable: true });
+    expect(result.plugins[1]).toMatchObject({ storeId: 'other/sample', version: '3.0.0', updateAvailable: false });
+    expect(result.plugins[2]).toEqual(store.plugins[2]);
+    expect(result.plugins[3]).toEqual(store.plugins[3]);
+    expect(result.plugins[4]).toMatchObject({ version: '1.0.0' });
+    expect(result.plugins[5]).toMatchObject({ version: '1.0.0' });
+    expect(result.plugins[6]).toMatchObject({ version: '3.0.0', updateAvailable: false });
+    expect(result.sourceErrors.map(error => error.message)).toEqual(['Registry unavailable', 'GitHub API rate limited']);
+    expect(store.plugins[0].version).toBe('1.0.0');
+    await refreshPluginReleaseVersions(store);
+    expect(calls).toHaveLength(2);
+    expect(await refreshPluginReleaseVersions(normalizePluginStore({ plugins: [{ id: 'direct', install_type: 'direct' }] }))).toMatchObject({ plugins: [{ id: 'direct' }] });
+    expect(calls).toHaveLength(2);
   });
 
   it('defaults only a missing configuration node and propagates transport, auth and endpoint errors', async () => {
@@ -176,6 +213,13 @@ describe('plugin normalization and resources', () => {
 });
 
 describe('plugin installation trust and versions', () => {
+  it('matches core update comparisons for dotted releases and other tags', () => {
+    expect(isNewerPluginRelease('v1.9.0', '1.10.0')).toBe(true);
+    expect(isNewerPluginRelease('2.0.0', '1.9.0')).toBe(false);
+    expect(isNewerPluginRelease('V1.0', '1.0.0')).toBe(false);
+    expect(isNewerPluginRelease('', '1.0.0')).toBe(false);
+    expect(isNewerPluginRelease('1.0.0', '1.0.0-rc.1')).toBe(true);
+  });
   it('requires the official source and a canonical official GitHub repository', () => {
     for (const repository of ['router-for-me/sample', 'https://github.com/router-for-me/sample.git']) {
       expect(isOfficialPlugin({ sourceId: 'official', repository })).toBe(true);

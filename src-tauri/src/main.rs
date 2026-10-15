@@ -2789,6 +2789,7 @@ fn main() {
             clear_core_management_secret_key,
             management_api::management_request,
             plugins::get_plugin_support,
+            plugins::get_plugin_latest_releases,
             plugins::get_plugin_resource_url,
             provider_health::provider_health_probe,
             provider_health::get_core_models,

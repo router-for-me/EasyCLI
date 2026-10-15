@@ -3,6 +3,157 @@ use super::{
     management_authorization, management_endpoint, management_http_client, read_management_value,
     GuiConfigFile, GuiConfigState,
 };
+use futures_util::StreamExt;
+
+#[derive(serde::Serialize)]
+pub(crate) struct PluginLatestRelease {
+    repository: String,
+    version: Option<String>,
+    error: Option<String>,
+}
+
+#[tauri::command]
+pub(crate) async fn get_plugin_latest_releases(
+    gui_config_state: tauri::State<'_, GuiConfigState>,
+    repositories: Vec<String>,
+) -> Result<Vec<PluginLatestRelease>, String> {
+    let config = gui_config_state.snapshot()?;
+    let response = management_http_client()?
+        .get(management_endpoint(&config, "config/server")?)
+        .header("Authorization", management_authorization(&config)?)
+        .send()
+        .await
+        .map_err(|_| "Failed to read GitHub settings".to_string())?;
+    let settings = read_plugin_github_settings(response).await?;
+    let token = plugin_github_token(&settings, std::env::var("GITHUB_TOKEN").ok());
+    let client = super::build_http_client_with_proxy(
+        reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .connect_timeout(std::time::Duration::from_secs(8))
+            .timeout(std::time::Duration::from_secs(20)),
+        &config.proxy_url,
+        "Failed to create GitHub client",
+    )?;
+    let client = &client;
+    let token = token.as_deref();
+    Ok(futures_util::stream::iter(repositories)
+        .map(|repository| async move {
+            let result = fetch_plugin_release(client, &repository, token).await;
+            PluginLatestRelease {
+                repository,
+                version: result.as_ref().ok().cloned(),
+                error: result.err(),
+            }
+        })
+        .buffered(2)
+        .collect()
+        .await)
+}
+
+async fn read_plugin_github_settings(
+    response: reqwest::Response,
+) -> Result<serde_json::Value, String> {
+    if response.status() == reqwest::StatusCode::NOT_FOUND {
+        return Ok(serde_json::Value::Null);
+    }
+    read_management_value(response).await
+}
+
+async fn fetch_plugin_release(
+    client: &reqwest::Client,
+    repository: &str,
+    token: Option<&str>,
+) -> Result<String, String> {
+    let response = plugin_release_request(client, repository, token)?
+        .send()
+        .await
+        .map_err(|_| "Failed to fetch latest GitHub release".to_string())?;
+    read_plugin_release(response).await
+}
+
+fn plugin_github_token(
+    settings: &serde_json::Value,
+    environment: Option<String>,
+) -> Option<String> {
+    settings
+        .get("github-token")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_owned)
+        .filter(|value| !value.trim().is_empty())
+        .or(environment)
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
+}
+
+fn plugin_release_request(
+    client: &reqwest::Client,
+    repository: &str,
+    token: Option<&str>,
+) -> Result<reqwest::RequestBuilder, String> {
+    let mut request = client
+        .get(plugin_release_url(repository)?)
+        .header("User-Agent", "EasyCLIProxyAPI")
+        .header("Accept", "application/vnd.github+json")
+        .header("Cache-Control", "no-cache");
+    if let Some(token) = token {
+        request = request.bearer_auth(token);
+    }
+    Ok(request)
+}
+
+fn plugin_release_url(repository: &str) -> Result<String, String> {
+    let parts: Vec<_> = repository.split('/').collect();
+    if parts.len() != 2
+        || parts.iter().any(|part| {
+            part.is_empty()
+                || *part == "."
+                || *part == ".."
+                || !part
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+        })
+    {
+        return Err("Invalid GitHub repository".to_string());
+    }
+    Ok(format!(
+        "https://api.github.com/repos/{repository}/releases/latest"
+    ))
+}
+
+async fn read_plugin_release(response: reqwest::Response) -> Result<String, String> {
+    let status = response.status();
+    if status.as_u16() == 429
+        || (status.as_u16() == 403
+            && (response
+                .headers()
+                .get("x-ratelimit-remaining")
+                .is_some_and(|value| value == "0")
+                || response.headers().contains_key("retry-after")))
+    {
+        return Err(format!("GitHub API rate limited ({status})"));
+    }
+    if !status.is_success() {
+        return Err(format!("Failed to fetch latest GitHub release ({status})"));
+    }
+    let value: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|_| "Invalid GitHub release response".to_string())?;
+    value
+        .get("tag_name")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .map(|tag| tag.strip_prefix(['v', 'V']).unwrap_or(tag))
+        .filter(|tag| {
+            tag.bytes().next().is_some_and(|byte| byte.is_ascii_digit())
+                && tag.len() <= 128
+                && tag
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'+'))
+        })
+        .map(str::to_owned)
+        .ok_or_else(|| "Invalid GitHub release tag".to_string())
+}
 
 #[tauri::command]
 pub(crate) async fn get_plugin_support(
@@ -122,6 +273,114 @@ fn resolve_plugin_resource_url(origin: &str, path: &str) -> Result<String, Strin
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn plugin_release_auth_uses_configured_token_before_environment() {
+        let configured = serde_json::json!({"github-token": " configured-fixture "});
+        let token = plugin_github_token(&configured, Some("environment-fixture".to_string()));
+        assert_eq!(token.as_deref(), Some("configured-fixture"));
+        let empty = serde_json::json!({"github-token": " "});
+        assert_eq!(
+            plugin_github_token(&empty, Some(" environment-fixture ".to_string())).as_deref(),
+            Some("environment-fixture")
+        );
+        assert_eq!(plugin_github_token(&empty, None), None);
+        let client = reqwest::Client::new();
+        let request = plugin_release_request(&client, "example/plugin", token.as_deref())
+            .unwrap()
+            .build()
+            .unwrap();
+        assert_eq!(request.url().host_str(), Some("api.github.com"));
+        assert_eq!(
+            request.headers()["authorization"],
+            "Bearer configured-fixture"
+        );
+        assert_eq!(request.headers()["cache-control"], "no-cache");
+        let anonymous = plugin_release_request(&client, "example/plugin", None)
+            .unwrap()
+            .build()
+            .unwrap();
+        assert!(!anonymous.headers().contains_key("authorization"));
+    }
+
+    #[test]
+    fn plugin_release_requests_are_restricted_to_github_repositories() {
+        assert_eq!(
+            plugin_release_url("example/plugin").unwrap(),
+            "https://api.github.com/repos/example/plugin/releases/latest"
+        );
+        for repository in [
+            "",
+            "../plugin",
+            "example/..",
+            "example/plugin/extra",
+            "https://example.test/plugin",
+            "example/plugin?token=secret",
+            "example/plugin#fragment",
+            "example/%2e%2e",
+        ] {
+            assert!(plugin_release_url(repository).is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn plugin_release_settings_fall_back_to_environment_without_server_section() {
+        let missing = reqwest::Response::from(
+            tauri::http::Response::builder()
+                .status(404)
+                .body(r#"{"error":"not_found"}"#)
+                .unwrap(),
+        );
+        let settings = read_plugin_github_settings(missing).await.unwrap();
+        assert_eq!(
+            plugin_github_token(&settings, Some("environment-fixture".to_string())).as_deref(),
+            Some("environment-fixture")
+        );
+        let unauthorized = reqwest::Response::from(
+            tauri::http::Response::builder()
+                .status(401)
+                .body(r#"{"error":"unauthorized"}"#)
+                .unwrap(),
+        );
+        assert!(read_plugin_github_settings(unauthorized).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn plugin_release_refresh_reads_fresh_versions_and_surfaces_failures() {
+        for (body, expected) in [
+            (r#"{"tag_name":"v1.2.3"}"#, "1.2.3"),
+            (r#"{"tag_name":"V2.0.0-rc.1"}"#, "2.0.0-rc.1"),
+        ] {
+            let response = reqwest::Response::from(
+                tauri::http::Response::builder()
+                    .status(200)
+                    .body(body)
+                    .unwrap(),
+            );
+            assert_eq!(read_plugin_release(response).await.unwrap(), expected);
+        }
+        for (status, body) in [
+            (429, "sensitive body"),
+            (401, "sensitive body"),
+            (200, r#"{"tag_name":""}"#),
+            (200, r#"{"tag_name":"latest"}"#),
+            (200, r#"{"tag_name":"vv1.0.0"}"#),
+            (200, r#"{"tag_name":"1_0"}"#),
+            (200, "invalid"),
+        ] {
+            let response = reqwest::Response::from(
+                tauri::http::Response::builder()
+                    .status(status)
+                    .body(body)
+                    .unwrap(),
+            );
+            let error = read_plugin_release(response).await.unwrap_err();
+            assert!(!error.contains("sensitive body"));
+            if status == 429 {
+                assert!(error.contains("GitHub API rate limited"));
+            }
+        }
+    }
 
     #[test]
     fn plugin_support_respects_build_capability_headers() {
