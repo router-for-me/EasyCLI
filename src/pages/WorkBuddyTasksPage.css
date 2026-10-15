@@ -155,3 +155,93 @@
   margin: 0;
   line-height: 1.5;
 }
+
+.workbuddy-credits-dashboard {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  background: var(--bg-subtle, #f8fafc);
+  padding: 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color, #e2e8f0);
+}
+
+.workbuddy-credit-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.workbuddy-credit-label {
+  font-size: 0.78rem;
+  color: var(--text-secondary, #64748b);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.workbuddy-credit-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  font-family: var(--font-mono, monospace);
+  color: var(--text-primary, #0f172a);
+}
+
+.workbuddy-credit-value.highlight {
+  color: #16a34a;
+}
+
+.workbuddy-credit-sub {
+  font-size: 0.75rem;
+  color: var(--text-secondary, #64748b);
+}
+
+.workbuddy-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+
+.workbuddy-tag.cn {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.workbuddy-tag.intl {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.workbuddy-task-badge {
+  margin-left: auto;
+  font-size: 0.72rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.workbuddy-task-badge.done {
+  background: rgba(34, 197, 94, 0.15);
+  color: #16a34a;
+}
+
+.workbuddy-task-badge.pending {
+  background: rgba(234, 179, 8, 0.15);
+  color: #b45309;
+}
+
+.workbuddy-delta-banner {
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  background: rgba(34, 197, 94, 0.12);
+  color: #15803d;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}

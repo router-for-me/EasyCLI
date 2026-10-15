@@ -700,6 +700,7 @@ pub(crate) async fn start_workbuddy_oauth(
 #[tauri::command]
 pub(crate) async fn poll_workbuddy_oauth(
     gui_config_state: State<'_, GuiConfigState>,
+    proxy_state: State<'_, WorkBuddyProxyState>,
     state: String,
     realm: Option<String>,
 ) -> Result<WorkBuddyOAuthPollResult, String> {
@@ -758,27 +759,91 @@ pub(crate) async fn poll_workbuddy_oauth(
         return Err("Received empty access token".to_string());
     }
 
-    // Extract UID from JWT payload
-    let uid = extract_uid_from_jwt(&access_token).unwrap_or_else(|| format!("wb_{}", &state[..8.min(state.len())]));
+    // Extract claims from JWT
+    let claims = extract_jwt_claims(&access_token);
+    let mut uid = claims
+        .uid
+        .unwrap_or_else(|| format!("wb_{}", &state[..8.min(state.len())]));
+    let mut email = claims.email;
+    let mut nickname = claims.name;
+
+    // If nickname or email is missing, query the account profile endpoint
+    if nickname.is_none() || email.is_none() {
+        let acct_url = format!("{upstream}/v2/plugin/login/account?state={state}");
+        if let Ok(resp) = client
+            .get(&acct_url)
+            .header("Authorization", format!("Bearer {access_token}"))
+            .send()
+            .await
+        {
+            if let Ok(profile) = resp.json::<Value>().await {
+                let pdata = profile.get("data");
+                if nickname.is_none() {
+                    nickname = pdata
+                        .and_then(|d| d.get("nickname"))
+                        .and_then(Value::as_str)
+                        .map(str::to_string);
+                }
+                if email.is_none() {
+                    email = pdata
+                        .and_then(|d| d.get("email").or_else(|| d.get("uin")))
+                        .and_then(Value::as_str)
+                        .map(str::to_string);
+                }
+                if let Some(prof_uid) = pdata.and_then(|d| d.get("uid")).and_then(Value::as_str) {
+                    if !prof_uid.trim().is_empty() {
+                        uid = prof_uid.to_string();
+                    }
+                }
+            }
+        }
+    }
+
+    // Determine clear, human-readable display label
+    let display_label = email
+        .clone()
+        .or_else(|| {
+            nickname
+                .clone()
+                .map(|n| format!("{n} ({})", &uid[..8.min(uid.len())]))
+        })
+        .unwrap_or_else(|| format!("WorkBuddy ({})", &uid[..8.min(uid.len())]));
+
+    let now_sec = chrono::Utc::now().timestamp();
+    let expires_at = expires_in.map(|exp| now_sec + exp).unwrap_or(now_sec + 2592000);
+
+    let account_record = json!({
+        "uid": uid,
+        "nickname": nickname.clone().unwrap_or_default(),
+        "email": email.clone().unwrap_or_default(),
+        "account": display_label,
+        "label": display_label,
+        "realm": selected_realm,
+        "platform": "CLI",
+        "accessToken": access_token,
+        "refreshToken": refresh_token,
+        "expiresAt": expires_at,
+        "source": "oauth",
+        "enabled": true
+    });
 
     // 1. Save into workbuddy-proxy accounts directory
     if let Ok(proxy_dir) = ensure_workbuddy_proxy_dir() {
         let accounts_dir = proxy_dir.join("accounts");
         let account_file = accounts_dir.join(format!("{uid}.json"));
-        let now_sec = chrono::Utc::now().timestamp();
-        let expires_at = expires_in.map(|exp| now_sec + exp).unwrap_or(now_sec + 2592000);
-        let account_record = json!({
-            "uid": uid,
-            "realm": selected_realm,
-            "platform": "CLI",
-            "accessToken": access_token,
-            "refreshToken": refresh_token,
-            "expiresAt": expires_at,
-            "source": "oauth",
-            "enabled": true
-        });
         let _ = fs::write(account_file, serde_json::to_string_pretty(&account_record).unwrap_or_default());
     }
+
+    // Import into running companion gateway in-memory pool immediately
+    let _ = workbuddy_gateway_post(
+        proxy_state.inner(),
+        "/accounts/import",
+        json!({
+            "format": "workbuddy-accounts",
+            "accounts": [account_record.clone()]
+        }),
+    )
+    .await;
 
     // 2. Also persist into the kernel's credentials directory so the account
     //    survives a restart. auth_dir is stored relative to the install dir;
@@ -787,14 +852,16 @@ pub(crate) async fn poll_workbuddy_oauth(
         let install_dir = core_install_dir()?;
         if let Ok(auth_dir) = auth_dir_path_for_core(&config.auth_dir, &install_dir) {
             if fs::create_dir_all(&auth_dir).is_ok() {
-                let expires_at = chrono::Utc::now().timestamp()
-                    + expires_in.unwrap_or(2_592_000);
                 let auth_file_path = auth_dir.join(format!("workbuddy-{uid}.json"));
                 let cpa_auth_record = json!({
                     "type": "workbuddy",
                     "account_type": "oauth",
                     "auth_kind": "oauth",
                     "uid": uid,
+                    "email": email.clone().unwrap_or_default(),
+                    "nickname": nickname.clone().unwrap_or_default(),
+                    "account": display_label,
+                    "label": display_label,
                     "access_token": access_token,
                     "refresh_token": refresh_token,
                     "token_type": "Bearer",
@@ -814,30 +881,60 @@ pub(crate) async fn poll_workbuddy_oauth(
     Ok(WorkBuddyOAuthPollResult {
         status: "success".to_string(),
         message: Some("Authorization successful".to_string()),
-        uid: Some(uid),
+        uid: Some(display_label),
         access_token: Some(access_token),
         refresh_token,
         expires_in,
     })
 }
 
-fn extract_uid_from_jwt(jwt: &str) -> Option<String> {
+struct WorkBuddyJwtClaims {
+    uid: Option<String>,
+    email: Option<String>,
+    name: Option<String>,
+}
+
+fn extract_jwt_claims(jwt: &str) -> WorkBuddyJwtClaims {
     let parts: Vec<&str> = jwt.split('.').collect();
     if parts.len() < 2 {
-        return None;
+        return WorkBuddyJwtClaims {
+            uid: None,
+            email: None,
+            name: None,
+        };
     }
     use base64::Engine;
     let engine = base64::engine::general_purpose::URL_SAFE_NO_PAD;
-    let decoded = engine.decode(parts[1]).or_else(|_| {
-        base64::engine::general_purpose::STANDARD.decode(parts[1])
-    }).ok()?;
-    let payload: Value = serde_json::from_slice(&decoded).ok()?;
-    payload
-        .get("uid")
-        .or_else(|| payload.get("sub"))
-        .or_else(|| payload.get("userId"))
-        .and_then(Value::as_str)
-        .map(str::to_string)
+    let decoded = engine
+        .decode(parts[1])
+        .or_else(|_| base64::engine::general_purpose::STANDARD.decode(parts[1]))
+        .ok();
+    let payload: Option<Value> = decoded.and_then(|d| serde_json::from_slice(&d).ok());
+
+    let uid = payload.as_ref().and_then(|p| {
+        p.get("uid")
+            .or_else(|| p.get("sub"))
+            .or_else(|| p.get("userId"))
+            .and_then(Value::as_str)
+            .map(str::to_string)
+    });
+
+    let email = payload.as_ref().and_then(|p| {
+        p.get("email")
+            .or_else(|| p.get("preferred_username"))
+            .and_then(Value::as_str)
+            .map(str::to_string)
+    });
+
+    let name = payload.as_ref().and_then(|p| {
+        p.get("name")
+            .or_else(|| p.get("nickname"))
+            .or_else(|| p.get("given_name"))
+            .and_then(Value::as_str)
+            .map(str::to_string)
+    });
+
+    WorkBuddyJwtClaims { uid, email, name }
 }
 
 pub(crate) const WORKBUDDY_MODEL_NAMES: &[&str] = &[
@@ -1287,13 +1384,245 @@ async fn workbuddy_gateway_get(
     Ok(payload)
 }
 
+async fn sync_auth_dir_accounts_to_companion(
+    proxy_state: &WorkBuddyProxyState,
+    auth_dir: &Path,
+) {
+    if !auth_dir.is_dir() {
+        return;
+    }
+    let entries = match fs::read_dir(auth_dir) {
+        Ok(entries) => entries,
+        Err(_) => return,
+    };
+    let mut to_import = Vec::new();
+    for entry in entries.filter_map(Result::ok) {
+        let path = entry.path();
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        if !name.starts_with("workbuddy-") || !name.ends_with(".json") {
+            continue;
+        }
+        if let Ok(content) = fs::read_to_string(&path) {
+            if let Ok(val) = serde_json::from_str::<Value>(&content) {
+                let token = val
+                    .get("access_token")
+                    .or_else(|| val.get("accessToken"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                if token.is_empty() {
+                    continue;
+                }
+                let claims = extract_jwt_claims(token);
+                let uid = val
+                    .get("uid")
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+                    .or(claims.uid)
+                    .unwrap_or_default();
+                let email = val
+                    .get("email")
+                    .or_else(|| val.get("account"))
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+                    .or(claims.email)
+                    .unwrap_or_default();
+                let nickname = val
+                    .get("nickname")
+                    .or_else(|| val.get("name"))
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+                    .or(claims.name)
+                    .unwrap_or_default();
+                let realm = val
+                    .get("realm")
+                    .and_then(Value::as_str)
+                    .unwrap_or("intl");
+                let refresh_token = val
+                    .get("refresh_token")
+                    .or_else(|| val.get("refreshToken"))
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                to_import.push(json!({
+                    "uid": uid,
+                    "nickname": if !nickname.is_empty() { nickname.clone() } else { email.clone() },
+                    "email": email,
+                    "realm": realm,
+                    "accessToken": token,
+                    "refreshToken": refresh_token,
+                    "platform": "CLI",
+                    "source": "oauth",
+                    "enabled": val.get("disabled").and_then(Value::as_bool).map(|d| !d).unwrap_or(true),
+                }));
+            }
+        }
+    }
+    if !to_import.is_empty() {
+        let _ = workbuddy_gateway_post(
+            proxy_state,
+            "/accounts/import",
+            json!({
+                "format": "workbuddy-accounts",
+                "accounts": to_import,
+                "overwrite": false
+            }),
+        )
+        .await;
+    }
+}
+
+fn enrich_accounts_with_auth_metadata(
+    gui_config_state: &GuiConfigState,
+    val: &mut Value,
+) {
+    let accounts = match val.get_mut("accounts").and_then(Value::as_array_mut) {
+        Some(accs) => accs,
+        None => match val.as_array_mut() {
+            Some(accs) => accs,
+            None => return,
+        },
+    };
+    let config = match gui_config_state.snapshot() {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+    let install_dir = match core_install_dir() {
+        Ok(d) => d,
+        Err(_) => return,
+    };
+    let auth_dir = match auth_dir_path_for_core(&config.auth_dir, &install_dir) {
+        Ok(d) => d,
+        Err(_) => return,
+    };
+    if !auth_dir.is_dir() {
+        return;
+    }
+    let mut meta_map: std::collections::HashMap<String, (String, String)> = std::collections::HashMap::new();
+    if let Ok(entries) = fs::read_dir(&auth_dir) {
+        for entry in entries.filter_map(Result::ok) {
+            let path = entry.path();
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if !name.starts_with("workbuddy-") || !name.ends_with(".json") {
+                continue;
+            }
+            if let Ok(content) = fs::read_to_string(&path) {
+                if let Ok(v) = serde_json::from_str::<Value>(&content) {
+                    let uid = v.get("uid").and_then(Value::as_str).unwrap_or("");
+                    let email = v.get("email").or_else(|| v.get("account")).and_then(Value::as_str).unwrap_or("");
+                    let nickname = v.get("nickname").or_else(|| v.get("name")).and_then(Value::as_str).unwrap_or("");
+                    if !uid.is_empty() {
+                        meta_map.insert(uid.to_string(), (email.to_string(), nickname.to_string()));
+                    }
+                }
+            }
+        }
+    }
+    for acc in accounts.iter_mut() {
+        let uid = acc.get("uid").and_then(Value::as_str).unwrap_or("").to_string();
+        if let Some((email, nickname)) = meta_map.get(&uid) {
+            if let Some(map) = acc.as_object_mut() {
+                if !email.is_empty() {
+                    map.insert("email".to_string(), json!(email));
+                }
+                let current_nick = map.get("nickname").and_then(Value::as_str).unwrap_or("");
+                if (current_nick.is_empty() || current_nick == &uid[..8.min(uid.len())]) && !nickname.is_empty() {
+                    map.insert("nickname".to_string(), json!(nickname));
+                } else if current_nick.is_empty() && !email.is_empty() {
+                    map.insert("nickname".to_string(), json!(email));
+                }
+            }
+        }
+    }
+}
+
+fn read_fallback_workbuddy_accounts(gui_config_state: &GuiConfigState) -> Vec<Value> {
+    let mut result = Vec::new();
+    let config = match gui_config_state.snapshot() {
+        Ok(c) => c,
+        Err(_) => return result,
+    };
+    let install_dir = match core_install_dir() {
+        Ok(d) => d,
+        Err(_) => return result,
+    };
+    let auth_dir = match auth_dir_path_for_core(&config.auth_dir, &install_dir) {
+        Ok(d) => d,
+        Err(_) => return result,
+    };
+    if !auth_dir.is_dir() {
+        return result;
+    }
+    if let Ok(entries) = fs::read_dir(&auth_dir) {
+        for entry in entries.filter_map(Result::ok) {
+            let path = entry.path();
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if !name.starts_with("workbuddy-") || !name.ends_with(".json") {
+                continue;
+            }
+            if let Ok(content) = fs::read_to_string(&path) {
+                if let Ok(v) = serde_json::from_str::<Value>(&content) {
+                    let uid = v.get("uid").and_then(Value::as_str).unwrap_or("");
+                    let email = v.get("email").or_else(|| v.get("account")).and_then(Value::as_str).unwrap_or("");
+                    let nickname = v.get("nickname").or_else(|| v.get("name")).and_then(Value::as_str).unwrap_or("");
+                    let realm = v.get("realm").and_then(Value::as_str).unwrap_or("intl");
+                    result.push(json!({
+                        "uid": uid,
+                        "nickname": if !nickname.is_empty() { nickname } else if !email.is_empty() { email } else { &uid[..8.min(uid.len())] },
+                        "email": email,
+                        "realm": realm,
+                        "enabled": v.get("disabled").and_then(Value::as_bool).map(|d| !d).unwrap_or(true),
+                        "credits": null
+                    }));
+                }
+            }
+        }
+    }
+    result
+}
+
 /// Lists accounts known to the companion gateway, with realm and readiness.
 #[tauri::command]
 pub(crate) async fn get_workbuddy_accounts(
+    gui_config_state: State<'_, GuiConfigState>,
     proxy_state: State<'_, WorkBuddyProxyState>,
 ) -> Result<Value, String> {
-    let payload = workbuddy_gateway_get(proxy_state.inner(), "/accounts?realm=all").await?;
-    Ok(payload)
+    // 1. Sync accounts from auth_dir to companion gateway
+    if let Ok(config) = gui_config_state.snapshot() {
+        if let Ok(install_dir) = core_install_dir() {
+            if let Ok(auth_dir) = auth_dir_path_for_core(&config.auth_dir, &install_dir) {
+                sync_auth_dir_accounts_to_companion(proxy_state.inner(), &auth_dir).await;
+            }
+        }
+    }
+
+    // 2. Query companion gateway
+    let payload = workbuddy_gateway_get(proxy_state.inner(), "/accounts?realm=all").await;
+    match payload {
+        Ok(mut val) => {
+            enrich_accounts_with_auth_metadata(gui_config_state.inner(), &mut val);
+            Ok(val)
+        }
+        Err(err) => {
+            let fallback = read_fallback_workbuddy_accounts(gui_config_state.inner());
+            if !fallback.is_empty() {
+                Ok(json!({ "accounts": fallback, "offline": true, "gateway_error": err }))
+            } else {
+                Err(err)
+            }
+        }
+    }
+}
+
+/// Refreshes upstream credits/quotas for WorkBuddy accounts.
+#[tauri::command]
+pub(crate) async fn refresh_workbuddy_credits(
+    proxy_state: State<'_, WorkBuddyProxyState>,
+    uid: Option<String>,
+) -> Result<Value, String> {
+    let mut body = json!({ "refresh": true });
+    if let Some(uid) = uid.filter(|value| !value.trim().is_empty()) {
+        body["uid"] = json!(uid);
+    }
+    workbuddy_gateway_post(proxy_state.inner(), "/accounts/credits", body).await
 }
 
 /// Runs one task endpoint for an optional single account.

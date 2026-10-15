@@ -1427,10 +1427,49 @@ export function createBrowserMockRuntime(
         };
       }
       case 'sync_workbuddy_provider_to_cpa': return 'WorkBuddy successfully synchronized as OpenAI-compatible provider at http://127.0.0.1:8788/v1';
-      case 'get_workbuddy_accounts': return {
+      case 'get_workbuddy_accounts':
+      case 'refresh_workbuddy_credits': return {
         accounts: [
-          { uid: 'wb_mock_intl', nickname: 'Mock Intl', realm: 'intl', enabled: true },
-          { uid: 'wb_mock_cn', nickname: 'Mock CN', realm: 'cn', enabled: true },
+          {
+            uid: '6461aca0-1e34-4f9b-8888-4a4c9a286ef0',
+            nickname: '伯 小',
+            email: 'bytelkshan@gmail.com',
+            realm: 'intl',
+            enabled: true,
+            credits: {
+              remain: 784.76,
+              used: 45.24,
+              size: 830.0,
+              used_percent: '5.5%',
+              remain_percent: '94.5%',
+              is_paid_user: false,
+              checkin: {
+                today_checked_in: true,
+                streak_days: 7,
+                daily_credit: 5,
+              },
+            },
+          },
+          {
+            uid: 'wb_mock_cn',
+            nickname: '国内测试账号',
+            email: 'tencent_user@qq.com',
+            realm: 'cn',
+            enabled: true,
+            credits: {
+              remain: 150.0,
+              used: 50.0,
+              size: 200.0,
+              used_percent: '25.0%',
+              remain_percent: '75.0%',
+              is_paid_user: false,
+              checkin: {
+                today_checked_in: false,
+                streak_days: 3,
+                daily_credit: 5,
+              },
+            },
+          },
         ],
       };
       case 'run_workbuddy_checkin': return {

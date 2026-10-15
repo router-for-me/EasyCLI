@@ -2867,6 +2867,7 @@ fn main() {
             workbuddy_proxy::poll_workbuddy_oauth,
             workbuddy_proxy::sync_workbuddy_provider_to_cpa,
             workbuddy_proxy::get_workbuddy_accounts,
+            workbuddy_proxy::refresh_workbuddy_credits,
             workbuddy_proxy::run_workbuddy_checkin,
             workbuddy_proxy::run_workbuddy_daily_activity,
             workbuddy_proxy::run_workbuddy_growth_tasks,
