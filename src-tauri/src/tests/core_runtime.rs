@@ -1471,3 +1471,61 @@ fn core_crash_supervisor_resets_attempts_after_stable_uptime_and_treats_already_
     assert!(check_and_recover_crashed_core(&state, |_| Ok(())).unwrap());
 }
 
+#[test]
+fn core_crash_supervisor_retry_limit_preserves_supervision_of_manually_started_child() {
+    let state = CoreProcessState::new(false);
+
+    for _ in 0..MAX_CORE_CRASH_RESTART_ATTEMPTS {
+        let mut child = spawn_core_child(core_child_sleep_command()).unwrap();
+        let _ = child.kill();
+        let _ = child.wait();
+        state.store_child(child).unwrap();
+        assert!(check_and_recover_crashed_core(&state, |_| Ok(())).unwrap());
+    }
+
+    let mut crashed = spawn_core_child(core_child_sleep_command()).unwrap();
+    let _ = crashed.kill();
+    let _ = crashed.wait();
+    state.store_child(crashed).unwrap();
+    assert!(state.poll_unexpected_child_exit(CORE_CRASH_STABLE_UPTIME));
+    assert!(core_crash_restart_backoff(state.record_crash_restart_attempt()).is_none());
+
+    // A manual start lands after the retry limit is reached but before recovery is paused.
+    state.reset_crash_restart_attempts();
+    let manual_child = spawn_core_child(core_child_sleep_command()).unwrap();
+    state.store_child(manual_child).unwrap();
+
+    let error = pause_core_crash_recovery(&state);
+    assert!(error.contains("automatic restart paused"));
+    assert!(state.is_supervising());
+
+    if let Ok(mut guard) = state.child.lock() {
+        if let Some(process) = guard.as_mut() {
+            let _ = process.kill();
+            let _ = process.wait();
+        }
+    }
+    let mut backoff = None;
+    assert!(check_and_recover_crashed_core(&state, |delay| {
+        backoff = Some(delay);
+        Ok(())
+    })
+    .unwrap());
+    assert_eq!(backoff, Some(Duration::from_secs(1)));
+
+    // Without a replacement child, reaching the limit still pauses automatic recovery.
+    let state = CoreProcessState::new(false);
+    for _ in 0..MAX_CORE_CRASH_RESTART_ATTEMPTS {
+        let mut child = spawn_core_child(core_child_sleep_command()).unwrap();
+        let _ = child.kill();
+        let _ = child.wait();
+        state.store_child(child).unwrap();
+        assert!(check_and_recover_crashed_core(&state, |_| Ok(())).unwrap());
+    }
+    let mut child = spawn_core_child(core_child_sleep_command()).unwrap();
+    let _ = child.kill();
+    let _ = child.wait();
+    state.store_child(child).unwrap();
+    assert!(check_and_recover_crashed_core(&state, |_| Ok(())).is_err());
+    assert!(!state.is_supervising());
+}

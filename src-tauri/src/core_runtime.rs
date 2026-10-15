@@ -2570,14 +2570,16 @@ where
     }
     let attempt = process_state.record_crash_restart_attempt();
     let Some(backoff) = core_crash_restart_backoff(attempt) else {
-        process_state.clear_supervision();
-        return Err(format!(
-            "CPA kernel crashed repeatedly ({MAX_CORE_CRASH_RESTART_ATTEMPTS} attempts); automatic restart paused"
-        ));
+        return Err(pause_core_crash_recovery(process_state));
     };
     restart_fn(backoff)?;
     process_state.finish_recovery_pass();
     Ok(true)
+}
+
+pub(crate) fn pause_core_crash_recovery(process_state: &CoreProcessState) -> String {
+    process_state.finish_recovery_pass();
+    format!("CPA kernel crashed repeatedly ({MAX_CORE_CRASH_RESTART_ATTEMPTS} attempts); automatic restart paused")
 }
 
 pub(crate) fn restart_crashed_core_locked(
