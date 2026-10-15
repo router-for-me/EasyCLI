@@ -3,14 +3,7 @@ use super::*;
 struct Home(PathBuf);
 impl Home {
     fn new() -> Self {
-        let path = env::temp_dir().join(format!(
-            "cpa-antigravity-test-{}-{}",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let path = crate::unique_test_temp_path("cpa-antigravity-test");
         fs::create_dir_all(&path).unwrap();
         Self(path)
     }
@@ -194,6 +187,8 @@ fn antigravity_cli_helper_uses_managed_credentials_and_model() {
     };
     fs::create_dir_all(binary.parent().unwrap()).unwrap();
     fs::write(&binary, []).unwrap();
+    #[cfg(unix)]
+    fs::set_permissions(&binary, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
     let args = [
         "cpa".into(),
         "--cpa-antigravity-cli".into(),

@@ -4,6 +4,7 @@ import { authFileListZhCN } from '../authFileList';
 
 export const zhCN = {
   'app.nav.plugins': '插件',
+  'app.nav.pluginPages': '插件页面',
   'oauth.vertex.title': 'Vertex JSON 登录',
   'oauth.vertex.locationPlaceholder': 'us-central1',
   'oauth.vertex.cardHint': '通过导入 Google 服务账号 JSON 登录 Vertex AI。',

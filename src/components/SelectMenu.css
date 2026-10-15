@@ -49,6 +49,10 @@
   transform: rotate(180deg);
 }
 
+.select-menu-theme-scope {
+  display: contents;
+}
+
 .select-menu-dropdown {
   position: fixed;
   z-index: 45;
