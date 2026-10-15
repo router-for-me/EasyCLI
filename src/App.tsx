@@ -38,6 +38,11 @@ import { QuotaPage } from './pages/QuotaPage';
 import { AgentsPage } from './pages/AgentsPage';
 import { EasyModePage } from './pages/EasyModePage';
 import { UsageRecordsPage } from './pages/UsageRecordsPage';
+import { PluginResourcePage } from './pages/PluginResourcePage';
+import { PluginResourceIcon } from './components/PluginResourceIcon';
+import { usePinnedPluginResources } from './pluginPins';
+import { pluginPinKey, resourcePin } from './services/pluginPins';
+import { pluginText } from './i18n/plugins';
 import { PluginsPage } from './pages/PluginsPage';
 import { languageOptions, useI18n } from './i18n';
 import { AppUpdateDialog, AppUpdateProvider, useAppUpdate } from './appUpdate';
@@ -113,7 +118,7 @@ const pages = [
   },
 ] as const;
 
-type PageId = (typeof pages)[number]['id'];
+type PageId = (typeof pages)[number]['id'] | `plugin:${string}`;
 type WindowsCloseAction = 'exit' | 'minimize-to-tray';
 type WindowsCloseBehavior = 'ask' | WindowsCloseAction;
 
@@ -168,6 +173,8 @@ function AppContent() {
   const languageButtonRef = useRef<HTMLButtonElement>(null);
   const { status } = useCoreRuntime();
   const coreReady = Boolean(status?.ready);
+  const pinnedPages = usePinnedPluginResources(coreReady);
+  const pinnedPage = pinnedPages.find(entry => `plugin:${pluginPinKey(resourcePin(entry))}` === active);
   const activePage = pages.find((page) => page.id === active) ?? pages[0];
   const ActivePage = activePage.component;
   const selectedLanguage = languageOptions.find((option) => option.value === locale)
@@ -181,10 +188,10 @@ function AppContent() {
       : '',
   ].filter(Boolean).join(' · ');
   useEffect(() => {
-    if (!canOpenAppPage(active, coreReady)) {
+    if (!canOpenAppPage(active, coreReady) || (active.startsWith('plugin:') && !pinnedPage)) {
       setActive('home');
     }
-  }, [active, coreReady]);
+  }, [active, coreReady, pinnedPage]);
 
   useEffect(() => {
     if (!languageMenuOpen) return undefined;
@@ -382,6 +389,17 @@ function AppContent() {
                   </button>
                 );
               })}
+              {pinnedPages.length > 0 && <>
+                <div className="nav-plugin-heading">{pluginText('pinnedPlugins', locale)}</div>
+                {pinnedPages.map(entry => {
+                  const id: PageId = `plugin:${pluginPinKey(resourcePin(entry))}`;
+                  return <button key={id} type="button" className={active === id ? 'active' : ''}
+                    aria-current={active === id ? 'page' : undefined} title={`${entry.pluginTitle}: ${entry.description}`}
+                    onClick={() => select(id)}>
+                    <PluginResourceIcon entry={entry} /><span>{entry.label}</span>
+                  </button>;
+                })}
+              </>}
             </nav>
 
             <div className="sidebar-bottom">
@@ -488,7 +506,9 @@ function AppContent() {
 
         <div className="workspace">
           <main className="content">
-            {isAlwaysAvailablePage(activePage.id) || coreReady ? (
+            {pinnedPage ? (
+              <PluginResourcePage key={pluginPinKey(resourcePin(pinnedPage))} entry={pinnedPage} onBack={() => select('plugins')} />
+            ) : isAlwaysAvailablePage(activePage.id) || coreReady ? (
               activePage.id === 'easy' ? (
                 <EasyModePage
                   onExit={() => select('home')}
