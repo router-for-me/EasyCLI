@@ -64,16 +64,16 @@ type TaskDef = {
 const TASK_DEFS: TaskDef[] = [
   {
     task: 'checkin',
-    label: '每日签到',
-    realm: 'cn',
-    desc: '国内版每日签到，领取基础签到积分（企业版账号不支持）。',
+    label: '每日签到 / 活跃打卡',
+    realm: 'both',
+    desc: '每日领取积分：国内版账号执行每日签到，国际版账号执行每日活跃打卡。',
     command: 'run_workbuddy_checkin',
   },
   {
     task: 'daily-activity',
-    label: '每日活跃打卡',
+    label: '国际版网页打卡',
     realm: 'intl',
-    desc: '国际版每日活跃打卡，走完整网页会话以计入官方活跃奖励。',
+    desc: '国际版每日网页会话打卡，走完整网页会话以计入官方活跃奖励。',
     command: 'run_workbuddy_daily_activity',
   },
   {
@@ -198,8 +198,12 @@ export function WorkBuddyTasksPage({ onBack }: { onBack?: () => void }) {
   const handleRefreshCredits = async () => {
     setRefreshingCredits(true);
     try {
-      await invoke('refresh_workbuddy_credits', { uid: selectedUid || null });
-      await loadAccounts(false);
+      const res = await invoke<Record<string, unknown>>('refresh_workbuddy_credits', { uid: selectedUid || null });
+      if (Array.isArray(res.accounts) && res.accounts.length > 0) {
+        setAccounts(res.accounts as WorkBuddyAccount[]);
+      } else {
+        await loadAccounts(false);
+      }
       noticeRef.current.showNotice('账号积分已刷新', 'success');
     } catch (error) {
       noticeRef.current.showNotice(`刷新积分失败：${error}`, 'error');

@@ -712,10 +712,24 @@ pub(crate) async fn poll_workbuddy_oauth(
     };
 
     let url = format!("{upstream}/v2/plugin/auth/token?state={state}");
-    let client = Client::builder().timeout(Duration::from_secs(10)).build().unwrap_or_default();
+    let client = Client::builder().timeout(Duration::from_secs(12)).build().unwrap_or_default();
 
-    let response = client
-        .get(&url)
+    let mut req = client.get(&url);
+    if selected_realm == "cn" {
+        req = req
+            .header("User-Agent", "WorkBuddy/5.5.6")
+            .header("Origin", "https://www.codebuddy.cn")
+            .header("Referer", "https://www.codebuddy.cn/")
+            .header("X-Requested-With", "XMLHttpRequest");
+    } else {
+        req = req
+            .header("User-Agent", "WorkBuddy/5.5.2")
+            .header("Origin", "https://www.workbuddy.ai")
+            .header("Referer", "https://www.workbuddy.ai/")
+            .header("X-Requested-With", "XMLHttpRequest");
+    }
+
+    let response = req
         .send()
         .await
         .map_err(|e| format!("Failed to poll WorkBuddy OAuth token from {url}: {e}"))?;
@@ -756,7 +770,14 @@ pub(crate) async fn poll_workbuddy_oauth(
     let expires_in = data.get("expiresIn").and_then(Value::as_i64);
 
     if access_token.is_empty() {
-        return Err("Received empty access token".to_string());
+        return Ok(WorkBuddyOAuthPollResult {
+            status: "waiting".to_string(),
+            message: Some("Waiting for authorization...".to_string()),
+            uid: None,
+            access_token: None,
+            refresh_token: None,
+            expires_in: None,
+        });
     }
 
     // Extract claims from JWT
@@ -770,12 +791,24 @@ pub(crate) async fn poll_workbuddy_oauth(
     // If nickname or email is missing, query the account profile endpoint
     if nickname.is_none() || email.is_none() {
         let acct_url = format!("{upstream}/v2/plugin/login/account?state={state}");
-        if let Ok(resp) = client
+        let mut acct_req = client
             .get(&acct_url)
-            .header("Authorization", format!("Bearer {access_token}"))
-            .send()
-            .await
-        {
+            .header("Authorization", format!("Bearer {access_token}"));
+        if selected_realm == "cn" {
+            acct_req = acct_req
+                .header("User-Agent", "WorkBuddy/5.5.6")
+                .header("Origin", "https://www.codebuddy.cn")
+                .header("Referer", "https://www.codebuddy.cn/")
+                .header("X-Requested-With", "XMLHttpRequest");
+        } else {
+            acct_req = acct_req
+                .header("User-Agent", "WorkBuddy/5.5.2")
+                .header("Origin", "https://www.workbuddy.ai")
+                .header("Referer", "https://www.workbuddy.ai/")
+                .header("X-Requested-With", "XMLHttpRequest");
+        }
+
+        if let Ok(resp) = acct_req.send().await {
             if let Ok(profile) = resp.json::<Value>().await {
                 let pdata = profile.get("data");
                 if nickname.is_none() {
@@ -784,11 +817,20 @@ pub(crate) async fn poll_workbuddy_oauth(
                         .and_then(Value::as_str)
                         .map(str::to_string);
                 }
+                let phone = pdata
+                    .and_then(|d| d.get("phoneNumber"))
+                    .and_then(Value::as_str)
+                    .map(str::to_string);
+                let uin = pdata.and_then(|d| d.get("uin")).and_then(|v| {
+                    v.as_str().map(str::to_string).or_else(|| v.as_i64().map(|n| n.to_string()))
+                });
                 if email.is_none() {
                     email = pdata
-                        .and_then(|d| d.get("email").or_else(|| d.get("uin")))
+                        .and_then(|d| d.get("email"))
                         .and_then(Value::as_str)
-                        .map(str::to_string);
+                        .map(str::to_string)
+                        .or(phone)
+                        .or(uin);
                 }
                 if let Some(prof_uid) = pdata.and_then(|d| d.get("uid")).and_then(Value::as_str) {
                     if !prof_uid.trim().is_empty() {
@@ -800,14 +842,14 @@ pub(crate) async fn poll_workbuddy_oauth(
     }
 
     // Determine clear, human-readable display label
-    let display_label = email
-        .clone()
-        .or_else(|| {
-            nickname
-                .clone()
-                .map(|n| format!("{n} ({})", &uid[..8.min(uid.len())]))
-        })
-        .unwrap_or_else(|| format!("WorkBuddy ({})", &uid[..8.min(uid.len())]));
+    let display_label = match (&nickname, &email) {
+        (Some(nick), Some(id)) if !nick.is_empty() && !id.is_empty() && nick != id => {
+            format!("{nick} ({id})")
+        }
+        (_, Some(id)) if !id.is_empty() => id.clone(),
+        (Some(nick), _) if !nick.is_empty() => format!("{nick} ({})", &uid[..8.min(uid.len())]),
+        _ => format!("WorkBuddy ({})", &uid[..8.min(uid.len())]),
+    };
 
     let now_sec = chrono::Utc::now().timestamp();
     let expires_at = expires_in.map(|exp| now_sec + exp).unwrap_or(now_sec + 2592000);
@@ -840,8 +882,17 @@ pub(crate) async fn poll_workbuddy_oauth(
         "/accounts/import",
         json!({
             "format": "workbuddy-accounts",
-            "accounts": [account_record.clone()]
+            "accounts": [account_record.clone()],
+            "overwrite": true
         }),
+    )
+    .await;
+
+    // Trigger credit refresh immediately so credits are available
+    let _ = workbuddy_gateway_post(
+        proxy_state.inner(),
+        "/accounts/credits",
+        json!({ "uid": uid, "refresh": true }),
     )
     .await;
 
@@ -854,6 +905,7 @@ pub(crate) async fn poll_workbuddy_oauth(
             if fs::create_dir_all(&auth_dir).is_ok() {
                 let auth_file_path = auth_dir.join(format!("workbuddy-{uid}.json"));
                 let cpa_auth_record = json!({
+                    "name": format!("workbuddy-{uid}.json"),
                     "type": "workbuddy",
                     "account_type": "oauth",
                     "auth_kind": "oauth",
@@ -1246,7 +1298,7 @@ fn workbuddy_gateway_origin(proxy_state: &WorkBuddyProxyState) -> Result<String,
         .port
         .lock()
         .map_err(|e| e.to_string())?
-        .unwrap_or(DEFAULT_WORKBUDDY_PORT);
+        .unwrap_or_else(active_workbuddy_port);
     let host = proxy_state
         .host
         .lock()

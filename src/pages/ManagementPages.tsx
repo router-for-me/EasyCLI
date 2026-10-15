@@ -228,6 +228,8 @@ export function OAuthLoginPage({ onOpenAuthFiles, onOpenWorkBuddyTasks }: { onOp
   const [browsersLoading, setBrowsersLoading] = useState(true);
   const [selectedBrowser, setSelectedBrowser] = useState(loadOAuthBrowserPreference);
   const [workbuddyRealm, setWorkbuddyRealm] = useState<'intl' | 'cn'>('intl');
+  const workbuddyRealmRef = useRef(workbuddyRealm);
+  workbuddyRealmRef.current = workbuddyRealm;
   const [quickTask, setQuickTask] = useState<string | null>(null);
   const pollingTimers = useRef<Partial<Record<OAuthProviderId, number>>>({});
   const pollingRequests = useRef<Partial<Record<OAuthProviderId, boolean>>>({});
@@ -341,18 +343,19 @@ export function OAuthLoginPage({ onOpenAuthFiles, onOpenWorkBuddyTasks }: { onOp
   }, []);
 
   const startPolling = useCallback(
-    (provider: OAuthProviderId, state: string) => {
+    (provider: OAuthProviderId, state: string, targetRealm?: 'intl' | 'cn') => {
       clearPollingTimer(provider);
       pollingSessions.current[provider] = state;
       const isCurrent = () => pollingSessions.current[provider] === state;
       if (provider === 'workbuddy') {
+        const realmToPoll = targetRealm || workbuddyRealmRef.current;
         const checkStatus = async () => {
           if (pollingRequests.current[provider]) return;
           pollingRequests.current[provider] = true;
           try {
             const result = await invoke<{ status: string; message?: string; uid?: string }>(
               'poll_workbuddy_oauth',
-              { state, realm: workbuddyRealm },
+              { state, realm: realmToPoll },
             );
             if (!isCurrent()) return;
             if (result.status === 'success') {
@@ -488,7 +491,8 @@ export function OAuthLoginPage({ onOpenAuthFiles, onOpenWorkBuddyTasks }: { onOp
           status: 'waiting',
           polling: true,
         });
-        startPolling(provider, result.state);
+        const targetRealm = (result.realm as 'intl' | 'cn') || workbuddyRealm;
+        startPolling(provider, result.state, targetRealm);
       } catch (error) {
         updateProviderState(provider, {
           status: 'error',
@@ -549,12 +553,19 @@ export function OAuthLoginPage({ onOpenAuthFiles, onOpenWorkBuddyTasks }: { onOp
   const runWorkBuddyQuickTask = async (kind: 'checkin' | 'all', label: string) => {
     setQuickTask(kind);
     try {
-      // No account selector here: the gateway applies the task to every account.
       const payload = await invoke<Record<string, unknown>>(
         kind === 'checkin' ? 'run_workbuddy_checkin' : 'run_workbuddy_all_tasks',
         { uid: null },
       );
-      showNotice(`WorkBuddy ${label}已执行`, 'success');
+      let detail = '';
+      if (typeof payload.msg === 'string' && payload.msg.trim()) {
+        detail = `：${payload.msg}`;
+      } else if (Array.isArray(payload.results) && payload.results.length > 0) {
+        detail = `：${(payload.results as Record<string, unknown>[])
+          .map((r) => r.msg || r.error || (r.ok ? '成功' : '失败'))
+          .join('；')}`;
+      }
+      showNotice(`WorkBuddy ${label}${detail || '已执行完成'}`, 'success');
       console.info('WorkBuddy task result', payload);
     } catch (error) {
       showNotice(`WorkBuddy ${label}失败：${error}`, 'error');

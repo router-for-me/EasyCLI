@@ -15791,7 +15791,13 @@ class Handler(BaseHTTPRequestHandler):
         token = self._panel_token()
         if token and PANEL.valid(token):
             return True
-        if self._key_ok():
+        key = self._supplied_key()
+        if key:
+            entry = identify_key(key)
+            if entry:
+                self.key_entry = entry
+                return True
+        if not auth_required():
             return True
         return False
     @staticmethod
@@ -17609,15 +17615,20 @@ class Handler(BaseHTTPRequestHandler):
     def _route_accounts_checkin(self, payload):
         uid = payload.get("uid")
         invalidate_tasks_cache()          # 签到会改连续打卡状态，成长任务快照随之作废
-        targets = [POOL.get(uid)] if uid else [a for a in (POOL.accounts if POOL else []) if a.realm == "cn"]
+        targets = [POOL.get(uid)] if uid else [a for a in (POOL.accounts if POOL else [])]
         results = []
         for account in targets:
             if account is None:
                 continue
-            res = account.checkin(trigger="manual")
+            if account.realm != "cn":
+                res = account.daily_chat(trigger="manual")
+                if res.get("ok"):
+                    res["msg"] = "国际版活跃打卡完成，已发放积分奖励"
+            else:
+                res = account.checkin(trigger="manual")
             nick = account.nickname or account.uid[:8]
-            add_log_entry(f"[任务福利] 账号 [{nick}] 每日签到: {res.get('msg') if res.get('ok') else res.get('error')}",
-                          level="INFO" if res.get("ok") else "WARN", tag="tasks")
+            add_log_entry(f"[任务福利] 账号 [{nick}] 每日签到/打卡: {res.get('msg') if res.get('ok') else res.get('error')}",
+                          level="INFO" if res.get('ok') else "WARN", tag="tasks")
             results.append({"uid": account.uid, "nickname": account.nickname, **res})
         return self._json(200, {"results": results, "accounts": account_views()})
 

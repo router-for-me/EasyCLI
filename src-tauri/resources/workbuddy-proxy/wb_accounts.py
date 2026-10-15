@@ -1519,7 +1519,10 @@ class Account(object):
             self.last_checkin = time.strftime("%Y-%m-%d %H:%M:%S")
             if self.path and os.path.exists(os.path.dirname(self.path)):
                 self.save(os.path.dirname(self.path))
-            return {"ok": (code == 0 or code == 10001), "code": code, "msg": msg, "data": payload.get("data")}
+            is_ok = (code == 0 or code == 10001 or "已签到" in msg or "今天已签到" in msg)
+            if "已签到" in msg or "今天已签到" in msg or code == 10001:
+                msg = "今天已签到过，奖励已在账"
+            return {"ok": is_ok, "code": code, "msg": msg, "data": payload.get("data")}
         except urllib.error.HTTPError as exc:
             try:
                 raw_b = exc.read().decode("utf-8") or "{}"
@@ -1960,6 +1963,11 @@ class Account(object):
             res = self._fetch_credits_raw()
             if isinstance(res, dict) and res.get("ok"):
                 self.revive_balance_cooldown()
+                if self.path and os.path.exists(os.path.dirname(self.path)):
+                    try:
+                        self.save(os.path.dirname(self.path))
+                    except Exception:
+                        pass
             return res
 
     def _fetch_credits_raw(self):
