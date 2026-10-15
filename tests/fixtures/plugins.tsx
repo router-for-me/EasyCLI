@@ -13,7 +13,7 @@ const state = {
   commands: [] as { command: string; args: unknown }[],
   requests: [] as Request[],
   installs: [] as Request[],
-  resourceRequests: [] as unknown[],
+  navigations: [] as unknown[],
   failNextList: false,
   failNextInstall: false,
   holdInstall: false,
@@ -31,6 +31,7 @@ const state = {
   },
 };
 Object.assign(window, { pluginsFixture: state });
+window.addEventListener('app:navigate', (event) => state.navigations.push((event as CustomEvent).detail));
 const pluginEntries: Record<string, unknown>[] = [
   { id: 'sample..plugin', path: '/plugins/sample..plugin.dll', configured: true, registered: true,
     supports_oauth: true, oauth_provider: 'sample-sso',
@@ -76,11 +77,6 @@ mockIPC(async (command, args) => {
   if (command === 'start_oauth_login') return { url: 'https://login.example.test/authorize?state=sample-state', state: 'sample-state' };
   if (command === 'get_oauth_status') return { status: 'wait' };
   if (command === 'get_plugin_support') return state.supported;
-  if (command === 'get_plugin_resource_url') {
-    state.resourceRequests.push(args);
-    if (args?.pluginId !== 'sample..plugin' || args?.menuIndex !== 2) throw new Error('Wrong original menu index');
-    return `${location.origin}/tests/fixtures/plugins.html?resource=1`;
-  }
   if (command === 'open_external_url' || command === 'restart_core_process') return null;
   if (command !== 'management_request') return null;
   const request = args?.request as Request;

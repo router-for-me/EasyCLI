@@ -13,16 +13,14 @@ pub(crate) async fn get_plugin_support(
     read_plugin_support(response).await
 }
 
-#[tauri::command]
-pub(crate) async fn get_plugin_resource_url(
-    gui_config_state: tauri::State<'_, GuiConfigState>,
-    plugin_id: String,
+pub(crate) async fn resolve_plugin_entry_url(
+    config: &GuiConfigFile,
+    plugin_id: &str,
     menu_index: usize,
 ) -> Result<String, String> {
-    let config = gui_config_state.snapshot()?;
-    let response = request_plugins(&config).await?;
+    let response = request_plugins(config).await?;
     let plugins = read_management_value(response).await?;
-    let path = active_plugin_menu_path(&plugins, &plugin_id, menu_index)?;
+    let path = active_plugin_menu_path(&plugins, plugin_id, menu_index)?;
     let origin = core_origin(
         &config.host,
         config.port,
@@ -100,8 +98,6 @@ fn active_plugin_menu_path<'a>(
 }
 
 fn resolve_plugin_resource_url(origin: &str, path: &str) -> Result<String, String> {
-    // Plugin resources are public, browser-navigable routes. Preserve the declared
-    // versioned path and never add the management key to the iframe URL.
     if !path.starts_with('/')
         || path.starts_with("//")
         || path.contains('\\')
