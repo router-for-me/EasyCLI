@@ -5,6 +5,7 @@ import { authFileListEn } from '../authFileList';
 
 export const en: Record<MessageKey, string> = {
   'app.nav.plugins': 'Plugins',
+  'app.nav.pluginPages': 'Plugin pages',
   'oauth.vertex.title': 'Vertex JSON Login',
   'oauth.vertex.locationPlaceholder': 'us-central1',
   'oauth.vertex.cardHint': 'Sign in to Vertex AI by importing a Google service account JSON.',

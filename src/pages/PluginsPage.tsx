@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { ArrowLeft, Download, ExternalLink, Folder, LogIn, Puzzle, RefreshCw, Search, Settings2, Trash2, X } from 'lucide-react';
+import { Download, ExternalLink, Folder, LogIn, Puzzle, RefreshCw, Search, Settings2, Trash2, X } from 'lucide-react';
 import { useI18n } from '../i18n';
 import { pluginText } from '../i18n/plugins';
 import { FloatingNotice, useAppNotice } from '../appNotice';
 import { useConfirmation } from '../components/ConfirmationDialog';
 import { pluginsApi, pluginStoreApi, type PluginListEntry, type PluginListResponse, type PluginStoreEntry, type PluginStoreResponse } from '../services/plugins';
-import { collectPluginResourceEntries, getPluginTitle, isOfficialPlugin, notifyPluginResourcesChanged, type PluginResourceEntry } from '../services/pluginResources';
+import { buildPluginResourceRoute, collectPluginResourceEntries, getPluginTitle, isOfficialPlugin, notifyPluginResourcesChanged, type PluginResourceEntry } from '../services/pluginResources';
 import { getPluginStatus, isPluginInstalled } from '../services/pluginStatus';
 import { PluginConfigDialog } from './PluginConfigDialog';
 import { PluginInstallDialog } from './PluginInstallDialog';
@@ -35,7 +35,6 @@ export function PluginsPage() {
   const [installEntry, setInstallEntry] = useState<PluginStoreEntry | null>(null);
   const [oauthPlugin, setOAuthPlugin] = useState<PluginListEntry | null>(null);
   const [restartRequired, setRestartRequired] = useState(false);
-  const [resource, setResource] = useState<{ entry: PluginResourceEntry; url: string } | null>(null);
   const requests = useRef(0);
   const mounted = useRef(false);
   const pending = useRef(false);
@@ -52,12 +51,11 @@ export function PluginsPage() {
       const support = await invoke<boolean>('get_plugin_support');
       if (!mounted.current || revision !== requests.current) return;
       setSupported(support);
-      if (!support) { setData(null); setStore(null); setResource(null); return; }
+      if (!support) { setData(null); setStore(null); return; }
       const next = await pluginsApi.list();
       if (!mounted.current || revision !== requests.current) return;
       setData(next);
       notifyPluginResourcesChanged();
-      setResource(previous => previous && collectPluginResourceEntries(next.plugins).some(entry => entry.pluginID === previous.entry.pluginID && entry.menuIndex === previous.entry.menuIndex && entry.menu.path === previous.entry.menu.path) ? previous : null);
       if (target === 'store') {
         const nextStore = await pluginStoreApi.list();
         if (mounted.current && revision === requests.current) setStore(nextStore);
@@ -113,15 +111,7 @@ export function PluginsPage() {
       if (mounted.current && result.restartRequired) setRestartRequired(true);
     }, pt(installed ? 'removed' : 'removedConfig'));
   };
-  const openResource = async (entry: PluginResourceEntry) => {
-    if (pending.current) return;
-    pending.current = true; setBusy(true); setError('');
-    try {
-      const url = await invoke<string>('get_plugin_resource_url', { pluginId: entry.pluginID, menuIndex: entry.menuIndex });
-      if (mounted.current) setResource({ entry, url });
-    } catch (reason) { if (mounted.current) setError(message(reason)); }
-    finally { pending.current = false; if (mounted.current) setBusy(false); }
-  };
+  const openResource = (entry: PluginResourceEntry) => window.dispatchEvent(new CustomEvent('app:navigate', { detail: buildPluginResourceRoute(entry.pluginID, entry.menuIndex) }));
   const matches = (values: (string | undefined)[]) => values.join(' ').toLowerCase().includes(search.trim().toLowerCase());
   const plugins = (data?.plugins ?? []).filter(plugin => matches([plugin.id, plugin.metadata?.name, plugin.metadata?.author]));
   const storePlugins = (store?.plugins ?? []).filter(plugin => matches([plugin.id, plugin.name, plugin.description, plugin.author, ...plugin.tags]) && (filter === 'all' || (filter === 'installed' && plugin.installed) || (filter === 'updates' && plugin.updateAvailable)));
@@ -136,7 +126,7 @@ export function PluginsPage() {
       <div className="plugin-summary"><label className="plugin-global-toggle"><input type="checkbox" checked={data?.pluginsEnabled ?? false} disabled={locked || !data} onChange={e => { const enabled = e.target.checked; void mutate(() => pluginsApi.updateSettings({ enabled }), pt('saved')); }} />{pt('global')}</label><span><Folder size={15} aria-hidden="true" />{data?.pluginsDir || pt('directory')}</span><span>{pt('installed')} <strong>{installedCount}</strong>{configOnlyCount > 0 && <> · {pt('configOnly')} <strong>{configOnlyCount}</strong></>}</span></div>
       {data && !data.pluginsEnabled && <p className="plugin-banner">{pt('disabledHint')}</p>}
       {restartRequired && <div className="plugin-banner"><span>{pt('restart')}</span><button className="secondary-button" disabled={locked} onClick={async () => { if (await askConfirmation({ title: pt('restartButton'), message: pt('restartConfirm') })) void mutate(async () => { await invoke('restart_core_process'); if (mounted.current) setRestartRequired(false); }, pt('saved')); }}>{pt('restartButton')}</button></div>}
-      {resource ? <section className="plugin-resource"><div className="plugin-toolbar"><button className="secondary-button" onClick={() => setResource(null)}><ArrowLeft size={16} />{pt('back')}</button><strong>{resource.entry.label}</strong><button className="secondary-button" onClick={() => void invoke('open_external_url', { url: resource.url }).catch(e => setError(message(e)))}><ExternalLink size={16} />{pt('openExternal')}</button></div><iframe key={resource.url} src={resource.url} title={resource.entry.label} referrerPolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" allow="clipboard-read; clipboard-write" /></section> : <>
+      <>
         <div className="plugin-navigation">
         <nav className="plugin-tabs" aria-label={pt('title')}>{(['installed', 'store', 'settings'] as const).map(value => <button key={value} className={tab === value ? 'active' : ''} aria-current={tab === value ? 'page' : undefined} disabled={busy} onClick={() => { setTab(value); setSearch(''); setFilter('all'); }}>{pt(value === 'installed' ? 'local' : value)}</button>)}</nav>
           {tab !== 'settings' &&
@@ -162,7 +152,7 @@ export function PluginsPage() {
             {meta && <p className="plugin-meta">{meta}</p>}{plugin.path && <p className="plugin-path" title={plugin.path}>{plugin.path}</p>}
             {status === 'missingFile' && <p className="plugin-card-description">{pt('missingFileHint')}</p>}
             {status === 'notLoaded' && <p className="plugin-card-description">{pt('notLoadedHint')}</p>}
-            {collectPluginResourceEntries([plugin]).length > 0 && <div className="plugin-menus">{collectPluginResourceEntries([plugin]).map(entry => <button key={entry.menuIndex} title={entry.description} className="secondary-button" disabled={locked} onClick={() => void openResource(entry)}><ExternalLink size={14} />{entry.label}</button>)}</div>}
+            {collectPluginResourceEntries([plugin]).length > 0 && <div className="plugin-menus">{collectPluginResourceEntries([plugin]).map(entry => <button key={entry.menuIndex} title={entry.description} className="secondary-button" disabled={locked} onClick={() => openResource(entry)}><ExternalLink size={14} />{entry.label}</button>)}</div>}
             <div className="plugin-card-actions">
             {plugin.effectiveEnabled && plugin.supportsOAuth && plugin.oauthProvider && <button className="secondary-button" disabled={locked} onClick={() => setOAuthPlugin(plugin)}><LogIn size={15} />{pt('oauth')}</button>}
               {installed ? <button className="secondary-button" disabled={locked} onClick={() => void mutate(() => pluginsApi.updateEnabled(plugin.id, !plugin.enabled), pt('saved'))}>{pt(plugin.enabled ? 'disabled' : 'enabled')}</button> : <button className="secondary-button" disabled={locked} onClick={() => { setSearch(plugin.id); setFilter('all'); setTab('store'); }}><Download size={15} />{pt('findInStore')}</button>}
@@ -181,7 +171,7 @@ export function PluginsPage() {
           </>}
           {!loading && !error && (tab === 'installed' ? !plugins.length : !storePlugins.length) && <section className="plugin-empty"><Puzzle size={36} /><h2>{pt(search || filter !== 'all' ? 'noMatches' : 'empty')}</h2>{tab === 'installed' && !search && <><p>{pt('emptyHint')}</p><button className="primary-button" onClick={() => setTab('store')}>{pt('store')}</button></>}</section>}
         </>}
-      </>}
+      </>
     </>}
     {configPlugin && <PluginConfigDialog plugin={configPlugin} onClose={() => setConfigPlugin(null)} onSaved={() => { notice.showNotice(pt('saved')); void load(); }} />}
     {installEntry && <PluginInstallDialog entry={installEntry} onClose={() => setInstallEntry(null)} onInstalled={result => { setInstallEntry(null); setRestartRequired(previous => previous || result.restartRequired); notice.showNotice(pt('installedSuccess')); void load(); }} />}

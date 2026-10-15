@@ -22,6 +22,7 @@ mod network_proxy;
 ))]
 mod native_i18n;
 mod oauth_browser;
+mod plugin_webview;
 mod plugins;
 mod privacy_mode;
 mod progress;
@@ -40,7 +41,7 @@ mod windows_frame;
 use configuration_watcher::nearest_existing_watch_directory;
 use management_api::{
     format_management_request_error, management_authorization, management_endpoint,
-    management_http_client, read_management_text, read_management_value,
+    management_http_client, management_plaintext_key, read_management_text, read_management_value,
 };
 use oauth_browser::*;
 #[cfg(test)]
@@ -2505,6 +2506,7 @@ fn main() {
         .manage(DeepSeekHarnessProcessState::default())
         .manage(usage::UsageCollectorState::default())
         .manage(GuiConfigState::new(gui_config))
+        .manage(plugin_webview::PluginWebviewState::default())
         .manage(MainWindowSizeState::new(initial_window_size))
         .manage(AgentConfigStatusCache::default());
 
@@ -2789,7 +2791,10 @@ fn main() {
             clear_core_management_secret_key,
             management_api::management_request,
             plugins::get_plugin_support,
-            plugins::get_plugin_resource_url,
+            plugin_webview::show_plugin_webview,
+            plugin_webview::set_plugin_webview_bounds,
+            plugin_webview::hide_plugin_webview,
+            plugin_webview::close_plugin_webview,
             provider_health::provider_health_probe,
             provider_health::get_core_models,
             provider_health::core_health_probe,

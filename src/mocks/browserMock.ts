@@ -5,6 +5,7 @@ import {
   resolveBrowserMockOptions,
   type BrowserMockScenario,
 } from './browserMockRuntime';
+import { clampPluginPages, type PluginWebviewMockState } from './pluginMock';
 import './browserMock.css';
 
 const STORAGE_KEY = 'easy-cli-proxy-api.browser-mock-scenario';
@@ -71,6 +72,35 @@ function installToolbar(scenario: BrowserMockScenario, delayMs: number) {
   document.body.dataset.browserMock = scenario;
 }
 
+function installPluginWebviewPlaceholder() {
+  document.querySelector('[data-mock-plugin-webview]')?.remove();
+
+  const placeholder = document.createElement('div');
+  placeholder.dataset.mockPluginWebview = '';
+  placeholder.hidden = true;
+  const title = document.createElement('strong');
+  title.textContent = 'Native plugin webview';
+  const note = document.createElement('p');
+  note.textContent = 'The native plugin webview is not available in browser preview. In the desktop app it covers this area.';
+  const controls = document.createElement('p');
+  controls.textContent = 'Back, reload and open-in-browser controls are injected into the page by the desktop app and can be dragged.';
+  const url = document.createElement('code');
+  placeholder.append(title, note, controls, url);
+  document.body.append(placeholder);
+
+  return (state: PluginWebviewMockState) => {
+    placeholder.hidden = !state.visible;
+    placeholder.style.left = `${state.bounds.x}px`;
+    placeholder.style.top = `${state.bounds.y}px`;
+    placeholder.style.width = `${state.bounds.width}px`;
+    placeholder.style.height = `${state.bounds.height}px`;
+    placeholder.dataset.mockUrl = state.url;
+    placeholder.dataset.mockReloads = String(state.reloads);
+    placeholder.dataset.mockLabels = JSON.stringify(state.labels);
+    url.textContent = state.url;
+  };
+}
+
 export function installBrowserMock(): InstalledBrowserMock | null {
   const options = resolveBrowserMockOptions(window.location.search, readStoredScenario());
   if (options.mode === 'off') {
@@ -90,6 +120,8 @@ export function installBrowserMock(): InstalledBrowserMock | null {
       });
     },
     options.delayMs,
+    clampPluginPages(new URLSearchParams(window.location.search).get('mockPluginPages')),
+    installPluginWebviewPlaceholder(),
   );
 
   mockIPC((command, payload) => runtime.invoke(command, payload), {

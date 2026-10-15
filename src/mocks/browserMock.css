@@ -58,3 +58,35 @@
     display: none;
   }
 }
+
+[data-mock-plugin-webview] {
+  position: fixed;
+  z-index: 2147483000;
+  display: flex;
+  box-sizing: border-box;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  overflow: hidden;
+  border: 2px dashed color-mix(in srgb, #f59e0b 70%, transparent);
+  background: var(--bg-card, #17191f);
+  color: var(--text-primary, #f3f4f6);
+  font: 13px/1.5 system-ui, sans-serif;
+  text-align: center;
+}
+
+[data-mock-plugin-webview][hidden] {
+  display: none;
+}
+
+[data-mock-plugin-webview] p {
+  margin: 0;
+  color: var(--text-secondary, #b6bbc6);
+}
+
+[data-mock-plugin-webview] code {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
