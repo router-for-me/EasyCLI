@@ -54,10 +54,6 @@
   box-shadow: none;
 }
 
-.oauth-page-toolbar-actions > .primary-button {
-  color: var(--primary-contrast);
-}
-
 .oauth-page-toolbar .oauth-page-toolbar-actions > button.oauth-toolbar-quiet {
   border-color: transparent;
   background: transparent;
