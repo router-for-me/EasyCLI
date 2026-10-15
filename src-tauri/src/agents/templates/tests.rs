@@ -51,14 +51,7 @@ fn core_failure_messages_distinguish_alias_and_configuration_failures() {
 
 #[tokio::test]
 async fn template_confirmation_is_bound_to_files_and_generated_content() {
-    let home = std::env::temp_dir().join(format!(
-        "cpa-template-{}-{}",
-        std::process::id(),
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    ));
+    let home = crate::unique_test_temp_path("cpa-template");
     fs::create_dir_all(&home).unwrap();
     let paths = config_paths("pi", &home).unwrap();
     let before = config_images(&paths).unwrap();
@@ -97,7 +90,7 @@ async fn template_confirmation_is_bound_to_files_and_generated_content() {
 
 #[test]
 fn incomplete_or_invalid_template_never_writes_any_file() {
-    let home = std::env::temp_dir().join(format!("cpa-template-invalid-{}", std::process::id()));
+    let home = crate::unique_test_temp_path("cpa-template-invalid");
     let paths = config_paths("pi", &home).unwrap();
     let before = config_images(&paths).unwrap();
     let mut updates = build_pi_template_updates(&home, 8317, "secret", "model").unwrap();

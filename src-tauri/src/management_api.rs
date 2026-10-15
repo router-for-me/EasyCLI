@@ -410,12 +410,16 @@ pub(crate) fn format_management_request_error(
     }
 }
 
-pub(crate) fn management_authorization(config: &GuiConfigFile) -> Result<String, String> {
+pub(crate) fn management_plaintext_key(config: &GuiConfigFile) -> Result<&str, String> {
     let secret_key = config.management_secret_key.trim();
     if secret_key.is_empty() || is_hashed_management_secret_key(secret_key) {
         return Err("Management interface unavailable: no plaintext management key is available".to_string());
     }
-    Ok(format!("Bearer {secret_key}"))
+    Ok(secret_key)
+}
+
+pub(crate) fn management_authorization(config: &GuiConfigFile) -> Result<String, String> {
+    Ok(format!("Bearer {}", management_plaintext_key(config)?))
 }
 
 pub(crate) fn management_endpoint(config: &GuiConfigFile, path: &str) -> Result<String, String> {

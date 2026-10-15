@@ -75,19 +75,23 @@ export function SelectMenu({
   const [activeIndex, setActiveIndex] = useState(0);
   const [layout, setLayout] = useState<MenuLayout | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  const themeScopeRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const listboxId = useId();
   const selected = options.find((option) => option.value === value) ?? options[0];
 
   const updateLayout = useCallback(() => {
     const root = rootRef.current;
+    const themeScope = themeScopeRef.current;
     const menu = menuRef.current;
     if (!root) return;
-    // The portal must retain the page's locally scoped theme variables.
-    if (menu) {
+    // Inherit scoped variables without overriding the overlay's opaque material palette.
+    if (themeScope) {
+      // Replace the snapshot so tokens removed by the next theme cannot linger.
+      themeScope.style.cssText = '';
       const style = getComputedStyle(root);
       for (const name of style) {
-        if (name.startsWith('--')) menu.style.setProperty(name, style.getPropertyValue(name));
+        if (name.startsWith('--')) themeScope.style.setProperty(name, style.getPropertyValue(name));
       }
     }
     const rect = root.getBoundingClientRect();
@@ -122,9 +126,15 @@ export function SelectMenu({
       if (event.target instanceof Node && menuRef.current?.contains(event.target)) return;
       updateLayout();
     };
+    const themeObserver = new MutationObserver(updateLayout);
+    themeObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['style', 'data-theme', 'data-theme-id'],
+    });
     window.addEventListener('resize', updateLayout);
     window.addEventListener('scroll', handleScroll, true);
     return () => {
+      themeObserver.disconnect();
       window.removeEventListener('resize', updateLayout);
       window.removeEventListener('scroll', handleScroll, true);
     };
@@ -199,38 +209,40 @@ export function SelectMenu({
         <ChevronDown size={16} aria-hidden />
       </button>
       {open ? createPortal(
-        <div
-          ref={menuRef}
-          className="select-menu-dropdown"
-          data-theme-surface="overlay"
-          style={layout
-            ? { top: layout.top, left: layout.left, width: layout.width, height: layout.height }
-            : { top: 0, left: 0, width: 0, height: 0, visibility: 'hidden' }}
-        >
-          <div className="select-menu-list" id={listboxId} role="listbox" aria-label={ariaLabel}>
-            {options.map((option, index) => {
-              const isSelected = option.value === value;
-              return (
-                <Fragment key={option.value || option.label}>
-                {option.group && option.group !== options[index - 1]?.group ? (
-                  <div className="select-menu-group-label" role="presentation">{option.group}</div>
-                ) : null}
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={isSelected}
-                  aria-label={option.group ? `${option.group}: ${option.label}` : undefined}
-                  className={`select-menu-option${isSelected ? ' selected' : ''}${index === activeIndex ? ' active' : ''}`}
-                  key={option.value || option.label}
-                  onMouseEnter={() => setActiveIndex(index)}
-                  onClick={() => choose(option.value)}
-                >
-                  <span title={option.label}>{option.label}</span>
-                  {isSelected ? <Check size={15} aria-hidden /> : null}
-                </button>
-                </Fragment>
-              );
-            })}
+        <div className="select-menu-theme-scope" ref={themeScopeRef}>
+          <div
+            ref={menuRef}
+            className="select-menu-dropdown"
+            data-theme-surface="overlay"
+            style={layout
+              ? { top: layout.top, left: layout.left, width: layout.width, height: layout.height }
+              : { top: 0, left: 0, width: 0, height: 0, visibility: 'hidden' }}
+          >
+            <div className="select-menu-list" id={listboxId} role="listbox" aria-label={ariaLabel}>
+              {options.map((option, index) => {
+                const isSelected = option.value === value;
+                return (
+                  <Fragment key={option.value || option.label}>
+                    {option.group && option.group !== options[index - 1]?.group ? (
+                      <div className="select-menu-group-label" role="presentation">{option.group}</div>
+                    ) : null}
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={isSelected}
+                      aria-label={option.group ? `${option.group}: ${option.label}` : undefined}
+                      className={`select-menu-option${isSelected ? ' selected' : ''}${index === activeIndex ? ' active' : ''}`}
+                      key={option.value || option.label}
+                      onMouseEnter={() => setActiveIndex(index)}
+                      onClick={() => choose(option.value)}
+                    >
+                      <span title={option.label}>{option.label}</span>
+                      {isSelected ? <Check size={15} aria-hidden /> : null}
+                    </button>
+                  </Fragment>
+                );
+              })}
+            </div>
           </div>
         </div>,
         document.body,

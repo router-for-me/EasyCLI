@@ -14,6 +14,8 @@ const additionalThemes = [warmSand, graphite, midnight, sakura];
 
 const custom: ThemeDefinition = { id: 'test-dark', nameKey: 'app.theme.dark', appearance: 'dark', order: 1,
   windowBackground: '#102030', tokens: { surface: '#203040', accent: '#abcdef', sidebarBackground: '#112233' } };
+const customControl: ThemeDefinition = { ...custom, id: 'test-control-dark',
+  tokens: { ...custom.tokens, controlThumb: '#843E64', controlActiveBackground: '#F6E3ED' } };
 
 const rgb = (hex: string) => [1, 3, 5].map((offset) => parseInt(hex.slice(offset, offset + 2), 16));
 const luminance = (channels: number[]) => {
@@ -30,6 +32,14 @@ const rgbContrast = (foreground: number[], background: number[]) => {
 const contrast = (foreground: string, background: string) => rgbContrast(rgb(foreground), rgb(background));
 
 describe('theme registry and application', () => {
+  test('configured thumbs apply to both states and permit an independent active override', () => {
+    for (const theme of [customControl, { ...sakura, tokens: { ...sakura.tokens, ...customControl.tokens } }]) {
+      expect(themeMaterialTokens(theme).controlThumb).toBe('#843E64');
+      expect(themeMaterialTokens(theme).controlActiveThumb).toBe('#843E64');
+      expect(themeMaterialTokens({ ...theme, tokens: { ...theme.tokens, controlActiveThumb: '#6A3554' } }).controlActiveThumb).toBe('#6A3554');
+    }
+    expect(themeMaterialTokens(custom).controlActiveThumb).toBeUndefined();
+  });
   test('gradient materials share aliases while floating surfaces stay opaque', () => {
     const material = themeMaterialTokens(sakura);
     expect(material.surface).toBe(sakura.backdrop!.panel);
@@ -141,7 +151,7 @@ describe('theme registry and application', () => {
     expect(image).toContain('radial-gradient(ellipse 85% 100% at 100% 0%');
     expect(image).toContain('linear-gradient(135deg');
   });
-  test.each([custom, ...additionalThemes])('switching from $id to a default clears only managed properties', (theme) => {
+  test.each([custom, customControl, ...additionalThemes])('switching from $id to a default clears only managed properties', (theme) => {
     const properties = new Map<string, string>([['--unrelated', 'keep']]);
     const style = {
       setProperty: (key: string, value: string) => { properties.set(key, value); },
@@ -217,6 +227,10 @@ describe('theme registry and application', () => {
     for (const accent of ['accent', 'accentStrong'] as const) {
       expect(contrast(tokens.accentContrast!, tokens[accent]!)).toBeGreaterThanOrEqual(4.5);
     }
+    for (const background of [tokens.primaryButtonBackground ?? tokens.accent!, tokens.primaryButtonHoverBackground ?? tokens.accentStrong!]) {
+      expect(contrast(tokens.primaryButtonText ?? tokens.accentContrast!, background)).toBeGreaterThanOrEqual(4.5);
+    }
+    expect(contrast(tokens.controlActiveThumb ?? tokens.controlThumb ?? tokens.accentContrast!, tokens.controlActiveBackground ?? tokens.accent!)).toBeGreaterThanOrEqual(3);
     for (const surface of ['surface', 'workspaceBackground', 'sidebarBackground', 'sidebarHover'] as const) {
       expect(contrast(tokens.focusRing!, tokens[surface]!)).toBeGreaterThanOrEqual(3);
     }
