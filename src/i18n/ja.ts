@@ -460,7 +460,7 @@ export const jaOverrides = {
   'app.nav.quota': 'クォータ照会',
   'app.nav.usageRecords': '使用履歴',
   'app.nav.agents': 'エージェント設定',
-  'app.nav.workbuddy': 'WorkBuddy プロキシ',
+  'workbuddyTasks.title': 'WorkBuddy タスク',
   'app.nav.lockedHint': 'まずホームでコアサービスを起動してください',
   'app.coreRequired.title': '先にコアを起動してください',
   'app.coreRequired.description': '設定、OAuth、API 接続などを使用するには CPA コアを起動してください。',

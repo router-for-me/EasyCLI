@@ -23,3 +23,7 @@ workbuddy-proxy/
 config.toml
 /plugins/
 
+
+# Preferences written next to the executable when running from the repo root.
+theme-preference.json
+usage-view-preferences.json

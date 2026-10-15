@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
+  CalendarCheck,
   ChevronRight,
   Check,
   CircleAlert,
@@ -13,6 +14,7 @@ import {
   LogIn,
   Plus,
   RefreshCw,
+  Sparkles,
   UserRound,
 } from 'lucide-react';
 import antigravityIcon from '../assets/icons/antigravity.svg';
@@ -42,6 +44,7 @@ import { handleHorizontalTabKey } from '../components/tabKeyboardNavigation';
 import { PluginOAuthProviders } from './PluginOAuthProviders';
 import { notifyPluginResourcesChanged, PLUGIN_RESOURCES_REFRESH_EVENT } from '../services/pluginResources';
 import { VertexLoginCard } from './VertexLoginCard';
+import { WorkBuddyTasksPage } from './WorkBuddyTasksPage';
 
 type OAuthProviderId = 'codex' | 'claude' | 'workbuddy' | 'antigravity' | 'kimi' | 'xai' | 'devin' | 'meta';
 type OAuthFlowStatus = 'idle' | 'waiting' | 'success' | 'error';
@@ -195,7 +198,15 @@ export function OAuthManagementPage() {
         role="tabpanel"
         aria-labelledby={`oauth-subpage-tab-${activeSubpage}`}
       >
-        {activeSubpage === 'login' ? <OAuthLoginPage onOpenAuthFiles={openAuthFiles} /> : null}
+        {activeSubpage === 'login' ? (
+          <OAuthLoginPage
+            onOpenAuthFiles={openAuthFiles}
+            onOpenWorkBuddyTasks={() => setActiveSubpage('workbuddyTasks')}
+          />
+        ) : null}
+        {activeSubpage === 'workbuddyTasks' ? (
+          <WorkBuddyTasksPage onBack={() => setActiveSubpage('login')} />
+        ) : null}
         {activeSubpage === 'authFiles' ? (
           <AuthFileManagementPage key={authFilesProvider ?? 'all'} initialProvider={authFilesProvider} />
         ) : null}
@@ -204,7 +215,7 @@ export function OAuthManagementPage() {
   );
 }
 
-export function OAuthLoginPage({ onOpenAuthFiles }: { onOpenAuthFiles?: (provider?: string) => void } = {}) {
+export function OAuthLoginPage({ onOpenAuthFiles, onOpenWorkBuddyTasks }: { onOpenAuthFiles?: (provider?: string) => void; onOpenWorkBuddyTasks?: () => void } = {}) {
   const { t } = useI18n();
   const privacy = usePrivacyMask();
   const [accounts, setAccounts] = useState<Map<string, OAuthAccountSummary[]> | null>(null);
@@ -217,6 +228,7 @@ export function OAuthLoginPage({ onOpenAuthFiles }: { onOpenAuthFiles?: (provide
   const [browsersLoading, setBrowsersLoading] = useState(true);
   const [selectedBrowser, setSelectedBrowser] = useState(loadOAuthBrowserPreference);
   const [workbuddyRealm, setWorkbuddyRealm] = useState<'intl' | 'cn'>('intl');
+  const [quickTask, setQuickTask] = useState<string | null>(null);
   const pollingTimers = useRef<Partial<Record<OAuthProviderId, number>>>({});
   const pollingRequests = useRef<Partial<Record<OAuthProviderId, boolean>>>({});
   const pollingSessions = useRef<Partial<Record<OAuthProviderId, string>>>({});
@@ -534,6 +546,23 @@ export function OAuthLoginPage({ onOpenAuthFiles }: { onOpenAuthFiles?: (provide
     }
   };
 
+  const runWorkBuddyQuickTask = async (kind: 'checkin' | 'all', label: string) => {
+    setQuickTask(kind);
+    try {
+      // No account selector here: the gateway applies the task to every account.
+      const payload = await invoke<Record<string, unknown>>(
+        kind === 'checkin' ? 'run_workbuddy_checkin' : 'run_workbuddy_all_tasks',
+        { uid: null },
+      );
+      showNotice(`WorkBuddy ${label}已执行`, 'success');
+      console.info('WorkBuddy task result', payload);
+    } catch (error) {
+      showNotice(`WorkBuddy ${label}失败：${error}`, 'error');
+    } finally {
+      setQuickTask(null);
+    }
+  };
+
   const refreshLoginLink = async (provider: OAuthProviderId) => {
     const currentState = states[provider]?.state;
     clearPollingTimer(provider);
@@ -828,6 +857,34 @@ export function OAuthLoginPage({ onOpenAuthFiles }: { onOpenAuthFiles?: (provide
                   </button>
                 ) : null}
               </div>
+
+              {provider.id === 'workbuddy' && onOpenWorkBuddyTasks ? (
+                <div className="button-row management-card-actions">
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={providerAccounts.length === 0}
+                    title={providerAccounts.length === 0 ? '请先完成 WorkBuddy 登录' : '今日签到'}
+                    onClick={() => void runWorkBuddyQuickTask('checkin', '每日签到')}
+                  >
+                    {quickTask === 'checkin' ? <LoaderCircle size={16} className="spin" aria-hidden="true" /> : <CalendarCheck size={16} aria-hidden="true" />}
+                    每日签到
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={providerAccounts.length === 0}
+                    title={providerAccounts.length === 0 ? '请先完成 WorkBuddy 登录' : '一键完成全部任务'}
+                    onClick={() => void runWorkBuddyQuickTask('all', '全部任务')}
+                  >
+                    {quickTask === 'all' ? <LoaderCircle size={16} className="spin" aria-hidden="true" /> : <Sparkles size={16} aria-hidden="true" />}
+                    一键完成
+                  </button>
+                  <button type="button" className="secondary-button" onClick={onOpenWorkBuddyTasks}>
+                    打开任务中心
+                  </button>
+                </div>
+              ) : null}
             </section>
           );
         })}

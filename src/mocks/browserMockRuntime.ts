@@ -1427,6 +1427,36 @@ export function createBrowserMockRuntime(
         };
       }
       case 'sync_workbuddy_provider_to_cpa': return 'WorkBuddy successfully synchronized as OpenAI-compatible provider at http://127.0.0.1:8788/v1';
+      case 'get_workbuddy_accounts': return {
+        accounts: [
+          { uid: 'wb_mock_intl', nickname: 'Mock Intl', realm: 'intl', enabled: true },
+          { uid: 'wb_mock_cn', nickname: 'Mock CN', realm: 'cn', enabled: true },
+        ],
+      };
+      case 'run_workbuddy_checkin': return {
+        results: [{ uid: 'wb_mock_cn', nickname: 'Mock CN', ok: true, msg: '签到成功，获得 +5 积分' }],
+      };
+      case 'run_workbuddy_daily_activity': return {
+        results: [{ uid: 'wb_mock_intl', nickname: 'Mock Intl', ok: true, msg: '活跃打卡完成 (completed)' }],
+      };
+      case 'run_workbuddy_growth_tasks': return {
+        ok: true, credit_added: 42, accounts_count: 1,
+        logs: ['领取每日免费积分包 +20', '完成成长任务 +22'],
+      };
+      case 'run_workbuddy_streak_bonus': return { ok: true, msg: '连登 7 天，抽奖获得 +10 积分' };
+      case 'run_workbuddy_travel': return {
+        ok: true, msg: '猫猫旅行带回 +8 积分',
+        results: [{ uid: 'wb_mock_cn', nickname: 'Mock CN', action: 'travel', msg: '带回 +8 积分', reward_credit: 8 }],
+      };
+      case 'run_workbuddy_all_tasks': return {
+        steps: [
+          { task: 'checkin', label: '每日签到', result: { results: [{ uid: 'wb_mock_cn', nickname: 'Mock CN', ok: true, msg: '签到成功' }] } },
+          { task: 'daily-activity', label: '每日活跃打卡', result: { results: [{ uid: 'wb_mock_intl', nickname: 'Mock Intl', ok: true, msg: '活跃打卡完成' }] } },
+          { task: 'growth', label: '一键成长任务', result: { ok: true, credit_added: 42 } },
+          { task: 'streak-bonus', label: '连登管家与抽奖', result: { ok: true, msg: '连登 7 天，抽奖 +10 积分' } },
+          { task: 'travel', label: '猫猫旅行', result: { ok: true, msg: '猫猫旅行带回 +8 积分' } },
+        ],
+      };
       case 'list_agent_config_backups': return {
         versions: [{
           id: 'mock-backup-2026-09-25', createdAt: isoHoursAgo(5), fileCount: 2,

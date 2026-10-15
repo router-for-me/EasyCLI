@@ -627,20 +627,10 @@ pub(crate) async fn import_workbuddy_desktop_account(
     proxy_state: State<'_, WorkBuddyProxyState>,
     target_path: Option<String>,
 ) -> Result<Value, String> {
-    let port = proxy_state
-        .port
-        .lock()
-        .map_err(|e| e.to_string())?
-        .unwrap_or(DEFAULT_WORKBUDDY_PORT);
-    let host = proxy_state
-        .host
-        .lock()
-        .map_err(|e| e.to_string())?
-        .clone()
-        .unwrap_or_else(|| DEFAULT_WORKBUDDY_HOST.to_string());
+    let origin = workbuddy_gateway_origin(proxy_state.inner())?;
+    let import_url = format!("{origin}/accounts/import/desktop");
 
-    let client = Client::builder().timeout(Duration::from_secs(10)).build().unwrap_or_default();
-    let import_url = format!("http://{host}:{port}/accounts/import/desktop");
+    let client = Client::builder().timeout(Duration::from_secs(60)).build().unwrap_or_default();
 
     let payload = if let Some(path) = target_path {
         json!({ "path": path })
@@ -648,9 +638,12 @@ pub(crate) async fn import_workbuddy_desktop_account(
         json!({ "all": true })
     };
 
-    let response = client
-        .post(&import_url)
-        .json(&payload)
+    let mut request = client.post(&import_url).json(&payload);
+    if let Some(key) = workbuddy_gateway_key(proxy_state.inner()) {
+        request = request.header("Authorization", format!("Bearer {key}"));
+    }
+
+    let response = request
         .send()
         .await
         .map_err(|e| format!("Failed to contact WorkBuddy proxy service at {import_url}. Ensure the service is running: {e}"))?;
@@ -794,22 +787,34 @@ pub(crate) async fn poll_workbuddy_oauth(
         let _ = fs::write(account_file, serde_json::to_string_pretty(&account_record).unwrap_or_default());
     }
 
-    // 2. Also save into CPA's auth_dir as an OAuth credential JSON
+    // 2. Also persist into the kernel's credentials directory so the account
+    //    survives a restart. auth_dir is stored relative to the install dir;
+    //    resolving it against the GUI process CWD would write to the wrong place.
     if let Ok(config) = gui_config_state.snapshot() {
-        let auth_dir = PathBuf::from(&config.auth_dir);
-        if auth_dir.is_dir() {
-            let auth_file_path = auth_dir.join(format!("workbuddy-{uid}.json"));
-            let cpa_auth_record = json!({
-                "type": "workbuddy",
-                "name": format!("workbuddy-{uid}.json"),
-                "account_type": "oauth",
-                "uid": uid,
-                "access_token": access_token,
-                "refresh_token": refresh_token,
-                "realm": selected_realm,
-                "created_at": chrono::Utc::now().to_rfc3339()
-            });
-            let _ = fs::write(auth_file_path, serde_json::to_string_pretty(&cpa_auth_record).unwrap_or_default());
+        let install_dir = core_install_dir()?;
+        if let Ok(auth_dir) = auth_dir_path_for_core(&config.auth_dir, &install_dir) {
+            if fs::create_dir_all(&auth_dir).is_ok() {
+                let expires_at = chrono::Utc::now().timestamp()
+                    + expires_in.unwrap_or(2_592_000);
+                let auth_file_path = auth_dir.join(format!("workbuddy-{uid}.json"));
+                let cpa_auth_record = json!({
+                    "type": "workbuddy",
+                    "account_type": "oauth",
+                    "auth_kind": "oauth",
+                    "uid": uid,
+                    "access_token": access_token,
+                    "refresh_token": refresh_token,
+                    "token_type": "Bearer",
+                    "expires_in": expires_in,
+                    "expires_at": expires_at,
+                    "realm": selected_realm,
+                    "platform": "CLI",
+                    "source": "oauth",
+                    "created_at": chrono::Utc::now().to_rfc3339()
+                });
+                fs::write(&auth_file_path, serde_json::to_string_pretty(&cpa_auth_record).unwrap_or_default())
+                    .map_err(|e| format!("Failed to persist WorkBuddy credential to {}: {e}", path_to_string(&auth_file_path)))?;
+            }
         }
     }
 
@@ -1082,6 +1087,210 @@ pub(crate) fn stop_workbuddy_proxy_sync(
     Ok(())
 }
 
+// ---------------------------------------------------------------------------
+// Account tasks (daily check-in, activity tasks, cat travel) served by the
+// companion gateway. Every call goes through the same management endpoints the
+// bundled dashboard uses, so results match what the web panel reports.
+// ---------------------------------------------------------------------------
+
+fn workbuddy_gateway_origin(proxy_state: &WorkBuddyProxyState) -> Result<String, String> {
+    let port = proxy_state
+        .port
+        .lock()
+        .map_err(|e| e.to_string())?
+        .unwrap_or(DEFAULT_WORKBUDDY_PORT);
+    let host = proxy_state
+        .host
+        .lock()
+        .map_err(|e| e.to_string())?
+        .clone()
+        .unwrap_or_else(|| DEFAULT_WORKBUDDY_HOST.to_string());
+    Ok(format!("http://{host}:{port}"))
+}
+
+fn workbuddy_gateway_key(proxy_state: &WorkBuddyProxyState) -> Option<String> {
+    proxy_state
+        .api_key
+        .lock()
+        .ok()
+        .and_then(|guard| guard.clone())
+        .map(|key| key.trim().to_string())
+        .filter(|key| !key.is_empty())
+}
+
+async fn workbuddy_gateway_post(
+    proxy_state: &WorkBuddyProxyState,
+    path: &str,
+    body: Value,
+) -> Result<Value, String> {
+    let origin = workbuddy_gateway_origin(proxy_state)?;
+    let url = format!("{origin}{path}");
+    let client = Client::builder()
+        .timeout(Duration::from_secs(180))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let mut request = client.post(&url).json(&body);
+    if let Some(key) = workbuddy_gateway_key(proxy_state) {
+        request = request.header("Authorization", format!("Bearer {key}"));
+    }
+
+    let response = request.send().await.map_err(|e| {
+        format!("Failed to reach the WorkBuddy gateway at {url}. Make sure the kernel is running: {e}")
+    })?;
+
+    let status = response.status();
+    let payload: Value = response
+        .json()
+        .await
+        .map_err(|e| format!("The WorkBuddy gateway returned an unreadable response: {e}"))?;
+
+    if !status.is_success() {
+        let message = payload
+            .get("msg")
+            .or_else(|| payload.get("error"))
+            .and_then(Value::as_str)
+            .unwrap_or("request failed");
+        return Err(format!("WorkBuddy gateway error ({status}): {message}"));
+    }
+
+    Ok(payload)
+}
+
+async fn workbuddy_gateway_get(
+    proxy_state: &WorkBuddyProxyState,
+    path: &str,
+) -> Result<Value, String> {
+    let origin = workbuddy_gateway_origin(proxy_state)?;
+    let url = format!("{origin}{path}");
+    let client = Client::builder()
+        .timeout(Duration::from_secs(60))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let mut request = client.get(&url);
+    if let Some(key) = workbuddy_gateway_key(proxy_state) {
+        request = request.header("Authorization", format!("Bearer {key}"));
+    }
+
+    let response = request.send().await.map_err(|e| {
+        format!("Failed to reach the WorkBuddy gateway at {url}. Make sure the kernel is running: {e}")
+    })?;
+
+    let status = response.status();
+    let payload: Value = response
+        .json()
+        .await
+        .map_err(|e| format!("The WorkBuddy gateway returned an unreadable response: {e}"))?;
+
+    if !status.is_success() {
+        let message = payload
+            .get("msg")
+            .or_else(|| payload.get("error"))
+            .and_then(Value::as_str)
+            .unwrap_or("request failed");
+        return Err(format!("WorkBuddy gateway error ({status}): {message}"));
+    }
+
+    Ok(payload)
+}
+
+/// Lists accounts known to the companion gateway, with realm and readiness.
+#[tauri::command]
+pub(crate) async fn get_workbuddy_accounts(
+    proxy_state: State<'_, WorkBuddyProxyState>,
+) -> Result<Value, String> {
+    let payload = workbuddy_gateway_get(proxy_state.inner(), "/accounts").await?;
+    Ok(payload)
+}
+
+/// Runs one task endpoint for an optional single account.
+async fn run_workbuddy_task_endpoint(
+    proxy_state: &WorkBuddyProxyState,
+    path: &str,
+    uid: Option<&str>,
+) -> Result<Value, String> {
+    let mut body = json!({});
+    if let Some(uid) = uid.filter(|value| !value.trim().is_empty()) {
+        body["uid"] = json!(uid);
+    }
+    workbuddy_gateway_post(proxy_state, path, body).await
+}
+
+/// Runs the daily check-in for one account, or every eligible account when uid is empty.
+#[tauri::command]
+pub(crate) async fn run_workbuddy_checkin(
+    proxy_state: State<'_, WorkBuddyProxyState>,
+    uid: Option<String>,
+) -> Result<Value, String> {
+    run_workbuddy_task_endpoint(proxy_state.inner(), "/accounts/checkin", uid.as_deref()).await
+}
+
+/// Runs the international-realm daily activity chat.
+#[tauri::command]
+pub(crate) async fn run_workbuddy_daily_activity(
+    proxy_state: State<'_, WorkBuddyProxyState>,
+    uid: Option<String>,
+) -> Result<Value, String> {
+    run_workbuddy_task_endpoint(proxy_state.inner(), "/accounts/daily-chat", uid.as_deref()).await
+}
+
+/// Runs the one-click growth task bundle (credits, growth, sign-in streaks).
+#[tauri::command]
+pub(crate) async fn run_workbuddy_growth_tasks(
+    proxy_state: State<'_, WorkBuddyProxyState>,
+    uid: Option<String>,
+) -> Result<Value, String> {
+    run_workbuddy_task_endpoint(proxy_state.inner(), "/tasks/run", uid.as_deref()).await
+}
+
+/// Runs the streak keeper and lottery bonus task.
+#[tauri::command]
+pub(crate) async fn run_workbuddy_streak_bonus(
+    proxy_state: State<'_, WorkBuddyProxyState>,
+    uid: Option<String>,
+) -> Result<Value, String> {
+    run_workbuddy_task_endpoint(proxy_state.inner(), "/tasks/streak-bonus", uid.as_deref()).await
+}
+
+/// Runs the cat travel task.
+#[tauri::command]
+pub(crate) async fn run_workbuddy_travel(
+    proxy_state: State<'_, WorkBuddyProxyState>,
+    uid: Option<String>,
+) -> Result<Value, String> {
+    run_workbuddy_task_endpoint(proxy_state.inner(), "/tasks/travel", uid.as_deref()).await
+}
+
+/// Task definitions shared by the one-click runner and the UI.
+const WORKBUDDY_TASK_STEPS: &[(&str, &str, &str)] = &[
+    ("checkin", "每日签到", "/accounts/checkin"),
+    ("daily-activity", "每日活跃打卡", "/accounts/daily-chat"),
+    ("growth", "一键成长任务", "/tasks/run"),
+    ("streak-bonus", "连登管家与抽奖", "/tasks/streak-bonus"),
+    ("travel", "猫猫旅行", "/tasks/travel"),
+];
+
+/// Runs every supported task in sequence for the given account (or all accounts).
+/// Returns one aggregated result so the UI can render a single completion report.
+#[tauri::command]
+pub(crate) async fn run_workbuddy_all_tasks(
+    proxy_state: State<'_, WorkBuddyProxyState>,
+    uid: Option<String>,
+) -> Result<Value, String> {
+    let target = uid.as_deref().filter(|value| !value.trim().is_empty());
+    let mut steps: Vec<Value> = Vec::with_capacity(WORKBUDDY_TASK_STEPS.len());
+
+    for (task, label, path) in WORKBUDDY_TASK_STEPS {
+        let result = run_workbuddy_task_endpoint(proxy_state.inner(), path, target)
+            .await
+            .unwrap_or_else(|error| json!({ "ok": false, "msg": error }));
+        steps.push(json!({ "task": task, "label": label, "result": result }));
+    }
+
+    Ok(json!({ "steps": steps }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1092,6 +1301,23 @@ mod tests {
         doc["api-keys"]["openai-compatibility"]
             .as_sequence()
             .expect("openai-compatibility must be a sequence")
+    }
+
+    // The credential was previously written to a path resolved against the GUI process
+    // CWD, so it never reached the kernel's auth directory and the login was lost on
+    // restart. The relative auth-dir must resolve under the install directory.
+    #[test]
+    fn resolves_relative_auth_dir_under_install_dir() {
+        let install_dir = Path::new("/opt/cpa-core");
+        let resolved = auth_dir_path_for_core("../oauth", install_dir).unwrap();
+        assert_eq!(resolved, Path::new("/opt/oauth"));
+    }
+
+    #[test]
+    fn resolves_absolute_auth_dir_unchanged() {
+        let install_dir = Path::new("/opt/cpa-core");
+        let resolved = auth_dir_path_for_core("/var/lib/cpa/oauth", install_dir).unwrap();
+        assert_eq!(resolved, Path::new("/var/lib/cpa/oauth"));
     }
 
     // Kernel v8 `expandV8Groups` rejects a group whose `keys` is absent, which makes the

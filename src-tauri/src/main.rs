@@ -2865,7 +2865,14 @@ fn main() {
             workbuddy_proxy::import_workbuddy_desktop_account,
             workbuddy_proxy::start_workbuddy_oauth,
             workbuddy_proxy::poll_workbuddy_oauth,
-            workbuddy_proxy::sync_workbuddy_provider_to_cpa
+            workbuddy_proxy::sync_workbuddy_provider_to_cpa,
+            workbuddy_proxy::get_workbuddy_accounts,
+            workbuddy_proxy::run_workbuddy_checkin,
+            workbuddy_proxy::run_workbuddy_daily_activity,
+            workbuddy_proxy::run_workbuddy_growth_tasks,
+            workbuddy_proxy::run_workbuddy_streak_bonus,
+            workbuddy_proxy::run_workbuddy_travel,
+            workbuddy_proxy::run_workbuddy_all_tasks
         ])
         .build(tauri::generate_context!())
         .expect("failed to build app");

@@ -408,7 +408,7 @@ export const zhCN = {
   'app.nav.quota': '额度查询',
   'app.nav.usageRecords': '使用记录',
   'app.nav.agents': '智能体配置',
-  'app.nav.workbuddy': 'WorkBuddy 反代',
+  'workbuddyTasks.title': 'WorkBuddy 任务中心',
   'app.nav.lockedHint': '请先在首页启动内核服务',
   'app.coreRequired.title': '请先启动内核',
   'app.coreRequired.description': '启动 CPA 内核后，才能使用配置、OAuth、API 接入等功能。',

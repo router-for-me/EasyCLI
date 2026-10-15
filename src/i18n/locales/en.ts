@@ -409,7 +409,7 @@ export const en: Record<MessageKey, string> = {
   'app.nav.quota': 'Quota Lookup',
   'app.nav.usageRecords': 'Usage',
   'app.nav.agents': 'Agent Configuration',
-  'app.nav.workbuddy': 'WorkBuddy Proxy',
+  'workbuddyTasks.title': 'WorkBuddy Tasks',
   'app.nav.lockedHint': 'Please start the core service on Home first',
   'app.coreRequired.title': 'Start the core first',
   'app.coreRequired.description': 'Start the CPA core to use settings, OAuth, API access, and other features.',
