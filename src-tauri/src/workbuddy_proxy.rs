@@ -16,6 +16,20 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 pub(crate) const DEFAULT_WORKBUDDY_PORT: u16 = 8788;
 pub(crate) const DEFAULT_WORKBUDDY_HOST: &str = "127.0.0.1";
 
+/// Port the companion proxy actually bound. The preferred port may be taken by
+/// another process, in which case the proxy falls back to a free one and the
+/// kernel config must be pointed at the real port rather than the default.
+static ACTIVE_WORKBUDDY_PORT: std::sync::atomic::AtomicU16 =
+    std::sync::atomic::AtomicU16::new(DEFAULT_WORKBUDDY_PORT);
+
+pub(crate) fn active_workbuddy_port() -> u16 {
+    ACTIVE_WORKBUDDY_PORT.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+fn set_active_workbuddy_port(port: u16) {
+    ACTIVE_WORKBUDDY_PORT.store(port, std::sync::atomic::Ordering::Relaxed);
+}
+
 #[derive(Default)]
 pub(crate) struct WorkBuddyProxyState {
     process: Mutex<Option<ManagedWorkBuddyProxyProcess>>,
@@ -994,6 +1008,34 @@ pub(crate) async fn sync_workbuddy_provider_to_cpa(
     sync_workbuddy_provider_to_cpa_sync(port.unwrap_or(DEFAULT_WORKBUDDY_PORT), api_key.as_deref())
 }
 
+/// True when nothing is listening on the host/port pair.
+///
+/// A foreign process holding the port would otherwise swallow our requests and
+/// answer with its own credentials, which surfaces as an unexplained rejection.
+fn workbuddy_port_is_available(host: &str, port: u16) -> bool {
+    use std::net::TcpListener;
+    let bind_host = if host == "0.0.0.0" { "0.0.0.0" } else { host };
+    TcpListener::bind((bind_host, port)).is_ok()
+}
+
+/// Picks the preferred port when free, otherwise the first free port at or above it.
+fn select_workbuddy_port(host: &str, preferred: u16) -> Option<u16> {
+    if workbuddy_port_is_available(host, preferred) {
+        return Some(preferred);
+    }
+    (preferred + 1..=preferred.saturating_add(64)).find(|port| workbuddy_port_is_available(host, *port))
+}
+
+/// Resolves and records the port the companion proxy will use.
+///
+/// Runs before the kernel config is written so the provider entry and the proxy
+/// agree on the same port even when the preferred one is occupied.
+pub(crate) fn reserve_workbuddy_port(preferred: u16, host: &str) -> u16 {
+    let port = select_workbuddy_port(host, preferred).unwrap_or(preferred);
+    set_active_workbuddy_port(port);
+    port
+}
+
 pub(crate) fn start_workbuddy_proxy_sync(
     proxy_state: &WorkBuddyProxyState,
 ) -> Result<u32, String> {
@@ -1003,11 +1045,13 @@ pub(crate) fn start_workbuddy_proxy_sync(
         return Err(format!("wb_proxy.py not found at {}", path_to_string(&script_path)));
     }
 
-    let selected_port = proxy_state
+    // Prefer an explicit port, then any port already reserved for this start,
+    // and only then the built-in default.
+    let preferred_port = proxy_state
         .port
         .lock()
         .map_err(|e| e.to_string())?
-        .unwrap_or(DEFAULT_WORKBUDDY_PORT);
+        .unwrap_or_else(active_workbuddy_port);
     let selected_host = proxy_state
         .host
         .lock()
@@ -1027,6 +1071,22 @@ pub(crate) fn start_workbuddy_proxy_sync(
             *guard = None;
         }
     }
+
+    // A foreign WorkBuddy gateway may already hold the preferred port. Binding
+    // would fail silently and the kernel would then talk to that other process,
+    // so pick a free port and record it for routing and provider sync.
+    let selected_port = select_workbuddy_port(&selected_host, preferred_port).ok_or_else(|| {
+        format!(
+            "No free port available for the WorkBuddy companion proxy near {preferred_port}. Stop the process using that port and retry"
+        )
+    })?;
+    if selected_port != preferred_port {
+        eprintln!(
+            "WorkBuddy companion proxy: port {preferred_port} is in use by another process; using {selected_port} instead"
+        );
+    }
+    *proxy_state.port.lock().map_err(|e| e.to_string())? = Some(selected_port);
+    set_active_workbuddy_port(selected_port);
 
     let resolved_python = find_python_executable(python_path.as_deref())
         .ok_or_else(|| "Python >= 3.9 not found".to_string())?;
@@ -1051,9 +1111,21 @@ pub(crate) fn start_workbuddy_proxy_sync(
     #[cfg(windows)]
     command.creation_flags(CREATE_NO_WINDOW);
 
+    // Keep the companion's output on disk: a bind failure (port taken) would
+    // otherwise be invisible and surface later as an unexplained rejection.
+    let log_file = fs::File::create(proxy_dir.join("companion.log"));
     command.stdin(Stdio::null());
-    command.stdout(Stdio::null());
-    command.stderr(Stdio::null());
+    match log_file {
+        Ok(stdout_file) => {
+            let stderr_file = stdout_file.try_clone().ok();
+            command.stdout(Stdio::from(stdout_file));
+            command.stderr(stderr_file.map(Stdio::from).unwrap_or_else(Stdio::null));
+        }
+        Err(_) => {
+            command.stdout(Stdio::null());
+            command.stderr(Stdio::null());
+        }
+    }
 
     let child = command
         .spawn()
@@ -1318,6 +1390,29 @@ mod tests {
         let install_dir = Path::new("/opt/cpa-core");
         let resolved = auth_dir_path_for_core("/var/lib/cpa/oauth", install_dir).unwrap();
         assert_eq!(resolved, Path::new("/var/lib/cpa/oauth"));
+    }
+
+    // A foreign process on the preferred port used to swallow every request and
+    // answer with its own key, surfacing as an unexplained rejection. The proxy
+    // must move to a free port instead of failing silently.
+    #[test]
+    fn selects_preferred_port_when_free() {
+        use std::net::TcpListener;
+        // Bind an ephemeral port, then release it so it is almost certainly free.
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        assert_eq!(select_workbuddy_port("127.0.0.1", port), Some(port));
+    }
+
+    #[test]
+    fn falls_back_to_a_free_port_when_preferred_is_taken() {
+        use std::net::TcpListener;
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let selected = select_workbuddy_port("127.0.0.1", port);
+        assert!(selected.is_some(), "a free port must be found");
+        assert_ne!(selected, Some(port), "the occupied port must not be reused");
     }
 
     // Kernel v8 `expandV8Groups` rejects a group whose `keys` is absent, which makes the
