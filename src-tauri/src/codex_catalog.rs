@@ -710,7 +710,7 @@ fn enable_fast_mode(model: &mut Map<String, Value>) {
             continue;
         };
         let id = string_value(&tier, "id");
-        if id.is_empty() || !seen.insert(id.clone()) {
+        if id.is_empty() || seen.contains(&id) {
             continue;
         }
         if id == "priority" {
@@ -728,6 +728,7 @@ fn enable_fast_mode(model: &mut Map<String, Value>) {
         {
             continue;
         }
+        seen.insert(id);
         tiers.push(Value::Object(tier));
     }
     if !seen.contains("priority") {
@@ -1232,6 +1233,7 @@ mod tests {
             "service_tiers".to_string(),
             serde_json::json!([
                 {"id": "priority", "name": "Fast", "description": "2x speed"},
+                {"id": "ultrafast"},
                 {"id": "ultrafast", "name": "Ultrafast", "description": "Highest speed"},
                 {"id": "ultrafast", "name": "Duplicate", "description": "Duplicate"},
                 {"id": "incomplete"}

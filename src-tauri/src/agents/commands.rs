@@ -570,9 +570,9 @@ pub(crate) async fn get_codex_model_catalog_editor(
     gui_config_state: tauri::State<'_, GuiConfigState>,
 ) -> Result<codex_catalog::CatalogEditorSnapshot, String> {
     let _sync_guard = CODEX_CATALOG_SYNC_LOCK.lock().await;
-    reload_changed_codex_catalog_files(&app);
     let config = gui_config_state.snapshot()?;
     let runtime_models = fetch_codex_catalog_runtime_models(&config).await?;
+    reload_changed_codex_catalog_files(&app);
     codex_catalog::editor_snapshot(&runtime_models)
 }
 
@@ -590,9 +590,9 @@ pub(crate) async fn save_codex_model_catalog_editor(
     request: codex_catalog::CatalogEditorRequest,
 ) -> Result<CodexCatalogEditorSaveResult, String> {
     let _sync_guard = CODEX_CATALOG_SYNC_LOCK.lock().await;
-    reload_changed_codex_catalog_files(&app);
     let config = gui_config_state.snapshot()?;
     let runtime_models = fetch_codex_catalog_runtime_models(&config).await?;
+    reload_changed_codex_catalog_files(&app);
     let customizations_path = codex_model_customizations_path(&app)?;
     let snapshot =
         codex_catalog::save_customizations(&customizations_path, &runtime_models, request)?;
@@ -1073,8 +1073,8 @@ pub(crate) async fn refresh_applied_codex_model_catalog(
     config: &GuiConfigFile,
 ) -> Result<bool, String> {
     let _sync_guard = CODEX_CATALOG_SYNC_LOCK.lock().await;
-    reload_changed_codex_catalog_files(app);
     let runtime_models = fetch_codex_catalog_runtime_models(config).await?;
+    reload_changed_codex_catalog_files(app);
     let prepared = prepare_codex_agent_models(&runtime_models)?;
     sync_prepared_codex_model_catalog(app, config, &prepared)
 }
