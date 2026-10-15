@@ -16,6 +16,7 @@ const state = {
   navigations: [] as unknown[],
   failNextList: false,
   failNextInstall: false,
+  latestReleaseVersion: '3.0.0',
   holdInstall: false,
   releaseInstall: null as null | (() => void),
   settings: {
@@ -53,7 +54,7 @@ const pluginEntries: Record<string, unknown>[] = [
 const storeEntries: Record<string, unknown>[] = [
   { id: 'sample..plugin', name: 'Sample provider', source_id: 'official', source_name: 'Official',
     source_url: 'https://official.example.test/plugins.json', repository: 'router-for-me/sample',
-    version: '2.0.0', install_type: 'github-release', installed: true, installed_version: '1.0.0', update_available: true,
+    version: '2.0.0', install_type: 'github-release', installed: true, installed_version: '1.0.0', update_available: true, install_source_status: 'matched',
     description: 'Official fixture provider', platforms: [{ goos: 'windows', goarch: 'amd64' }], tags: ['chat'],
   },
   { id: 'analytics', name: 'Community analytics', source_id: 'community', source_name: 'Community',
@@ -77,6 +78,7 @@ mockIPC(async (command, args) => {
   if (command === 'start_oauth_login') return { url: 'https://login.example.test/authorize?state=sample-state', state: 'sample-state' };
   if (command === 'get_oauth_status') return { status: 'wait' };
   if (command === 'get_plugin_support') return state.supported;
+  if (command === 'get_plugin_latest_releases') return (args?.repositories as string[]).map(repository => ({ repository, version: state.latestReleaseVersion, error: null }));
   if (command === 'open_external_url' || command === 'restart_core_process') return null;
   if (command !== 'management_request') return null;
   const request = args?.request as Request;

@@ -8,6 +8,7 @@ import { useConfirmation } from '../components/ConfirmationDialog';
 import { pluginsApi, pluginStoreApi, type PluginListEntry, type PluginListResponse, type PluginStoreEntry, type PluginStoreResponse } from '../services/plugins';
 import { buildPluginResourceRoute, collectPluginResourceEntries, getPluginTitle, isOfficialPlugin, notifyPluginResourcesChanged, type PluginResourceEntry } from '../services/pluginResources';
 import { getPluginStatus, isPluginInstalled } from '../services/pluginStatus';
+import { refreshPluginReleaseVersions } from '../services/pluginReleaseVersions';
 import { PluginConfigDialog } from './PluginConfigDialog';
 import { PluginInstallDialog } from './PluginInstallDialog';
 import { PluginOAuthDialog } from './PluginOAuthDialog';
@@ -44,7 +45,7 @@ export function PluginsPage() {
   const { askConfirmation, confirmationDialog } = useConfirmation();
 
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; ++requests.current; }; }, []);
-  const load = useCallback(async (target: Tab = tabRef.current) => {
+  const load = useCallback(async (target: Tab = tabRef.current, refreshVersions = false) => {
     const revision = ++requests.current;
     setLoading(true); setError('');
     try {
@@ -57,7 +58,8 @@ export function PluginsPage() {
       setData(next);
       notifyPluginResourcesChanged();
       if (target === 'store') {
-        const nextStore = await pluginStoreApi.list();
+        let nextStore = await pluginStoreApi.list();
+        if (mounted.current && revision === requests.current && refreshVersions) nextStore = await refreshPluginReleaseVersions(nextStore);
         if (mounted.current && revision === requests.current) setStore(nextStore);
       }
     } catch (reason) { if (mounted.current && revision === requests.current) setError(message(reason)); }
@@ -120,8 +122,8 @@ export function PluginsPage() {
   const locked = busy || loading || Boolean(configPlugin || installEntry || oauthPlugin);
 
   return <div className="plugins-page">
-    <header className="plugins-heading"><div><h1>{pt('title')}</h1><p>{pt('description')}</p></div><button className="secondary-button" disabled={locked} onClick={() => void load()}><RefreshCw size={16} aria-hidden="true" />{t('common.refresh')}</button></header>
-    {error && <div className="plugin-error plugin-banner" role="alert"><span>{error}{isGitHubRateLimit(error) ? <GitHubTokenHint /> : null}</span><button className="secondary-button" disabled={busy || loading} onClick={() => void load()}>{pt('retry')}</button></div>}
+    <header className="plugins-heading"><div><h1>{pt('title')}</h1><p>{pt('description')}</p></div><button className="secondary-button" disabled={locked} onClick={() => void load(tabRef.current, true)}><RefreshCw size={16} aria-hidden="true" />{t('common.refresh')}</button></header>
+    {error && <div className="plugin-error plugin-banner" role="alert"><span>{error}{isGitHubRateLimit(error) ? <GitHubTokenHint /> : null}</span><button className="secondary-button" disabled={busy || loading} onClick={() => void load(tabRef.current, true)}>{pt('retry')}</button></div>}
     {supported === false ? <section className="plugin-empty"><Puzzle size={36} /><p>{pt('unsupported')}</p></section> : supported === null ? <section className="plugin-empty" role="status">{loading ? t('common.loading') : pt('retry')}</section> : <>
       <div className="plugin-summary"><label className="plugin-global-toggle"><input type="checkbox" checked={data?.pluginsEnabled ?? false} disabled={locked || !data} onChange={e => { const enabled = e.target.checked; void mutate(() => pluginsApi.updateSettings({ enabled }), pt('saved')); }} />{pt('global')}</label><span><Folder size={15} aria-hidden="true" />{data?.pluginsDir || pt('directory')}</span><span>{pt('installed')} <strong>{installedCount}</strong>{configOnlyCount > 0 && <> · {pt('configOnly')} <strong>{configOnlyCount}</strong></>}</span></div>
       {data && !data.pluginsEnabled && <p className="plugin-banner">{pt('disabledHint')}</p>}

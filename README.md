@@ -95,6 +95,8 @@ Browse the plugin store to install, update or select a release version, configur
 and environment-based authentication, open pages and sign in to accounts provided by enabled plugins. Pages provided by enabled plugins appear as a submenu under Plugins in the sidebar (below Versions), expanded when space allows and collapsible otherwise. A plugin page opens in a native webview that fills the content area, with small Back, Reload and Open in browser buttons in its bottom-right corner (drag the grip to move them; double-click it to reset); new-window links open in the system browser. Third-party
 installations require source review and a typed confirmation. The page detects unsupported core
 builds and shows a restart action when an installation or removal requires it.
+Refreshing the plugin store checks public GitHub releases directly, using the configured GitHub token
+or the app's `GITHUB_TOKEN` environment variable. Auth-required entries keep the core's authentication flow.
 
 ### Usage history and token analytics
 

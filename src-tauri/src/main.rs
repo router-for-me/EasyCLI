@@ -2795,6 +2795,7 @@ fn main() {
             plugin_webview::set_plugin_webview_bounds,
             plugin_webview::hide_plugin_webview,
             plugin_webview::close_plugin_webview,
+            plugins::get_plugin_latest_releases,
             provider_health::provider_health_probe,
             provider_health::get_core_models,
             provider_health::core_health_probe,

@@ -233,7 +233,7 @@ export function createPluginMock(host: PluginMockHost, extraPages = 0, onWebview
     const pluginRequest = command === 'management_request' && (
       path === '/plugins' || path.startsWith('/plugins/') || path === '/config/plugins' || path.startsWith('/config/plugins/')
     );
-    if (!pluginRequest && command !== 'get_plugin_support' && !WEBVIEW_COMMANDS.has(command)) return { handled: false };
+    if (!pluginRequest && command !== 'get_plugin_support' && command !== 'get_plugin_latest_releases' && !WEBVIEW_COMMANDS.has(command)) return { handled: false };
     if (host.scenario === 'error') throw new Error(`Browser Mock error scenario: ${command}`);
     if (!host.coreStatus.ready && (!WEBVIEW_COMMANDS.has(command) || command === 'show_plugin_webview')) {
       throw new Error('Browser Mock: the core is not ready');
@@ -242,6 +242,13 @@ export function createPluginMock(host: PluginMockHost, extraPages = 0, onWebview
     const result = (value: unknown): PluginMockResult => ({ handled: true, value: clone(value) });
     if (command === 'get_plugin_support') return result(true);
     if (WEBVIEW_COMMANDS.has(command)) return result(webviewCommand(command, payload));
+    if (command === 'get_plugin_latest_releases') {
+      const repositories = Array.isArray(payload.repositories) ? payload.repositories.map(text) : [];
+      return result(repositories.map(repository => {
+        const entry = CATALOG.find(entry => entry.repository.replace(/^https:\/\/github\.com\//, '') === repository);
+        return entry ? { repository, version: entry.version, error: null } : { repository, version: null, error: 'Invalid GitHub repository' };
+      }));
+    }
     const method = text(request.method).toUpperCase();
     if (path === '/config/plugins' || path.startsWith('/config/plugins/')) return result(configRequest(method, path, request.body));
     if (method === 'GET' && path === '/plugins') return result({
@@ -255,7 +262,7 @@ export function createPluginMock(host: PluginMockHost, extraPages = 0, onWebview
         const local = installed.get(entry.id);
         return { ...entry, ...plugin(entry.id), name: entry.name, version: entry.version,
           store_id: `${entry.source_id}/${entry.id}`, installed: Boolean(local), installed_version: local?.version ?? '',
-          installed_source_id: local?.sourceId ?? '', install_source_status: local ? 'match' : '',
+          installed_source_id: local?.sourceId ?? '', install_source_status: local ? 'matched' : '',
           update_available: Boolean(local && local.version !== entry.version),
         };
       }) });
