@@ -89,11 +89,8 @@ const fs = require('node:fs');
     await dialog().waitFor({ state: 'detached' });
 
     await card('Sample provider').getByRole('button', { name: 'Usage dashboard' }).click();
-    await page.frameLocator('.plugin-resource iframe').getByRole('heading', { name: 'Sample resource preview' }).waitFor();
-    assert.deepEqual(await page.evaluate(() => window.pluginsFixture.resourceRequests), [{ pluginId: 'sample..plugin', menuIndex: 2 }]);
-    assert.equal(await page.locator('.plugin-resource iframe').getAttribute('referrerpolicy'), 'no-referrer');
-    assert.equal((await page.locator('.plugin-resource iframe').getAttribute('src')).includes('token'), false);
-    await page.getByRole('button', { name: 'Back to plugins' }).click();
+    assert.deepEqual(await page.evaluate(() => window.pluginsFixture.navigations), ['/plugin-pages/sample..plugin/2']);
+    assert.equal(await page.evaluate(() => window.pluginsFixture.commands.some(call => call.command.includes('webview') || call.command.includes('resource_url'))), false);
 
     const globalSwitch = page.getByRole('checkbox', { name: 'Enable plugins', exact: true });
     await globalSwitch.uncheck();

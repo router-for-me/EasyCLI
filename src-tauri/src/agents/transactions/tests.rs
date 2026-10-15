@@ -106,6 +106,10 @@ fn relocated_configuration_root_accepts_writes_but_nested_links_do_not() {
     fs::create_dir_all(&secret).unwrap();
     link_path(&secret, &nested.join("escape"));
     let rejected = validate_config_path(&nested.join("escape").join("config.toml"));
+    let config_link = home.join(".config");
+    link_path(&std::env::temp_dir(), &config_link);
+    let rejected_temp_target =
+        validate_config_path(&config_link.join("opencode").join("config.toml"));
     match previous_home {
         Some(value) => env::set_var(if cfg!(windows) { "USERPROFILE" } else { "HOME" }, value),
         None => env::remove_var(if cfg!(windows) { "USERPROFILE" } else { "HOME" }),
@@ -113,4 +117,8 @@ fn relocated_configuration_root_accepts_writes_but_nested_links_do_not() {
 
     assert!(allowed.is_ok(), "{allowed:?}");
     assert!(rejected.is_err(), "a link inside the configuration root must stay rejected");
+    assert!(
+        rejected_temp_target.is_err(),
+        "a nested configuration link targeting the temp root must stay rejected"
+    );
 }
