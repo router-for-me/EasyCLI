@@ -164,3 +164,4 @@ GitHub Actions では、次のリリースパッケージをビルドします�
 ## 関連プロジェクト
 
 - [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) — 本アプリケーションが管理するプロキシコアです。
+- [WebBrain](https://github.com/webbrain-one/webbrain) — EasyCLIProxyAPI のローカル OpenAI 互換エンドポイントに接続できるブラウザーエージェントです。[セットアップ、セキュリティ、アカウントリスクのガイド](https://webbrain.one/docs/easy-cli-proxy/)をご覧ください。

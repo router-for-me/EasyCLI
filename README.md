@@ -182,3 +182,4 @@ GitHub Actions builds the following release packages:
 ## Related Project
 
 - [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) — the proxy core managed by this application.
+- [WebBrain](https://github.com/webbrain-one/webbrain) — a browser agent that can connect to EasyCLIProxyAPI's local OpenAI-compatible endpoint. See the [setup, security, and account-risk guide](https://webbrain.one/docs/easy-cli-proxy/).

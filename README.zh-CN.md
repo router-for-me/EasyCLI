@@ -176,3 +176,4 @@ GitHub Actions 会构建以下发行包：
 ## 相关项目
 
 - [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI) — 本软件负责管理的代理内核。
+- [WebBrain](https://github.com/webbrain-one/webbrain) — 可连接 EasyCLIProxyAPI 本地 OpenAI 兼容端点的浏览器智能体。请参阅[设置、安全与账号风险指南](https://webbrain.one/docs/zh/easy-cli-proxy/)。
