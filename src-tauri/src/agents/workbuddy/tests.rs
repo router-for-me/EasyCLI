@@ -3,14 +3,7 @@ use super::*;
 struct Home(PathBuf);
 impl Home {
     fn new() -> Self {
-        let path = env::temp_dir().join(format!(
-            "cpa-workbuddy-test-{}-{}",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let path = crate::unique_test_temp_path("cpa-workbuddy-test");
         fs::create_dir_all(&path).unwrap();
         Self(path)
     }

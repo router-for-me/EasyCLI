@@ -2902,5 +2902,23 @@ fn main() {
     });
 }
 
+/// Returns a path under the system temporary directory that is unique for the
+/// lifetime of the test process. The wall clock alone is not enough: parallel
+/// tests that start within the clock's resolution would otherwise share a
+/// directory and delete or overwrite each other's files.
+#[cfg(test)]
+pub(crate) fn unique_test_temp_path(prefix: &str) -> PathBuf {
+    static SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    std::env::temp_dir().join(format!(
+        "{prefix}-{}-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos(),
+        SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ))
+}
+
 #[cfg(test)]
 mod tests;

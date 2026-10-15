@@ -3,14 +3,7 @@ use super::*;
 struct TestHome(PathBuf);
 impl TestHome {
     fn new() -> Self {
-        let path = std::env::temp_dir().join(format!(
-            "cpa-native-oauth-{}-{}",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
+        let path = crate::unique_test_temp_path("cpa-native-oauth");
         fs::create_dir_all(path.join(".codex")).unwrap();
         Self(path)
     }
