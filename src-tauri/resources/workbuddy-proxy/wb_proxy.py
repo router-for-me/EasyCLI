@@ -153,6 +153,10 @@ def detect_model_realm(model_id):
     if not model_id:
         return CURRENT_REALM
     m = str(model_id).lower()
+    for prefix in ("workbuddy/", "codebuddy/", "workbuddy:", "codebuddy:"):
+        if m.startswith(prefix):
+            m = m[len(prefix):]
+            break
     intl_only = {
         "gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna",
         "gpt-5.5", "gpt-5.4", "gpt-5.3-codex", "gemini-3.5-flash",
@@ -11808,6 +11812,11 @@ def apply_prompt_mode(messages):
 
 def build_upstream_body(payload):
     model = payload.get("model") or ""
+    for prefix in ("workbuddy/", "codebuddy/", "workbuddy:", "codebuddy:"):
+        if str(model).lower().startswith(prefix):
+            model = str(model)[len(prefix):]
+            payload["model"] = model
+            break
     # Resolve the effective thinking state before the backfill below: while
     # thinking is on, the upstream requires reasoning_content on every
     # assistant message, whether or not the client kept a reasoning trace.
@@ -12467,6 +12476,11 @@ def open_upstream(payload, session_key=None, target_realm=None, prebuilt_body=No
             remaining_schedule_weights() if remaining_priority_enabled() else None)
     realm = target_realm or detect_model_realm(payload.get("model")) or CURRENT_REALM
     model = str(payload.get("model") or "")
+    for prefix in ("workbuddy/", "codebuddy/", "workbuddy:", "codebuddy:"):
+        if model.lower().startswith(prefix):
+            model = model[len(prefix):]
+            payload["model"] = model
+            break
     # 复用调用方已建好的 body：/v1/chat/completions 在进这里之前已经 build 过
     # 一次（那次的产物只用于一行日志和 prompt_fingerprint），此前这里会为同一
     # 个 payload 再建一遍，大请求实测白付 ~13.6ms/请求。403 降级重试时仍按
@@ -15774,7 +15788,12 @@ class Handler(BaseHTTPRequestHandler):
         token = (self.headers.get("X-Panel-Token") or "").strip()
         return token
     def _panel_ok(self):
-        return PANEL.valid(self._panel_token())
+        token = self._panel_token()
+        if token and PANEL.valid(token):
+            return True
+        if self._key_ok():
+            return True
+        return False
     @staticmethod
     def _is_panel_route(path):
         """Management endpoints shown in the web panel.

@@ -641,33 +641,12 @@ pub(crate) async fn import_workbuddy_desktop_account(
     proxy_state: State<'_, WorkBuddyProxyState>,
     target_path: Option<String>,
 ) -> Result<Value, String> {
-    let origin = workbuddy_gateway_origin(proxy_state.inner())?;
-    let import_url = format!("{origin}/accounts/import/desktop");
-
-    let client = Client::builder().timeout(Duration::from_secs(60)).build().unwrap_or_default();
-
     let payload = if let Some(path) = target_path {
         json!({ "path": path })
     } else {
         json!({ "all": true })
     };
-
-    let mut request = client.post(&import_url).json(&payload);
-    if let Some(key) = workbuddy_gateway_key(proxy_state.inner()) {
-        request = request.header("Authorization", format!("Bearer {key}"));
-    }
-
-    let response = request
-        .send()
-        .await
-        .map_err(|e| format!("Failed to contact WorkBuddy proxy service at {import_url}. Ensure the service is running: {e}"))?;
-
-    let result: Value = response
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse response: {e}"))?;
-
-    Ok(result)
+    workbuddy_gateway_post(proxy_state.inner(), "/accounts/import/desktop", payload).await
 }
 
 /// Starts an OAuth login flow for WorkBuddy.
@@ -1190,6 +1169,18 @@ fn workbuddy_gateway_key(proxy_state: &WorkBuddyProxyState) -> Option<String> {
         .filter(|key| !key.is_empty())
 }
 
+async fn workbuddy_obtain_panel_token(client: &Client, origin: &str) -> Option<String> {
+    let login_url = format!("{origin}/panel/login");
+    let resp = client
+        .post(&login_url)
+        .json(&json!({ "password": "admin" }))
+        .send()
+        .await
+        .ok()?;
+    let payload: Value = resp.json().await.ok()?;
+    payload.get("token").and_then(Value::as_str).map(str::to_string)
+}
+
 async fn workbuddy_gateway_post(
     proxy_state: &WorkBuddyProxyState,
     path: &str,
@@ -1207,9 +1198,24 @@ async fn workbuddy_gateway_post(
         request = request.header("Authorization", format!("Bearer {key}"));
     }
 
-    let response = request.send().await.map_err(|e| {
+    let mut response = request.send().await.map_err(|e| {
         format!("Failed to reach the WorkBuddy gateway at {url}. Make sure the kernel is running: {e}")
     })?;
+
+    if response.status() == reqwest::StatusCode::UNAUTHORIZED {
+        if let Some(panel_token) = workbuddy_obtain_panel_token(&client, &origin).await {
+            let mut retry_request = client
+                .post(&url)
+                .json(&body)
+                .header("X-Panel-Token", &panel_token);
+            if let Some(key) = workbuddy_gateway_key(proxy_state) {
+                retry_request = retry_request.header("Authorization", format!("Bearer {key}"));
+            }
+            if let Ok(retry_resp) = retry_request.send().await {
+                response = retry_resp;
+            }
+        }
+    }
 
     let status = response.status();
     let payload: Value = response
@@ -1245,9 +1251,23 @@ async fn workbuddy_gateway_get(
         request = request.header("Authorization", format!("Bearer {key}"));
     }
 
-    let response = request.send().await.map_err(|e| {
+    let mut response = request.send().await.map_err(|e| {
         format!("Failed to reach the WorkBuddy gateway at {url}. Make sure the kernel is running: {e}")
     })?;
+
+    if response.status() == reqwest::StatusCode::UNAUTHORIZED {
+        if let Some(panel_token) = workbuddy_obtain_panel_token(&client, &origin).await {
+            let mut retry_request = client
+                .get(&url)
+                .header("X-Panel-Token", &panel_token);
+            if let Some(key) = workbuddy_gateway_key(proxy_state) {
+                retry_request = retry_request.header("Authorization", format!("Bearer {key}"));
+            }
+            if let Ok(retry_resp) = retry_request.send().await {
+                response = retry_resp;
+            }
+        }
+    }
 
     let status = response.status();
     let payload: Value = response
@@ -1272,7 +1292,7 @@ async fn workbuddy_gateway_get(
 pub(crate) async fn get_workbuddy_accounts(
     proxy_state: State<'_, WorkBuddyProxyState>,
 ) -> Result<Value, String> {
-    let payload = workbuddy_gateway_get(proxy_state.inner(), "/accounts").await?;
+    let payload = workbuddy_gateway_get(proxy_state.inner(), "/accounts?realm=all").await?;
     Ok(payload)
 }
 

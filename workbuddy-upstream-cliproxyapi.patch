@@ -1,3 +1,173 @@
+diff --git a/internal/api/handlers/management/auth_files_provider_oauth.go b/internal/api/handlers/management/auth_files_provider_oauth.go
+index 48fc4ef..0d4623d 100644
+--- a/internal/api/handlers/management/auth_files_provider_oauth.go
++++ b/internal/api/handlers/management/auth_files_provider_oauth.go
+@@ -19,6 +19,7 @@ import (
+ 	"github.com/router-for-me/CLIProxyAPI/v8/internal/auth/codex"
+ 	"github.com/router-for-me/CLIProxyAPI/v8/internal/auth/kimi"
+ 	metaauth "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/meta"
++	workbuddyauth "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/workbuddy"
+ 	xaiauth "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/xai"
+ 	"github.com/router-for-me/CLIProxyAPI/v8/internal/misc"
+ 	"github.com/router-for-me/CLIProxyAPI/v8/internal/pluginhost"
+@@ -912,6 +913,119 @@ func (h *Handler) requestKimiTokenWithDomain(c *gin.Context, domain string) {
+ 	c.JSON(200, response)
+ }
+ 
++func (h *Handler) RequestWorkBuddyToken(c *gin.Context) {
++	ctx := context.Background()
++	ctx = PopulateAuthContext(ctx, c)
++
++	realm := strings.TrimSpace(c.Query("realm"))
++	if realm == "" {
++		realm = "intl"
++	}
++	platform := strings.TrimSpace(c.Query("platform"))
++	if platform == "" {
++		platform = "CLI"
++	}
++
++	authSvc := workbuddyauth.NewWorkBuddyAuth(h.cfg)
++
++	authURL, state, errStart := authSvc.StartLogin(ctx, realm, platform)
++	if errStart != nil {
++		log.Errorf("Failed to start WorkBuddy OAuth flow: %v", errStart)
++		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to start WorkBuddy authorization flow"})
++		return
++	}
++
++	RegisterOAuthSession(state, "workbuddy")
++
++	go func() {
++		pollCtx, cancelPoll := context.WithCancel(ctx)
++		defer cancelPoll()
++		go watchOAuthSessionCancel(pollCtx, cancelPoll, state, "workbuddy")
++
++		ticker := time.NewTicker(2 * time.Second)
++		defer ticker.Stop()
++		timeout := time.After(15 * time.Minute)
++
++		for {
++			select {
++			case <-pollCtx.Done():
++				return
++			case <-timeout:
++				if IsOAuthSessionPending(state, "workbuddy") {
++					SetOAuthSessionError(state, "WorkBuddy authorization timed out")
++				}
++				return
++			case <-ticker.C:
++				if !IsOAuthSessionPending(state, "workbuddy") {
++					return
++				}
++				tokenData, errPoll := authSvc.PollToken(pollCtx, state, realm)
++				if errPoll != nil {
++					log.Errorf("WorkBuddy authentication poll error: %v", errPoll)
++					SetOAuthSessionError(state, oauthSessionErrorWithCause("Authentication failed", errPoll))
++					return
++				}
++				if tokenData == nil {
++					continue
++				}
++
++				fileName := workbuddyauth.CredentialFileName(tokenData.UID)
++				label := fmt.Sprintf("WorkBuddy (%s)", tokenData.UID[:min(8, len(tokenData.UID))])
++
++				metadata := map[string]any{
++					"type":          "workbuddy",
++					"uid":           tokenData.UID,
++					"access_token":  tokenData.AccessToken,
++					"refresh_token": tokenData.RefreshToken,
++					"token_type":    tokenData.TokenType,
++					"expires_in":    tokenData.ExpiresIn,
++					"expires_at":    tokenData.ExpiresAt,
++					"realm":         realm,
++					"platform":      platform,
++					"source":        "oauth",
++					"auth_kind":     "oauth",
++				}
++
++				attrs := map[string]string{
++					"auth_kind": "oauth",
++					"uid":       tokenData.UID,
++					"realm":     realm,
++				}
++
++				record := &coreauth.Auth{
++					ID:         fileName,
++					Provider:   "workbuddy",
++					FileName:   fileName,
++					Label:      label,
++					Metadata:   metadata,
++					Attributes: attrs,
++				}
++
++				if errGuard := guardOAuthSessionPendingForSave(state, "workbuddy"); errGuard != nil {
++					return
++				}
++				savedPath, errSave := h.saveTokenRecord(ctx, record)
++				if errSave != nil {
++					log.Errorf("Failed to save WorkBuddy token to file: %v", errSave)
++					SetOAuthSessionError(state, "Failed to save credentials")
++					return
++				}
++
++				CompleteOAuthSession(state)
++				fmt.Printf("WorkBuddy authentication successful! Token saved to %s\n", savedPath)
++				return
++			}
++		}
++	}()
++
++	c.JSON(200, gin.H{
++		"status":     "ok",
++		"url":        authURL,
++		"state":      state,
++		"expires_in": 900,
++	})
++}
++
+ // watchOAuthSessionCancel cancels pollCtx once the OAuth session is no longer pending.
+ func watchOAuthSessionCancel(pollCtx context.Context, cancel context.CancelFunc, state, provider string) {
+ 	if cancel == nil {
+diff --git a/internal/api/handlers/management/auth_files_v8.go b/internal/api/handlers/management/auth_files_v8.go
+index 7d8151a..afb1977 100644
+--- a/internal/api/handlers/management/auth_files_v8.go
++++ b/internal/api/handlers/management/auth_files_v8.go
+@@ -28,6 +28,8 @@ func (h *Handler) StartOAuthV8(c *gin.Context) {
+ 		h.RequestDevinToken(c)
+ 	case "meta":
+ 		h.RequestMetaToken(c)
++	case "workbuddy", "codebuddy":
++		h.RequestWorkBuddyToken(c)
+ 	default:
+ 		if !h.ServePluginAuthURL(c) {
+ 			c.JSON(http.StatusNotFound, gin.H{"error": "provider_not_found"})
+diff --git a/internal/api/handlers/management/oauth_sessions.go b/internal/api/handlers/management/oauth_sessions.go
+index 336f9bb..e5554cc 100644
+--- a/internal/api/handlers/management/oauth_sessions.go
++++ b/internal/api/handlers/management/oauth_sessions.go
+@@ -374,6 +374,8 @@ func NormalizeOAuthProvider(provider string) (string, error) {
+ 		return "devin", nil
+ 	case "meta", "muse":
+ 		return "meta", nil
++	case "workbuddy", "codebuddy":
++		return "workbuddy", nil
+ 	default:
+ 		return "", errUnsupportedOAuthFlow
+ 	}
+diff --git a/internal/api/server_management.go b/internal/api/server_management.go
+index 1eabc9c..6ab6d11 100644
+--- a/internal/api/server_management.go
++++ b/internal/api/server_management.go
+@@ -196,6 +196,7 @@ func (s *Server) registerManagementRoutes() {
+ 		mgmt.GET("/xai-auth-url", s.mgmt.RequestXAIToken)
+ 		mgmt.GET("/devin-auth-url", s.mgmt.RequestDevinToken)
+ 		mgmt.GET("/meta-auth-url", s.mgmt.RequestMetaToken)
++		mgmt.GET("/workbuddy-auth-url", s.mgmt.RequestWorkBuddyToken)
+ 		mgmt.GET("/get-auth-status", s.mgmt.GetAuthStatus)
+ 		mgmt.DELETE("/oauth-session", s.mgmt.CancelAuthSession)
+ 	}
 diff --git a/internal/auth/workbuddy/workbuddy.go b/internal/auth/workbuddy/workbuddy.go
 new file mode 100644
 index 0000000..da1ca90
@@ -310,12 +480,154 @@ index 0000000..da1ca90
 +	}
 +	return b
 +}
+diff --git a/internal/constant/constant.go b/internal/constant/constant.go
+index 0efbc87..3ba16d9 100644
+--- a/internal/constant/constant.go
++++ b/internal/constant/constant.go
+@@ -27,4 +27,7 @@ const (
+ 
+ 	// Interactions represents the Google Interactions API format identifier.
+ 	Interactions = "interactions"
++
++	// WorkBuddy represents the Tencent WorkBuddy provider identifier.
++	WorkBuddy = "workbuddy"
+ )
+diff --git a/internal/registry/model_definitions.go b/internal/registry/model_definitions.go
+index f2dbce0..6cf71f3 100644
+--- a/internal/registry/model_definitions.go
++++ b/internal/registry/model_definitions.go
+@@ -37,6 +37,7 @@ type staticModelsJSON struct {
+ 	XAI         []*ModelInfo `json:"xai"`
+ 	Devin       []*ModelInfo `json:"devin"`
+ 	Meta        []*ModelInfo `json:"meta"`
++	WorkBuddy   []*ModelInfo `json:"workbuddy"`
+ }
+ 
+ // GetClaudeModels returns the standard Claude model definitions.
+@@ -533,6 +534,8 @@ func GetStaticModelDefinitionsByChannel(channel string) []*ModelInfo {
+ 		return GetDevinModels()
+ 	case "meta", "muse":
+ 		return GetMetaModels()
++	case "workbuddy", "codebuddy":
++		return GetWorkBuddyModels()
+ 	default:
+ 		return nil
+ 	}
+@@ -558,6 +561,94 @@ func GetMetaModels() []*ModelInfo {
+ 	return cloneModelInfos(getModels().Meta)
+ }
+ 
++var staticWorkBuddyModels = []*ModelInfo{
++	{
++		ID:            "default-model",
++		Type:          "workbuddy",
++		OwnedBy:       "workbuddy",
++		DisplayName:   "WorkBuddy Auto",
++		ContextLength: 200000,
++	},
++	{
++		ID:            "fast-model",
++		Type:          "workbuddy",
++		OwnedBy:       "workbuddy",
++		DisplayName:   "WorkBuddy Fast",
++		ContextLength: 200000,
++	},
++	{
++		ID:            "balanced-model",
++		Type:          "workbuddy",
++		OwnedBy:       "workbuddy",
++		DisplayName:   "WorkBuddy Balanced",
++		ContextLength: 256000,
++	},
++	{
++		ID:            "primary-model",
++		Type:          "workbuddy",
++		OwnedBy:       "workbuddy",
++		DisplayName:   "WorkBuddy Primary",
++		ContextLength: 272000,
++	},
++	{
++		ID:            "deep-model",
++		Type:          "workbuddy",
++		OwnedBy:       "workbuddy",
++		DisplayName:   "WorkBuddy Deep",
++		ContextLength: 200000,
++	},
++	{
++		ID:            "deepseek-v4.1-flash",
++		Type:          "workbuddy",
++		OwnedBy:       "deepseek",
++		DisplayName:   "DeepSeek Flash (WorkBuddy)",
++		ContextLength: 128000,
++	},
++	{
++		ID:            "claude-3-7-sonnet",
++		Type:          "workbuddy",
++		OwnedBy:       "anthropic",
++		DisplayName:   "Claude 3.7 Sonnet (WorkBuddy)",
++		ContextLength: 200000,
++	},
++	{
++		ID:            "claude-3-5-sonnet-20241022",
++		Type:          "workbuddy",
++		OwnedBy:       "anthropic",
++		DisplayName:   "Claude 3.5 Sonnet (WorkBuddy)",
++		ContextLength: 200000,
++	},
++	{
++		ID:            "deepseek-chat",
++		Type:          "workbuddy",
++		OwnedBy:       "deepseek",
++		DisplayName:   "DeepSeek V3 (WorkBuddy)",
++		ContextLength: 64000,
++	},
++	{
++		ID:            "deepseek-reasoner",
++		Type:          "workbuddy",
++		OwnedBy:       "deepseek",
++		DisplayName:   "DeepSeek R1 (WorkBuddy)",
++		ContextLength: 64000,
++	},
++	{
++		ID:            "gpt-4o",
++		Type:          "workbuddy",
++		OwnedBy:       "openai",
++		DisplayName:   "GPT-4o (WorkBuddy)",
++		ContextLength: 128000,
++	},
++}
++
++// GetWorkBuddyModels returns model definitions for Tencent WorkBuddy.
++func GetWorkBuddyModels() []*ModelInfo {
++	if len(getModels().WorkBuddy) > 0 {
++		return cloneModelInfos(getModels().WorkBuddy)
++	}
++	return cloneModelInfos(staticWorkBuddyModels)
++}
++
+ // LookupStaticModelInfo searches all static model definitions for a model by ID.
+ // Returns nil if no matching model is found.
+ func LookupStaticModelInfo(modelID string) *ModelInfo {
+@@ -577,10 +668,12 @@ func LookupStaticModelInfo(modelID string) *ModelInfo {
+ 		data.XAI,
+ 		GetDevinModels(),
+ 		GetMetaModels(),
++		GetWorkBuddyModels(),
+ 	}
++	normalizedModelID := strings.TrimPrefix(strings.TrimPrefix(modelID, "workbuddy/"), "codebuddy/")
+ 	for _, models := range allModels {
+ 		for _, m := range models {
+-			if m != nil && m.ID == modelID {
++			if m != nil && (m.ID == modelID || m.ID == normalizedModelID) {
+ 				return cloneModelInfo(m)
+ 			}
+ 		}
 diff --git a/internal/runtime/executor/workbuddy_executor.go b/internal/runtime/executor/workbuddy_executor.go
 new file mode 100644
-index 0000000..78d5876
+index 0000000..6b8c386
 --- /dev/null
 +++ b/internal/runtime/executor/workbuddy_executor.go
-@@ -0,0 +1,396 @@
+@@ -0,0 +1,412 @@
 +package executor
 +
 +import (
@@ -471,10 +783,21 @@ index 0000000..78d5876
 +	return cliproxyexecutor.Response{}, nil
 +}
 +
++func cleanWorkBuddyModel(model string) string {
++	m := strings.TrimSpace(model)
++	for _, p := range []string{"workbuddy/", "codebuddy/", "workbuddy:", "codebuddy:"} {
++		if strings.HasPrefix(strings.ToLower(m), p) {
++			m = m[len(p):]
++			break
++		}
++	}
++	return strings.TrimSpace(thinking.ParseSuffix(m).ModelName)
++}
++
 +// Execute performs non-streaming execution against Tencent WorkBuddy.
 +func (e *WorkBuddyExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (resp cliproxyexecutor.Response, err error) {
 +	ctx = helps.EnsureSessionContext(ctx, opts, req.Payload)
-+	baseModel := thinking.ParseSuffix(req.Model).ModelName
++	baseModel := cleanWorkBuddyModel(req.Model)
 +
 +	reporter := helps.NewExecutorUsageReporter(ctx, e, baseModel, auth)
 +	defer reporter.TrackFailure(ctx, &err)
@@ -559,7 +882,7 @@ index 0000000..78d5876
 +// ExecuteStream performs streaming execution against Tencent WorkBuddy.
 +func (e *WorkBuddyExecutor) ExecuteStream(ctx context.Context, auth *cliproxyauth.Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (_ *cliproxyexecutor.StreamResult, err error) {
 +	ctx = helps.EnsureSessionContext(ctx, opts, req.Payload)
-+	baseModel := thinking.ParseSuffix(req.Model).ModelName
++	baseModel := cleanWorkBuddyModel(req.Model)
 +
 +	reporter := helps.NewExecutorUsageReporter(ctx, e, baseModel, auth)
 +	defer reporter.TrackFailure(ctx, &err)
@@ -684,6 +1007,11 @@ index 0000000..78d5876
 +
 +// normalizeWorkBuddyPayload validates system prompt presence and handles DeepSeek reasoning fields.
 +func normalizeWorkBuddyPayload(payload []byte, model string) []byte {
++	cleanModel := cleanWorkBuddyModel(model)
++	if cleanModel != "" {
++		payload, _ = sjson.SetBytes(payload, "model", cleanModel)
++	}
++
 +	// Ensure system prompt is present
 +	messages := gjson.GetBytes(payload, "messages")
 +	if !messages.Exists() || len(messages.Array()) == 0 || messages.Array()[0].Get("role").String() != "system" {
@@ -712,3 +1040,95 @@ index 0000000..78d5876
 +
 +	return payload
 +}
+diff --git a/internal/runtime/executor/workbuddy_executor_test.go b/internal/runtime/executor/workbuddy_executor_test.go
+new file mode 100644
+index 0000000..a2fc5fa
+--- /dev/null
++++ b/internal/runtime/executor/workbuddy_executor_test.go
+@@ -0,0 +1,27 @@
++package executor
++
++import (
++	"testing"
++)
++
++func TestCleanWorkBuddyModel(t *testing.T) {
++	tests := []struct {
++		input    string
++		expected string
++	}{
++		{"default-model", "default-model"},
++		{"deepseek-v4.1-flash", "deepseek-v4.1-flash"},
++		{"workbuddy/deepseek-v4.1-flash", "deepseek-v4.1-flash"},
++		{"WorkBuddy/claude-3-7-sonnet", "claude-3-7-sonnet"},
++		{"codebuddy/gpt-4o", "gpt-4o"},
++		{"workbuddy:primary-model", "primary-model"},
++		{"workbuddy/deepseek-v4.1-flash(high)", "deepseek-v4.1-flash"},
++	}
++
++	for _, tc := range tests {
++		actual := cleanWorkBuddyModel(tc.input)
++		if actual != tc.expected {
++			t.Errorf("cleanWorkBuddyModel(%q) = %q; want %q", tc.input, actual, tc.expected)
++		}
++	}
++}
+diff --git a/sdk/cliproxy/auth/conductor_models.go b/sdk/cliproxy/auth/conductor_models.go
+index 3ac8b28..998a166 100644
+--- a/sdk/cliproxy/auth/conductor_models.go
++++ b/sdk/cliproxy/auth/conductor_models.go
+@@ -702,14 +702,21 @@ func rewriteModelForAuth(model string, auth *Auth) string {
+ 		return model
+ 	}
+ 	prefix := strings.TrimSpace(auth.Prefix)
+-	if prefix == "" {
+-		return model
++	if prefix != "" {
++		needle := prefix + "/"
++		if strings.HasPrefix(model, needle) {
++			model = strings.TrimPrefix(model, needle)
++		}
+ 	}
+-	needle := prefix + "/"
+-	if !strings.HasPrefix(model, needle) {
+-		return model
++	if strings.EqualFold(strings.TrimSpace(auth.Provider), "workbuddy") {
++		for _, p := range []string{"workbuddy/", "codebuddy/", "workbuddy:", "codebuddy:"} {
++			if strings.HasPrefix(strings.ToLower(model), p) {
++				model = model[len(p):]
++				break
++			}
++		}
+ 	}
+-	return strings.TrimPrefix(model, needle)
++	return model
+ }
+ 
+ func (m *Manager) applyAPIKeyModelAlias(auth *Auth, requestedModel string) string {
+diff --git a/sdk/cliproxy/service_executors.go b/sdk/cliproxy/service_executors.go
+index 63aa949..12a4503 100644
+--- a/sdk/cliproxy/service_executors.go
++++ b/sdk/cliproxy/service_executors.go
+@@ -326,6 +326,8 @@ func (s *Service) registerExecutorForAuth(a *coreauth.Auth, forceReplace bool) {
+ 		s.coreManager.RegisterExecutor(executor.NewDevinExecutor(cfg))
+ 	case "meta":
+ 		s.coreManager.RegisterExecutor(executor.NewMetaExecutor(cfg))
++	case "workbuddy", "codebuddy":
++		s.coreManager.RegisterExecutor(executor.NewWorkBuddyExecutor(cfg))
+ 	default:
+ 		providerKey := strings.ToLower(strings.TrimSpace(a.Provider))
+ 		if providerKey == "" {
+diff --git a/sdk/cliproxy/service_models.go b/sdk/cliproxy/service_models.go
+index 686a040..a76c071 100644
+--- a/sdk/cliproxy/service_models.go
++++ b/sdk/cliproxy/service_models.go
+@@ -197,6 +197,9 @@ func (s *Service) registerModelsForAuthWithConfigAndCache(ctx context.Context, c
+ 			}
+ 		}
+ 		models = applyExcludedModels(models, excluded)
++	case "workbuddy", "codebuddy":
++		models = registry.GetWorkBuddyModels()
++		models = applyExcludedModels(models, excluded)
+ 	default:
+ 		// Handle OpenAI-compatibility providers by name using config
+ 		if cfg != nil {

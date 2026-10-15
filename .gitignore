@@ -19,7 +19,7 @@ misc/
 # Local runtime state produced by running the GUI from the repository root.
 oauth/
 usage-records/
-workbuddy-proxy/
+/workbuddy-proxy/
 config.toml
 /plugins/
 

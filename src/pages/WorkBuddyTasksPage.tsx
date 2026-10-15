@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { ArrowLeft, CalendarCheck, Check, Download, LoaderCircle, Play, RefreshCw, Sparkles } from 'lucide-react';
 import workbuddyIcon from '../assets/icons/workbuddy.png';
@@ -78,17 +78,34 @@ const summarize = (result: Record<string, unknown>): string => {
   return JSON.stringify(result, null, 2);
 };
 
+const isTaskOk = (result: Record<string, unknown> | undefined): boolean | null => {
+  if (!result) return null;
+  if (result.ok === true) return true;
+  if (result.ok === false) return false;
+  if (Array.isArray(result.results) && result.results.length > 0) {
+    return (result.results as Record<string, unknown>[]).every(
+      (entry) => entry.ok !== false && !entry.error,
+    );
+  }
+  return null;
+};
+
 export function WorkBuddyTasksPage({ onBack }: { onBack?: () => void }) {
   const notice = useAppNotice();
+  const noticeRef = useRef(notice);
+  noticeRef.current = notice;
+
   const [accounts, setAccounts] = useState<WorkBuddyAccount[]>([]);
   const [selectedUid, setSelectedUid] = useState('');
   const [loadingAccounts, setLoadingAccounts] = useState(true);
+  const [accountError, setAccountError] = useState('');
   const [busyTask, setBusyTask] = useState<string | null>(null);
   const [results, setResults] = useState<Record<string, Record<string, unknown>>>({});
   const [runLog, setRunLog] = useState<string[]>([]);
 
-  const loadAccounts = useCallback(async () => {
+  const loadAccounts = useCallback(async (notifyOnFailure = false) => {
     setLoadingAccounts(true);
+    setAccountError('');
     try {
       const payload = await invoke<Record<string, unknown>>('get_workbuddy_accounts');
       const list = Array.isArray(payload.accounts)
@@ -99,26 +116,29 @@ export function WorkBuddyTasksPage({ onBack }: { onBack?: () => void }) {
       setAccounts(list);
       setSelectedUid((current) => (list.some((a) => a.uid === current) ? current : (list[0]?.uid ?? '')));
     } catch (error) {
-      // The gateway may not be running yet; keep the page usable and explain why.
       setAccounts([]);
-      notice.showNotice(`读取 WorkBuddy 账号失败：${error}`, 'error');
+      const errMsg = `读取 WorkBuddy 账号失败：${error}`;
+      setAccountError(errMsg);
+      if (notifyOnFailure) {
+        noticeRef.current.showNotice(errMsg, 'error');
+      }
     } finally {
       setLoadingAccounts(false);
     }
-  }, [notice]);
+  }, []);
 
   useEffect(() => {
-    void loadAccounts();
+    void loadAccounts(false);
   }, [loadAccounts]);
 
   const importDesktopAccounts = async () => {
     setBusyTask('__import__');
     try {
       await invoke('import_workbuddy_desktop_account', { targetPath: null });
-      notice.showNotice('已从本地 WorkBuddy 桌面客户端导入账号', 'success');
-      await loadAccounts();
+      noticeRef.current.showNotice('已从本地 WorkBuddy 桌面客户端导入账号', 'success');
+      await loadAccounts(true);
     } catch (error) {
-      notice.showNotice(`导入桌面端凭证失败：${error}`, 'error');
+      noticeRef.current.showNotice(`导入桌面端凭证失败：${error}`, 'error');
     } finally {
       setBusyTask(null);
     }
@@ -134,12 +154,12 @@ export function WorkBuddyTasksPage({ onBack }: { onBack?: () => void }) {
       setResults((current) => ({ ...current, [task]: payload }));
       const summary = summarize(payload);
       setRunLog((current) => [...current, `  ${summary.replace(/\n/g, '\n  ')}`, `✓ ${label} 执行完成`]);
-      notice.showNotice(`${label} 已执行`, 'success');
+      noticeRef.current.showNotice(`${label} 已执行`, 'success');
     } catch (error) {
       const message = String(error);
       setResults((current) => ({ ...current, [task]: { ok: false, error: message } }));
       setRunLog((current) => [...current, `✗ ${label} 失败：${message}`]);
-      notice.showNotice(`${label} 失败：${message}`, 'error');
+      noticeRef.current.showNotice(`${label} 失败：${message}`, 'error');
     } finally {
       setBusyTask(null);
     }
@@ -163,11 +183,11 @@ export function WorkBuddyTasksPage({ onBack }: { onBack?: () => void }) {
       });
       setResults(next);
       setRunLog((current) => [...current, '✓ 全部任务执行完成']);
-      notice.showNotice('WorkBuddy 全部任务已执行', 'success');
+      noticeRef.current.showNotice('WorkBuddy 全部任务已执行', 'success');
     } catch (error) {
       const message = String(error);
       setRunLog((current) => [...current, `✗ 全部任务执行失败：${message}`]);
-      notice.showNotice(`全部任务执行失败：${message}`, 'error');
+      noticeRef.current.showNotice(`全部任务执行失败：${message}`, 'error');
     } finally {
       setBusyTask(null);
     }
@@ -192,7 +212,7 @@ export function WorkBuddyTasksPage({ onBack }: { onBack?: () => void }) {
               返回 OAuth
             </button>
           ) : null}
-          <button type="button" className="secondary-button" disabled={loadingAccounts} onClick={() => void loadAccounts()}>
+          <button type="button" className="secondary-button" disabled={loadingAccounts} onClick={() => void loadAccounts(true)}>
             {loadingAccounts ? <LoaderCircle size={15} className="spin" aria-hidden="true" /> : <RefreshCw size={15} aria-hidden="true" />}
             刷新账号
           </button>
@@ -209,6 +229,11 @@ export function WorkBuddyTasksPage({ onBack }: { onBack?: () => void }) {
 
       <section className="workbuddy-tasks-card">
         <h2>目标账号</h2>
+        {accountError ? (
+          <p className="workbuddy-task-hint" style={{ color: '#ef4444' }}>
+            {accountError}
+          </p>
+        ) : null}
         {accounts.length > 0 ? (
           <label className="workbuddy-account-select">
             <span>执行账号</span>
@@ -234,7 +259,7 @@ export function WorkBuddyTasksPage({ onBack }: { onBack?: () => void }) {
         <div className="workbuddy-task-grid">
           {TASK_DEFS.map((def) => {
             const result = results[def.task];
-            const ok = result ? result.ok === true : null;
+            const ok = isTaskOk(result);
             return (
               <div className="workbuddy-task-item" key={def.task}>
                 <div className="workbuddy-task-item-title">
