@@ -67,7 +67,7 @@ const subscribe = (listener: () => void) => {
   return () => {
     listeners.delete(listener);
     if (!listeners.size) {
-      clearInterval(timer);
+      if (timer !== undefined) clearInterval(timer);
       timer = undefined;
     }
   };
