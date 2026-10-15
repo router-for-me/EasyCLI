@@ -1454,5 +1454,20 @@ fn core_crash_supervisor_resets_attempts_after_stable_uptime_and_treats_already_
         let _ = live.kill();
         let _ = live.wait();
     }
+
+    // Adopting a running PID while a live managed child is tracked preserves crash supervision.
+    let live_managed = spawn_core_child(core_child_sleep_command()).unwrap();
+    let live_pid = live_managed.id();
+    state.store_child(live_managed).unwrap();
+    state
+        .adopt_process_ids(&std::env::current_exe().unwrap(), vec![live_pid])
+        .unwrap();
+    if let Ok(mut guard) = state.child.lock() {
+        if let Some(proc) = guard.as_mut() {
+            let _ = proc.kill();
+            let _ = proc.wait();
+        }
+    }
+    assert!(check_and_recover_crashed_core(&state, |_| Ok(())).unwrap());
 }
 

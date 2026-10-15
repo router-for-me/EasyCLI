@@ -1992,19 +1992,18 @@ impl CoreProcessState {
     }
 
     fn poll_unexpected_child_exit(&self, stable_uptime: Duration) -> bool {
-        let child_alive = if let Ok(mut child) = self.child.lock() {
-            if let Some(process) = child.as_mut() {
-                if let Ok(None) = process.try_wait() {
-                    true
-                } else {
-                    *child = None;
-                    false
-                }
+        let Ok(mut child) = self.child.lock() else {
+            return false;
+        };
+        let child_alive = if let Some(process) = child.as_mut() {
+            if let Ok(None) = process.try_wait() {
+                true
             } else {
+                *child = None;
                 false
             }
         } else {
-            return false;
+            false
         };
 
         let Ok(mut supervision) = self.supervision.lock() else {
@@ -2064,11 +2063,7 @@ impl CoreProcessState {
     }
 
     fn adopt_process_ids(&self, binary_path: &Path, process_ids: Vec<u32>) -> Result<(), String> {
-        let mut adopted = self
-            .adopted_processes
-            .lock()
-            .map_err(|_| "Adopted kernel process status lock is poisoned".to_string())?;
-        *adopted = process_ids
+        let mut adopted_list: Vec<AdoptedCoreProcess> = process_ids
             .into_iter()
             .filter(|process_id| is_process_alive(*process_id))
             .map(|process_id| AdoptedCoreProcess {
@@ -2076,11 +2071,35 @@ impl CoreProcessState {
                 binary_path: binary_path.to_path_buf(),
             })
             .collect();
-        adopted.sort_unstable_by_key(|process| process.process_id);
-        adopted.dedup_by_key(|process| process.process_id);
-        if !adopted.is_empty() {
-            self.clear_supervision();
-            self.reset_crash_restart_attempts();
+        adopted_list.sort_unstable_by_key(|process| process.process_id);
+        adopted_list.dedup_by_key(|process| process.process_id);
+        let has_adopted = !adopted_list.is_empty();
+        {
+            let mut adopted = self
+                .adopted_processes
+                .lock()
+                .map_err(|_| "Adopted kernel process status lock is poisoned".to_string())?;
+            *adopted = adopted_list;
+        }
+        if has_adopted {
+            let mut child = self
+                .child
+                .lock()
+                .map_err(|_| "Kernel process status lock is poisoned".to_string())?;
+            let has_live_managed_child = if let Some(process) = child.as_mut() {
+                if let Ok(None) = process.try_wait() {
+                    true
+                } else {
+                    *child = None;
+                    false
+                }
+            } else {
+                false
+            };
+            if !has_live_managed_child {
+                self.clear_supervision();
+                self.reset_crash_restart_attempts();
+            }
         }
         Ok(())
     }
