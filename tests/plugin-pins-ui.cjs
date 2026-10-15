@@ -8,6 +8,8 @@ const fs = require('node:fs');
   const react = (await import('@vitejs/plugin-react')).default;
   const server = await createServer({
     configFile: false, root: path.resolve(__dirname, '..'), plugins: [react()], logLevel: 'error',
+    cacheDir: 'node_modules/.vite-plugin-pins-ui',
+    optimizeDeps: { entries: ['index.html'], include: ['react', 'react-dom/client', 'react/jsx-runtime', 'lucide-react'] },
     server: { host: '127.0.0.1', port: 1457, strictPort: false },
   });
   let browser;
