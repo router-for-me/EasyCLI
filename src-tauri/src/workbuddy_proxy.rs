@@ -219,6 +219,23 @@ pub(crate) fn ensure_workbuddy_proxy_dir() -> Result<PathBuf, String> {
         if !copied && !proxy_dir.join("wb_proxy.py").is_file() {
             return Err("WorkBuddy proxy scripts not found in resources".to_string());
         }
+    } else if let Some(res_dir) = bundled_workbuddy_resource_dir(&base) {
+        // Refresh the scripts on every start. Copying only on first run meant a
+        // fix shipped in a new build never reached an install that already had
+        // the directory, so the gateway kept running the old code and the bug
+        // looked unfixed. Only the bundled file names are touched: accounts/,
+        // usage/, pricing updates and settings.json are user data written at
+        // runtime and must survive.
+        let bundled_files = fs::read_dir(&res_dir)
+            .map(|entries| entries.filter_map(Result::ok).collect::<Vec<_>>())
+            .unwrap_or_default();
+        for entry in bundled_files {
+            let src_path = entry.path();
+            if !src_path.is_file() {
+                continue;
+            }
+            let _ = fs::copy(&src_path, proxy_dir.join(entry.file_name()));
+        }
     }
 
     let accounts_dir = proxy_dir.join("accounts");
@@ -227,6 +244,16 @@ pub(crate) fn ensure_workbuddy_proxy_dir() -> Result<PathBuf, String> {
     }
 
     Ok(proxy_dir)
+}
+
+/// The bundled workbuddy-proxy resource directory, if this build has one.
+fn bundled_workbuddy_resource_dir(base: &Path) -> Option<PathBuf> {
+    let candidates = [
+        base.join("resources").join("workbuddy-proxy"),
+        PathBuf::from("resources").join("workbuddy-proxy"),
+        PathBuf::from("src-tauri").join("resources").join("workbuddy-proxy"),
+    ];
+    candidates.into_iter().find(|dir| dir.join("wb_proxy.py").is_file())
 }
 
 fn copy_dir_all(src: &Path, dst: &Path) -> Result<(), String> {
@@ -989,38 +1016,142 @@ fn extract_jwt_claims(jwt: &str) -> WorkBuddyJwtClaims {
     WorkBuddyJwtClaims { uid, email, name }
 }
 
+/// Models advertised when the companion gateway cannot be asked for its own
+/// catalogue.
+///
+/// These are the names the WorkBuddy desktop picker offers, which is the set
+/// the gateway publishes from `/v1/models`; this list only exists for the case
+/// where the companion is not up yet at the moment the kernel config is
+/// written. The previous list here (gpt-4o, claude-3-5-sonnet-20241022,
+/// deepseek-chat ...) was invented: none of those names exist upstream, so
+/// every request to them answered `11102 service info not found`.
 pub(crate) const WORKBUDDY_MODEL_NAMES: &[&str] = &[
-    "default-model",
     "fast-model",
     "balanced-model",
-    "primary-model",
     "deep-model",
+    "hy4-preview",
+    "hy4-preview-f",
+    "hy3",
+    "hy3-x",
+    "step-5-preview",
+    "space-bunny",
     "deepseek-v4.1-flash",
-    "claude-3-5-sonnet-20241022",
-    "claude-3-7-sonnet",
-    "gpt-4o",
-    "gpt-4o-mini",
-    "deepseek-chat",
-    "deepseek-reasoner",
+    "deepseek-v4-pro",
+    "glm-5.3",
+    "glm-5.3-flash",
+    "glm-5.2",
+    "glm-5.1",
+    "glm-5v-turbo",
+    "minimax-m3",
+    "kimi-k3",
+    "kimi-k3-1",
+    "kimi-k2.8-preview",
+    "kimi-k2.7",
+    "kimi-k2.6",
+    "gpt-6-astra",
+    "gpt-5.6-sol",
+    "gpt-5.6-terra",
+    "gpt-5.6-luna",
+    "gpt-5.5",
+    "gpt-5.4",
+    "grok-4.7",
+    "gemini-3.5-flash",
 ];
+
+/// Reads the companion gateway's own `/v1/models` catalogue over loopback.
+///
+/// The gateway is the side that knows what the account can actually reach, so
+/// its answer is authoritative and this list must not be a second guess at it.
+/// Plain HTTP on 127.0.0.1, written by hand to keep this synchronous: it is
+/// called from the config-writing path, which is not async.
+pub(crate) fn fetch_workbuddy_models_sync(
+    host: &str,
+    port: u16,
+    api_key: Option<&str>,
+) -> Option<Vec<String>> {
+    use std::io::{Read, Write};
+    use std::net::TcpStream;
+
+    let address = format!("{host}:{port}");
+    let socket = address.parse().ok()?;
+    let mut stream = TcpStream::connect_timeout(&socket, Duration::from_millis(800)).ok()?;
+    stream.set_read_timeout(Some(Duration::from_millis(4000))).ok()?;
+    stream.set_write_timeout(Some(Duration::from_millis(4000))).ok()?;
+
+    // The key must be sent: once the panel defines any key, /v1/models answers
+    // 401 without one, and this call would then quietly fall back to the
+    // bundled list on every start - the exact staleness this exists to remove.
+    let auth_header = match api_key.map(str::trim).filter(|key| !key.is_empty()) {
+        Some(key) => format!("Authorization: Bearer {key}\r\n"),
+        None => String::new(),
+    };
+    let request = format!(
+        "GET /v1/models HTTP/1.1\r\nHost: {host}:{port}\r\nAccept: application/json\r\n{auth_header}Connection: close\r\n\r\n"
+    );
+    stream.write_all(request.as_bytes()).ok()?;
+
+    let mut raw = Vec::new();
+    stream.read_to_end(&mut raw).ok()?;
+    let text = String::from_utf8_lossy(&raw);
+
+    // Only a 200 carries the catalogue; a 401 or a 404 body would otherwise be
+    // parsed as JSON and read as "no models", which is a different thing.
+    if !text.starts_with("HTTP/1.1 200") {
+        return None;
+    }
+
+    // The companion answers JSON with Content-Length (never chunked), so the
+    // body is everything after the first blank line.
+    let body = text.split("\r\n\r\n").nth(1)?;
+
+    let parsed: Value = serde_json::from_str(body.trim()).ok()?;
+    let names: Vec<String> = parsed
+        .get("data")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| item.get("id").and_then(Value::as_str))
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    if names.is_empty() {
+        return None;
+    }
+    Some(names)
+}
 
 /// Injects or refreshes the workbuddy openai-compatibility group in a v8 config document.
 ///
 /// Kernel v8 validates every `openai-compatibility` entry with `expandV8Groups`, which
 /// rejects any group whose `keys` is missing or is not a sequence. Older builds of this
 /// GUI wrote a bare `api-key` field instead, so this also repairs such legacy entries.
-pub(crate) fn apply_workbuddy_provider(
+/// Same injection, but with the model catalogue chosen by the caller.
+///
+/// `models` is the gateway's own `/v1/models` answer when it could be read:
+/// that side knows which models the bound accounts can actually reach, so its
+/// answer wins over anything compiled in here. Without it the kernel would
+/// keep advertising whatever names this GUI shipped with, and a model added
+/// upstream later would stay unroutable until the next release. Passing `None`
+/// keeps the bundled picker list, which is all a caller with no gateway (a
+/// test, or a start before the companion is up) can use.
+pub(crate) fn apply_workbuddy_provider_with_models(
     doc: &mut serde_norway::Value,
     port: u16,
     api_key: Option<&str>,
+    models: Option<&[String]>,
 ) -> Result<(), String> {
     let base_url = format!("http://127.0.0.1:{port}/v1");
     let key_value = api_key.unwrap_or_default();
 
-    let models_json: Vec<Value> = WORKBUDDY_MODEL_NAMES
-        .iter()
-        .map(|m| json!({ "name": m }))
-        .collect();
+    let models_json: Vec<Value> = match models {
+        Some(names) if !names.is_empty() => names.iter().map(|m| json!({ "name": m })).collect(),
+        _ => WORKBUDDY_MODEL_NAMES
+            .iter()
+            .map(|m| json!({ "name": m }))
+            .collect(),
+    };
 
     // Kernel v8 requires every openai-compatibility group to carry a `keys` sequence;
     // a bare `api-key` field makes the whole config unloadable.
@@ -1117,7 +1248,8 @@ pub(crate) fn sync_workbuddy_provider_to_cpa_sync(
     let mut doc: serde_norway::Value = serde_norway::from_str(&content)
         .map_err(|e| format!("Failed to parse YAML configuration: {e}"))?;
 
-    apply_workbuddy_provider(&mut doc, port, api_key)?;
+    let live_models = fetch_workbuddy_models_sync(DEFAULT_WORKBUDDY_HOST, port, api_key);
+    apply_workbuddy_provider_with_models(&mut doc, port, api_key, live_models.as_deref())?;
 
     let new_content = serde_norway::to_string(&doc)
         .map_err(|e| format!("Failed to render updated YAML: {e}"))?;
@@ -1271,12 +1403,42 @@ pub(crate) fn start_workbuddy_proxy_sync(
             #[cfg(windows)]
             job,
             pid,
-            host: selected_host,
+            host: selected_host.clone(),
             port: selected_port,
         });
     }
 
+    // The provider entry is written while the kernel starts, which is before
+    // this process exists - so that write saw no gateway to ask and used the
+    // bundled list. Now that the gateway is up, rewrite it with the catalogue
+    // the gateway actually reports. The kernel watches its config file, so the
+    // corrected list takes effect without a restart. Failure here is harmless:
+    // the bundled list is still a working catalogue.
+    if wait_for_workbuddy_gateway(&selected_host, selected_port) {
+        let _ = sync_workbuddy_provider_to_cpa_sync(selected_port, api_key.as_deref());
+    }
+
     Ok(pid)
+}
+
+/// Waits for the companion to answer, so the catalogue rewrite that follows
+/// reads a real list instead of an empty one.
+fn wait_for_workbuddy_gateway(host: &str, port: u16) -> bool {
+    use std::net::TcpStream;
+    let address = match format!("{host}:{port}").parse() {
+        Ok(address) => address,
+        Err(_) => return false,
+    };
+    let deadline = std::time::Instant::now() + Duration::from_secs(8);
+    loop {
+        if TcpStream::connect_timeout(&address, Duration::from_millis(300)).is_ok() {
+            return true;
+        }
+        if std::time::Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
 }
 
 pub(crate) fn stop_workbuddy_proxy_sync(
@@ -1451,11 +1613,14 @@ async fn sync_auth_dir_accounts_to_companion(
     for entry in entries.filter_map(Result::ok) {
         let path = entry.path();
         let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        if !name.starts_with("workbuddy-") || !name.ends_with(".json") {
+        if !name.ends_with(".json") {
             continue;
         }
         if let Ok(content) = fs::read_to_string(&path) {
             if let Ok(val) = serde_json::from_str::<Value>(&content) {
+                if !is_workbuddy_credential(name, &val) {
+                    continue;
+                }
                 let token = val
                     .get("access_token")
                     .or_else(|| val.get("accessToken"))
@@ -1522,6 +1687,46 @@ async fn sync_auth_dir_accounts_to_companion(
     }
 }
 
+/// True when a credential file in the kernel's auth directory is a WorkBuddy
+/// account, whatever it happens to be named.
+///
+/// Matching on the "workbuddy-" prefix alone missed every imported credential:
+/// a file exported from another machine, renamed by hand, or written by an
+/// older build carries the same token in a file the prefix test rejects, so the
+/// account was invisible to the task centre and to credit refresh while the
+/// gateway next to it could serve the very same token. The body decides here,
+/// and only WorkBuddy's own login shape counts: a uid together with the realm or
+/// platform its login flow records. No other provider's credential carries both.
+fn is_workbuddy_credential(name: &str, val: &Value) -> bool {
+    let lower = name.to_ascii_lowercase();
+    if lower.ends_with(".json") && (lower.starts_with("workbuddy-") || lower.starts_with("codebuddy-")) {
+        return true;
+    }
+    let declared = val
+        .get("type")
+        .or_else(|| val.get("provider"))
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    if declared == "workbuddy" || declared == "codebuddy" {
+        return true;
+    }
+    // An absent type and the literal "unknown" are the same case: the kernel
+    // shows both as provider "unknown", which is never selected for a request.
+    if !declared.is_empty() && declared != "unknown" {
+        return false;
+    }
+    let has_uid = val
+        .get("uid")
+        .and_then(Value::as_str)
+        .is_some_and(|v| !v.trim().is_empty());
+    let has_marker = ["realm", "platform"].iter().any(|key| {
+        val.get(*key).and_then(Value::as_str).is_some_and(|v| !v.trim().is_empty())
+    });
+    has_uid && has_marker
+}
+
 fn enrich_accounts_with_auth_metadata(
     gui_config_state: &GuiConfigState,
     val: &mut Value,
@@ -1553,11 +1758,14 @@ fn enrich_accounts_with_auth_metadata(
         for entry in entries.filter_map(Result::ok) {
             let path = entry.path();
             let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            if !name.starts_with("workbuddy-") || !name.ends_with(".json") {
+            if !name.ends_with(".json") {
                 continue;
             }
             if let Ok(content) = fs::read_to_string(&path) {
                 if let Ok(v) = serde_json::from_str::<Value>(&content) {
+                    if !is_workbuddy_credential(name, &v) {
+                        continue;
+                    }
                     let uid = v.get("uid").and_then(Value::as_str).unwrap_or("");
                     let email = v.get("email").or_else(|| v.get("account")).and_then(Value::as_str).unwrap_or("");
                     let nickname = v.get("nickname").or_else(|| v.get("name")).and_then(Value::as_str).unwrap_or("");
@@ -1607,11 +1815,14 @@ fn read_fallback_workbuddy_accounts(gui_config_state: &GuiConfigState) -> Vec<Va
         for entry in entries.filter_map(Result::ok) {
             let path = entry.path();
             let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-            if !name.starts_with("workbuddy-") || !name.ends_with(".json") {
+            if !name.ends_with(".json") {
                 continue;
             }
             if let Ok(content) = fs::read_to_string(&path) {
                 if let Ok(v) = serde_json::from_str::<Value>(&content) {
+                    if !is_workbuddy_credential(name, &v) {
+                        continue;
+                    }
                     let uid = v.get("uid").and_then(Value::as_str).unwrap_or("");
                     let email = v.get("email").or_else(|| v.get("account")).and_then(Value::as_str).unwrap_or("");
                     let nickname = v.get("nickname").or_else(|| v.get("name")).and_then(Value::as_str).unwrap_or("");
@@ -1779,6 +1990,144 @@ mod tests {
     // The credential was previously written to a path resolved against the GUI process
     // CWD, so it never reached the kernel's auth directory and the login was lost on
     // restart. The relative auth-dir must resolve under the install directory.
+    // An imported or renamed WorkBuddy credential must be recognized from its
+    // body: the name-only test hid it from the task centre and credit refresh
+    // even though it held exactly the token the gateway could serve.
+    #[test]
+    fn recognizes_workbuddy_credential_by_name_or_body() {
+        let named = json!({ "access_token": "t" });
+        assert!(is_workbuddy_credential("workbuddy-abc.json", &named));
+
+        let declared = json!({ "type": "workbuddy", "access_token": "t" });
+        assert!(is_workbuddy_credential("renamed.json", &declared));
+
+        let body = json!({ "uid": "abc", "realm": "cn", "access_token": "t" });
+        assert!(is_workbuddy_credential("imported-account.json", &body));
+
+        let no_type = json!({ "uid": "abc", "platform": "CLI", "access_token": "t" });
+        assert!(is_workbuddy_credential("mystery-2.json", &no_type));
+    }
+
+    // Other providers' credentials must not be claimed as WorkBuddy: a uid
+    // without the login markers, or a file that says nothing, is not ours.
+    #[test]
+    fn leaves_other_credentials_alone() {
+        let claude = json!({ "type": "claude", "account_uuid": "u", "access_token": "t" });
+        assert!(!is_workbuddy_credential("claude-x.json", &claude));
+
+        let xai = json!({ "type": "xai", "access_token": "t", "sub": "s" });
+        assert!(!is_workbuddy_credential("xai-x.json", &xai));
+
+        let bare_uid = json!({ "uid": "abc", "access_token": "t" });
+        assert!(!is_workbuddy_credential("somewhere.json", &bare_uid));
+
+        let unknown_non_wb = json!({ "access_token": "t", "account_uuid": "u" });
+        assert!(!is_workbuddy_credential("unknown.json", &unknown_non_wb));
+    }
+
+    // The catalogue fetch is hand-written HTTP, so it gets a real socket: the
+    // framing (blank line, Content-Length body) is exactly what would silently
+    // return no models and leave the kernel on the bundled list.
+    #[test]
+    fn reads_the_gateway_catalogue_over_http() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let mut request = [0u8; 1024];
+            let _ = socket.read(&mut request);
+            assert!(
+                String::from_utf8_lossy(&request).contains("GET /v1/models"),
+                "the client must ask for /v1/models"
+            );
+            let body = r#"{"object":"list","data":[{"id":"hy3"},{"id":"fast-model"}]}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            let _ = socket.write_all(response.as_bytes());
+            let _ = socket.flush();
+        });
+
+        let models = fetch_workbuddy_models_sync("127.0.0.1", port, None);
+        server.join().unwrap();
+        assert_eq!(models, Some(vec!["hy3".to_string(), "fast-model".to_string()]));
+    }
+
+    // Once the panel defines a key, /v1/models answers 401 without one. That
+    // body is valid JSON, so without the status check it would parse to "no
+    // models" and the kernel would keep the bundled list forever.
+    #[test]
+    fn ignores_an_unauthorized_answer() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = socket.read(&mut buf);
+            let body = r#"{"data":[{"id":"hy3"}]}"#;
+            let response = format!(
+                "HTTP/1.1 401 Unauthorized\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            let _ = socket.write_all(response.as_bytes());
+            let _ = socket.flush();
+        });
+
+        let models = fetch_workbuddy_models_sync("127.0.0.1", port, None);
+        server.join().unwrap();
+        assert_eq!(models, None);
+    }
+
+    // The key must actually be sent, or a locked-down panel rejects the call.
+    #[test]
+    fn sends_the_api_key_when_one_is_configured() {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = std::thread::spawn(move || {
+            let (mut socket, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 1024];
+            let read = socket.read(&mut buf).unwrap_or(0);
+            let request = String::from_utf8_lossy(&buf[..read]).to_string();
+            let body = r#"{"data":[{"id":"hy3"}]}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            let _ = socket.write_all(response.as_bytes());
+            let _ = socket.flush();
+            request
+        });
+
+        let models = fetch_workbuddy_models_sync("127.0.0.1", port, Some("sk-test"));
+        let request = server.join().unwrap();
+        assert!(request.contains("Authorization: Bearer sk-test"), "request was: {request}");
+        assert_eq!(models, Some(vec!["hy3".to_string()]));
+    }
+
+    // A gateway that is not up must read as "no answer" rather than blocking
+    // the kernel start or inventing an empty model list.
+    #[test]
+    fn reports_no_catalogue_when_the_gateway_is_down() {
+        use std::net::TcpListener;
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        assert_eq!(fetch_workbuddy_models_sync("127.0.0.1", port, None), None);
+    }
+
     #[test]
     fn resolves_relative_auth_dir_under_install_dir() {
         let install_dir = Path::new("/opt/cpa-core");
@@ -1822,7 +2171,7 @@ mod tests {
     #[test]
     fn injects_workbuddy_group_with_keys_sequence() {
         let mut doc: serde_norway::Value = serde_norway::from_str(V8_TEMPLATE).unwrap();
-        apply_workbuddy_provider(&mut doc, 8788, None).unwrap();
+        apply_workbuddy_provider_with_models(&mut doc, 8788, None, None).unwrap();
 
         let groups = provider_groups(&doc);
         assert_eq!(groups.len(), 1, "exactly one injected provider group");
@@ -1845,7 +2194,7 @@ mod tests {
     #[test]
     fn populates_all_supported_models() {
         let mut doc: serde_norway::Value = serde_norway::from_str(V8_TEMPLATE).unwrap();
-        apply_workbuddy_provider(&mut doc, 8788, None).unwrap();
+        apply_workbuddy_provider_with_models(&mut doc, 8788, None, None).unwrap();
 
         let group = provider_groups(&doc)[0].as_mapping().unwrap();
         let names: Vec<&str> = group[&yaml_key("models")]
@@ -1857,11 +2206,44 @@ mod tests {
         assert_eq!(names, WORKBUDDY_MODEL_NAMES.to_vec());
     }
 
+    // The gateway is the side that knows what the bound accounts can reach, so
+    // its /v1/models answer must win over the names compiled into this binary.
+    #[test]
+    fn prefers_the_gateway_catalogue_over_the_bundled_list() {
+        let mut doc: serde_norway::Value = serde_norway::from_str(V8_TEMPLATE).unwrap();
+        let live = vec!["hy3".to_string(), "a-model-added-upstream".to_string()];
+        apply_workbuddy_provider_with_models(&mut doc, 8788, None, Some(&live)).unwrap();
+
+        let group = provider_groups(&doc)[0].as_mapping().unwrap();
+        let names: Vec<&str> = group[&yaml_key("models")]
+            .as_sequence()
+            .unwrap()
+            .iter()
+            .map(|m| m[&yaml_key("name")].as_str().unwrap())
+            .collect();
+        assert_eq!(names, vec!["hy3", "a-model-added-upstream"]);
+    }
+
+    // An empty answer means the gateway could not be read, not that the account
+    // has no models; advertising none would leave the provider unusable.
+    #[test]
+    fn falls_back_to_the_bundled_list_when_the_gateway_has_none() {
+        let mut doc: serde_norway::Value = serde_norway::from_str(V8_TEMPLATE).unwrap();
+        let empty: Vec<String> = Vec::new();
+        apply_workbuddy_provider_with_models(&mut doc, 8788, None, Some(&empty)).unwrap();
+
+        let group = provider_groups(&doc)[0].as_mapping().unwrap();
+        assert_eq!(
+            group[&yaml_key("models")].as_sequence().unwrap().len(),
+            WORKBUDDY_MODEL_NAMES.len()
+        );
+    }
+
     #[test]
     fn is_idempotent_and_refreshes_in_place() {
         let mut doc: serde_norway::Value = serde_norway::from_str(V8_TEMPLATE).unwrap();
-        apply_workbuddy_provider(&mut doc, 8788, None).unwrap();
-        apply_workbuddy_provider(&mut doc, 9999, Some("secret")).unwrap();
+        apply_workbuddy_provider_with_models(&mut doc, 8788, None, None).unwrap();
+        apply_workbuddy_provider_with_models(&mut doc, 9999, Some("secret"), None).unwrap();
 
         let groups = provider_groups(&doc);
         assert_eq!(groups.len(), 1, "refresh must not duplicate the group");
@@ -1880,7 +2262,7 @@ mod tests {
     fn repairs_legacy_group_written_with_bare_api_key() {
         let legacy = "config-version: 8\napi-keys:\n  openai-compatibility:\n  - name: workbuddy\n    base-url: http://127.0.0.1:8788/v1\n    api-key: ''\n    models:\n    - name: default-model\n";
         let mut doc: serde_norway::Value = serde_norway::from_str(legacy).unwrap();
-        apply_workbuddy_provider(&mut doc, 8788, None).unwrap();
+        apply_workbuddy_provider_with_models(&mut doc, 8788, None, None).unwrap();
 
         let groups = provider_groups(&doc);
         assert_eq!(groups.len(), 1);
@@ -1893,7 +2275,7 @@ mod tests {
     fn preserves_unrelated_openai_compat_providers() {
         let existing = "config-version: 8\napi-keys:\n  openai-compatibility:\n  - name: openrouter\n    base-url: https://openrouter.ai/api/v1\n    keys:\n    - api-key: sk-or\n";
         let mut doc: serde_norway::Value = serde_norway::from_str(existing).unwrap();
-        apply_workbuddy_provider(&mut doc, 8788, None).unwrap();
+        apply_workbuddy_provider_with_models(&mut doc, 8788, None, None).unwrap();
 
         let names: Vec<&str> = provider_groups(&doc)
             .iter()

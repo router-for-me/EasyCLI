@@ -59,12 +59,12 @@ import {
 import {
   authFileName,
   authFileIdentities,
+  authFileProviderKey,
   authFileCooldownResetIndex,
   dedupeAuthFiles,
   isOAuthCredentialFile,
   isRuntimeOnlyAuthFile,
   oauthModelProvidersFromAuthFiles,
-  normalizeOAuthProvider,
   parseAuthFilePriority,
   resetAuthFileCooldown,
   setOAuthCredentialFileDisabled,
@@ -105,7 +105,7 @@ const providerIcons: Record<string, string> = {
 };
 
 const providerName = (file: AuthFile) => {
-  const value = normalizeOAuthProvider(readString(file, 'provider', 'type', 'account_type'));
+  const value = authFileProviderKey(file);
   if (value === 'workbuddy') return 'WorkBuddy';
   if (value === 'claude') return 'Claude';
   if (value === 'antigravity') return 'Antigravity';
@@ -115,9 +115,7 @@ const providerName = (file: AuthFile) => {
   return value ? value.charAt(0).toUpperCase() + value.slice(1) : translate(getCurrentLocale(), 'authFiles.unknownProvider');
 };
 
-const providerKey = (file: AuthFile) => {
-  return normalizeOAuthProvider(readString(file, 'provider', 'type', 'account_type'));
-};
+const providerKey = (file: AuthFile) => authFileProviderKey(file);
 
 const fileName = authFileName;
 

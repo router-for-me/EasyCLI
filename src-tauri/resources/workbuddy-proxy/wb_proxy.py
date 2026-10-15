@@ -9930,18 +9930,23 @@ def clear_logs():
 #: "lite" backs internal helpers (title generation, compaction) and upstream
 #: rejects it with 11102; the codewise/completion entries are text-completion
 #: or IDE-inline models, not chat models.
-# Exclude WorkBuddy virtual aliases / quick presets
-VIRTUAL_ALIAS_MODELS = {
+#: The desktop picker's quick presets. They are real, requestable models - the
+#: app itself offers them - so they belong in the advertised list exactly when
+#: the realm's own picker carries them. They are not filtered out here: the
+#: membership rule is the picker list itself (see merge_catalog).
+ALIAS_MODELS = {
     "default-model",
     "fast-model",
     "balanced-model",
     "primary-model",
     "deep-model",
-    # The domestic exit's auto-router entry: the picker shows it, but it is
-    # not a model a client can pin, so it stays out of the advertised list.
     "auto",
 }
-NON_CHAT_MODELS = {"lite"} | VIRTUAL_ALIAS_MODELS
+#: Models the API advertises but that are not usable for chat, so no client
+#: should ever see them: "lite" backs internal helpers (title generation,
+#: compaction) and upstream rejects it with 11102, and the codewise/completion
+#: entries are text-completion or IDE-inline models.
+NON_CHAT_MODELS = {"lite", "wb-lite", "builtin-lite"}
 NON_CHAT_PREFIXES = ("codewise-", "completion-")
 NON_CHAT_SUFFIXES = ("-image-alpha", "-image-alpha-edit", "-taco-completion")
 def is_chat_model(mid):
@@ -10036,24 +10041,40 @@ def merge_catalog(primary, realm=None, extras=False):
             merged[mid] = base
         elif mid not in merged:
             merged[mid] = {}
+    # Order: the picker's own list first. That list is what the desktop app
+    # shows, so /v1/models must not disagree with it - neither on order nor on
+    # membership. Iterating `primary` (not the curated table) is also what
+    # brings the quick presets through: fast-model and friends are real,
+    # requestable models the picker offers, and the table below never names
+    # them, so the table-first order used to hide them.
     order = CN_UI_ORDER if r == "cn" else INTL_UI_ORDER
-    out = []
     if r == "all":
         order = list(INTL_UI_ORDER) + [m for m in CN_UI_ORDER if m not in INTL_UI_ORDER]
+    out = []
     seen = set()
-    for mid in order:
+
+    def emit(mid):
         if mid in merged and mid not in seen:
             seen.add(mid)
             out.append((mid, merged[mid]))
+
+    for mid, _meta in primary or []:
+        emit(mid)
+    # Names the curated table knows and the picker did not restate, so a model
+    # upstream adds before the desktop caches it still reaches /v1/models. A
+    # free "-f" build is skipped when its plain sibling is already listed: the
+    # picker shows one of the two, and the table carries the other from an
+    # older release.
+    for mid in order:
+        if mid.endswith("-f") and mid[:-2] in seen:
+            continue
+        emit(mid)
     if extras:
-        # A model the curated table has never heard of still ships when the
-        # *live* catalogue lists it - that is how a newly added upstream model
-        # reaches /v1/models without a release. The bundled snapshot alone is
-        # not enough: it also carries legacy entries the picker may not show.
+        # A model neither the table nor the picker has ever named still ships
+        # when the live catalogue lists it - that is how a newly added upstream
+        # model reaches /v1/models without a release.
         for mid, _meta in primary or []:
-            if mid in merged and mid not in seen:
-                seen.add(mid)
-                out.append((mid, merged[mid]))
+            emit(mid)
     return out
 _catalog_lock = threading.Lock()
 
@@ -10275,13 +10296,6 @@ def _read_product_config_dir(cache_dir):
 #: snapshot.
 REMOTE_CONFIG_PATH = "/v3/config"
 
-#: Suffixes that mark a variant of a name the catalogue already carries: the
-#: regional build (deepseek-v4.1-flash-sg) and the experimental one (hy3-x).
-#: Measured on both exits: the plain name is the free (x0.00) one and the
-#: variant is the paid one, so the plain name is what gets advertised.
-VARIANT_SUFFIXES = ("-sg", "-x")
-
-
 def remote_config_headers(account, realm, ua=None):
     """Headers for the product-config call.
 
@@ -10380,56 +10394,27 @@ def parse_remote_catalog(payload):
     return ids, meta
 
 
-def snapshot_credits():
-    """id -> credits from the bundled catalogue (both realms, intl first).
-
-    Used to answer "is there a free sibling?" for a variant the remote lists
-    but whose sibling it no longer does: the free hy4-preview-f, for example,
-    is what the cn picker keeps while the remote only names the paid one.
-    """
-    out = {}
-    for source in (getattr(wb_catalog, "STATIC_INTL_MODELS", []),
-                           getattr(wb_catalog, "STATIC_CN_MODELS", [])):
-        for item in source or []:
-            mid = str(item.get("id") or "").strip()
-            if mid:
-                out.setdefault(mid, str(item.get("credits") or "").strip().lower())
-    return out
-
-
 def curate_remote_catalog(realm, ids, meta=None):
-    """Trim a remote catalogue to the models the picker should offer.
+    """The ids a realm's catalogue should offer, in its own order.
 
-      - virtual aliases (default-model ... auto) are not models;
-      - "-sg" / "-x" builds are the paid variant of a name the list already
-        carries;
-      - when a free ("x0.00") sibling exists, the free one is the one the
-        picker shows, so the paid sibling is dropped;
-      - everything else keeps its upstream order. Names the upstream does not
-        list at all stay available through the curated order tables and the
-        bundled snapshot, which merge_catalog() keeps.
+    The catalogue handed in here is the desktop app's picker list, so it is
+    already exactly what the app puts in front of a user: those are the models
+    a client may pin. Membership is therefore kept as given, and the only drop
+    is the set no client should ever see - the internal helper models ("lite",
+    the codewise/completion entries) that upstream rejects with 11102.
+
+    This used to also drop "-sg"/"-x" builds and the paid sibling of a free
+    ("x0.00") name. That made the gateway disagree with the app on purpose, by
+    advertising the *other* name (the free "-f" one) than the one the picker
+    showed, which is the mismatch this function now exists to avoid.
     """
-    credits = snapshot_credits()
-    for mid, item in (meta or {}).items():
-        if isinstance(item, dict):
-            credits[mid] = str(item.get("credits") or "").strip().lower()
-    order = CN_UI_ORDER if realm == "cn" else INTL_UI_ORDER
-    known = set(ids) | set(credits) | set(order)
-
-    def free(mid):
-        return credits.get(mid) in ("x0.00", "x0", "0", "0.00")
-
-    out = []
-    for mid in ids:
+    out, seen = [], set()
+    for raw in ids or []:
+        mid = str(raw or "").strip()
+        if not mid or mid in seen:
+            continue
+        seen.add(mid)
         if not is_chat_model(mid):
-            continue
-        if mid.endswith(VARIANT_SUFFIXES):
-            continue
-        if mid.endswith("-f"):
-            base = mid[:-2]
-            if base in known and free(base) and not free(mid):
-                continue
-        elif (mid + "-f") in known and free(mid + "-f") and not free(mid):
             continue
         out.append(mid)
     return out
@@ -10510,7 +10495,27 @@ def curated_live_sources(realm):
     rules. `extras` says the entries came from the desktop catalogue, whose
     membership may add a model the curated tables have never seen; the legacy
     readers keep the old whitelist behaviour.
+
+    "all" is composed from the two realm fetches rather than read from a cache:
+    the app that writes the intl cache only updates it when that app runs, so a
+    union built from the files can be missing everything the live endpoint
+    would have returned for a realm whose app has not been opened lately.
     """
+    if realm == "all":
+        combined, seen, any_extras = [], set(), False
+        for side in ("intl", "cn"):
+            entries, extras = curated_live_sources(side)
+            any_extras = any_extras or extras
+            for mid, meta in entries:
+                if mid in seen:
+                    continue
+                seen.add(mid)
+                combined.append((mid, meta))
+        if combined:
+            return combined, any_extras
+        # Neither realm answered: fall through to the cache union below so an
+        # offline start still lists what was last seen.
+        realm = "intl" if read_cached_remote_catalog("intl") else "cn"
     remote = None
     try:
         remote = fetch_remote_product_config(realm)

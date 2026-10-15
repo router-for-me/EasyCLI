@@ -1802,7 +1802,8 @@ def virtual_alias_names():
     """The virtual-alias set (non-models). Read from the gateway when importable
     so the two sides cannot drift; a local fallback keeps this usable alone."""
     try:
-        names = getattr(gateway_module(), "VIRTUAL_ALIAS_MODELS", None)
+        gw = gateway_module()
+        names = getattr(gw, "ALIAS_MODELS", None) or getattr(gw, "VIRTUAL_ALIAS_MODELS", None)
         if names:
             return {str(n) for n in names}
     except Exception:

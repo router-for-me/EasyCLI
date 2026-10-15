@@ -1073,6 +1073,308 @@ index 0000000..a2fc5fa
 +		}
 +	}
 +}
+diff --git a/sdk/auth/filestore.go b/sdk/auth/filestore.go
+index f8e0615..144436f 100644
+--- a/sdk/auth/filestore.go
++++ b/sdk/auth/filestore.go
+@@ -251,6 +251,13 @@ func (s *FileTokenStore) readAuthFiles(path, baseDir string) ([]*cliproxyauth.Au
+ 	}
+ 	provider, _ := metadata["type"].(string)
+ 	provider = strings.TrimSpace(provider)
++	// A credential JSON that names no provider used to load as provider
++	// "unknown": listed, but routed nowhere, so the account looked present and
++	// silently never served a request. The name and the credential's own shape
++	// usually say plainly which provider wrote it, so fill that in here.
++	if inferred := inferCredentialProvider(path, provider, metadata); inferred != "" {
++		provider = inferred
++	}
+ 	if strings.EqualFold(provider, "gemini") {
+ 		return nil, nil
+ 	}
+@@ -451,6 +458,107 @@ func (s *FileTokenStore) resolveAuthPath(auth *cliproxyauth.Auth) (string, error
+ 	return filepath.Join(dir, auth.ID), nil
+ }
+ 
++// credentialProviderPrefixes maps a credential filename prefix to the provider
++// that writes it. Every built-in authenticator names its files this way, so the
++// name survives even when the JSON body was edited by hand, produced by an
++// older build, or exported from another machine without its `type` field.
++var credentialProviderPrefixes = []struct {
++	prefix   string
++	provider string
++}{
++	{"workbuddy-", "workbuddy"},
++	{"codebuddy-", "workbuddy"},
++	{"antigravity-", "antigravity"},
++	{"claude-", "claude"},
++	{"codex-", "codex"},
++	{"kimi-ai-", "kimi-ai"},
++	{"kimi-", "kimi"},
++	{"xai-", "xai"},
++	{"grok-", "xai"},
++	{"meta-", "meta"},
++	{"devin-", "devin"},
++}
++
++// inferCredentialProvider decides which provider owns a credential file whose
++// `type` field is absent or unrecognized.
++//
++// It exists because the runtime treats a missing type as provider "unknown",
++// which the scheduler never routes to - the credential is loaded, shown, and
++// then never used. Both signals it reads are the credential's own: the filename
++// the provider's authenticator chose, and the field names in the body, which
++// differ enough between providers to be conclusive on their own.
++//
++// `declared` is the type the file did name; an unrecognized value is treated as
++// absent because that is how the runtime would treat it.
++func inferCredentialProvider(path string, declared string, metadata map[string]any) string {
++	declared = strings.TrimSpace(declared)
++	if declared != "" && !strings.EqualFold(declared, "unknown") {
++		return ""
++	}
++
++	// Filename first: it is the cheapest read and is what the app itself shows
++	// the user, so agreeing with it keeps the list and the routing consistent.
++	name := strings.ToLower(strings.TrimSpace(filepath.Base(path)))
++	if name != "" {
++		for _, entry := range credentialProviderPrefixes {
++			if strings.HasPrefix(name, entry.prefix) {
++				return entry.provider
++			}
++		}
++	}
++
++	// Then the body. Each test looks for a field only that provider's own
++	// credential schema carries, so a file that merely lacks a type still lands
++	// on the right executor.
++	if _, ok := metadata["dca_token"].(string); ok {
++		return "meta"
++	}
++	if _, ok := metadata["session_token"].(string); ok {
++		return "devin"
++	}
++	// WorkBuddy and Kimi both name the account uid; what separates them is that
++	// a WorkBuddy credential carries the OAuth metadata its login flow writes.
++	if _, ok := metadata["uid"].(string); ok {
++		if _, hasRealm := metadata["realm"].(string); hasRealm {
++			return "workbuddy"
++		}
++		if _, hasPlatform := metadata["platform"].(string); hasPlatform {
++			return "workbuddy"
++		}
++	}
++	if _, ok := metadata["account_uuid"].(string); ok {
++		return "claude"
++	}
++	if _, ok := metadata["organization_uuid"].(string); ok {
++		return "claude"
++	}
++	if _, ok := metadata["account_id"].(string); ok {
++		if _, hasPlan := metadata["plan_type"]; hasPlan {
++			return "codex"
++		}
++	}
++	if _, ok := metadata["device_id"].(string); ok {
++		if _, hasDomain := metadata["domain"].(string); hasDomain {
++			return "kimi"
++		}
++	}
++	if _, ok := metadata["sub"].(string); ok {
++		if _, hasBase := metadata["base_url"].(string); hasBase {
++			return "xai"
++		}
++	}
++
++	// An OAuth credential with a refresh token and no other tell is one of the
++	// two WorkBuddy-family providers; "workbuddy" is the identifier the
++	// executor and the GUI both use, and codebuddy is its legacy alias.
++	if kind, _ := metadata["auth_kind"].(string); strings.EqualFold(strings.TrimSpace(kind), "oauth") {
++		if _, hasRefresh := metadata["refresh_token"].(string); hasRefresh {
++			return "workbuddy"
++		}
++	}
++	return ""
++}
++
+ func (s *FileTokenStore) labelFor(metadata map[string]any) string {
+ 	if metadata == nil {
+ 		return ""
+diff --git a/sdk/auth/filestore_inferred_provider_test.go b/sdk/auth/filestore_inferred_provider_test.go
+new file mode 100644
+index 0000000..8e4cf06
+--- /dev/null
++++ b/sdk/auth/filestore_inferred_provider_test.go
+@@ -0,0 +1,60 @@
++package auth
++
++import (
++	"context"
++	"os"
++	"path/filepath"
++	"testing"
++)
++
++// A credential file whose JSON names no provider must still load under the
++// provider its own name and fields identify: provider "unknown" is listed by
++// the management API but never selected for a request.
++func TestFileTokenStore_List_InfersProviderWhenTypeIsAbsent(t *testing.T) {
++	ctx := context.Background()
++	baseDir := t.TempDir()
++
++	workbuddy := filepath.Join(baseDir, "workbuddy-5da534ef-2b48-468c-bb4b-c203972e9376.json")
++	if err := os.WriteFile(workbuddy, []byte(
++		`{"access_token":"t","refresh_token":"r","uid":"5da534ef","realm":"cn","auth_kind":"oauth"}`,
++	), 0o600); err != nil {
++		t.Fatalf("seed workbuddy file: %v", err)
++	}
++
++	// Same body, filename says nothing: the fields alone must decide.
++	renamed := filepath.Join(baseDir, "imported-account.json")
++	if err := os.WriteFile(renamed, []byte(
++		`{"access_token":"t","refresh_token":"r","uid":"abc","platform":"CLI"}`,
++	), 0o600); err != nil {
++		t.Fatalf("seed renamed file: %v", err)
++	}
++
++	// Nothing identifies this one, so it must keep the unknown label rather
++	// than be guessed into a provider that would then reject its requests.
++	mystery := filepath.Join(baseDir, "mystery.json")
++	if err := os.WriteFile(mystery, []byte(`{"something":"else"}`), 0o600); err != nil {
++		t.Fatalf("seed mystery file: %v", err)
++	}
++
++	store := NewFileTokenStore()
++	store.SetBaseDir(baseDir)
++
++	loaded, err := store.List(ctx)
++	if err != nil {
++		t.Fatalf("List() error: %v", err)
++	}
++	providers := map[string]string{}
++	for _, entry := range loaded {
++		providers[entry.FileName] = entry.Provider
++	}
++
++	if got := providers["workbuddy-5da534ef-2b48-468c-bb4b-c203972e9376.json"]; got != "workbuddy" {
++		t.Errorf("workbuddy file provider = %q, want %q", got, "workbuddy")
++	}
++	if got := providers["imported-account.json"]; got != "workbuddy" {
++		t.Errorf("renamed file provider = %q, want %q", got, "workbuddy")
++	}
++	if got := providers["mystery.json"]; got != "unknown" {
++		t.Errorf("mystery file provider = %q, want %q", got, "unknown")
++	}
++}
+diff --git a/sdk/auth/filestore_provider_inference_test.go b/sdk/auth/filestore_provider_inference_test.go
+new file mode 100644
+index 0000000..d26ac10
+--- /dev/null
++++ b/sdk/auth/filestore_provider_inference_test.go
+@@ -0,0 +1,104 @@
++package auth
++
++import "testing"
++
++func TestInferCredentialProvider(t *testing.T) {
++	t.Parallel()
++
++	tests := []struct {
++		name     string
++		path     string
++		declared string
++		metadata map[string]any
++		expected string
++	}{
++		{
++			name:     "declared provider is left alone",
++			path:     "/auth/xai-someone.json",
++			declared: "xai",
++			metadata: map[string]any{"refresh_token": "r"},
++			expected: "",
++		},
++		{
++			name:     "workbuddy credential with no type is read from its filename",
++			path:     "/auth/workbuddy-5da534ef-2b48-468c-bb4b-c203972e9376.json",
++			declared: "",
++			metadata: map[string]any{"access_token": "t", "refresh_token": "r"},
++			expected: "workbuddy",
++		},
++		{
++			name:     "legacy codebuddy filename maps to workbuddy",
++			path:     "/auth/codebuddy-abc.json",
++			declared: "",
++			metadata: map[string]any{"access_token": "t"},
++			expected: "workbuddy",
++		},
++		{
++			name:     "unknown type is treated as absent",
++			path:     "/auth/workbuddy-abc.json",
++			declared: "unknown",
++			metadata: map[string]any{"access_token": "t"},
++			expected: "workbuddy",
++		},
++		{
++			name:     "renamed workbuddy file is read from its body",
++			path:     "/auth/renamed-account.json",
++			declared: "",
++			metadata: map[string]any{"access_token": "t", "refresh_token": "r", "uid": "abc", "realm": "cn"},
++			expected: "workbuddy",
++		},
++		{
++			name:     "claude credential is read from its account uuid",
++			path:     "/auth/renamed-2.json",
++			declared: "",
++			metadata: map[string]any{"access_token": "t", "account_uuid": "u"},
++			expected: "claude",
++		},
++		{
++			name:     "codex credential is read from account id and plan",
++			path:     "/auth/renamed-3.json",
++			declared: "",
++			metadata: map[string]any{"access_token": "t", "account_id": "a", "plan_type": "plus"},
++			expected: "codex",
++		},
++		{
++			name:     "kimi credential is read from device id and domain",
++			path:     "/auth/renamed-4.json",
++			declared: "",
++			metadata: map[string]any{"access_token": "t", "device_id": "d", "domain": "kimi.com"},
++			expected: "kimi",
++		},
++		{
++			name:     "meta credential is read from its dca token",
++			path:     "/auth/renamed-5.json",
++			declared: "",
++			metadata: map[string]any{"access_token": "t", "dca_token": "d"},
++			expected: "meta",
++		},
++		{
++			name:     "devin credential is read from its session token",
++			path:     "/auth/renamed-6.json",
++			declared: "",
++			metadata: map[string]any{"session_token": "s"},
++			expected: "devin",
++		},
++		{
++			name:     "an unidentifiable file stays unknown",
++			path:     "/auth/mystery.json",
++			declared: "",
++			metadata: map[string]any{"something": "else"},
++			expected: "",
++		},
++	}
++
++	for _, test := range tests {
++		test := test
++		t.Run(test.name, func(t *testing.T) {
++			t.Parallel()
++			if got := inferCredentialProvider(test.path, test.declared, test.metadata); got != test.expected {
++				t.Fatalf("inferCredentialProvider(%q, %q) = %q, want %q",
++					test.path, test.declared, got, test.expected)
++			}
++		})
++	}
++}
 diff --git a/sdk/cliproxy/auth/conductor_models.go b/sdk/cliproxy/auth/conductor_models.go
 index 3ac8b28..998a166 100644
 --- a/sdk/cliproxy/auth/conductor_models.go

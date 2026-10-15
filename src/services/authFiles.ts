@@ -68,6 +68,63 @@ export const isOAuthCredentialFile = (file: AuthFileRecord): boolean => {
   return !source || source === 'file';
 };
 
+/**
+ * The provider a credential file belongs to, inferred when it names none.
+ *
+ * The kernel reads a credential with no `type` as provider "unknown", which is
+ * listed but never routed to. It now infers the provider from the filename and
+ * the body while loading, and this mirrors the same reading so the list agrees
+ * with routing instead of showing "Unknown Provider" next to an account that
+ * works. Matching on both signals is deliberate: the filename the provider's
+ * own authenticator chose, then the field names only that provider's schema
+ * carries.
+ */
+export const inferAuthFileProvider = (file: AuthFileRecord): string => {
+  const declared = readString(file, 'provider', 'type').trim().toLowerCase();
+  if (declared && declared !== 'unknown') return declared;
+
+  const name = readString(file, 'name').trim().toLowerCase();
+  const prefixes: Array<[string, string]> = [
+    ['workbuddy-', 'workbuddy'],
+    ['codebuddy-', 'workbuddy'],
+    ['antigravity-', 'antigravity'],
+    ['claude-', 'claude'],
+    ['codex-', 'codex'],
+    ['kimi-ai-', 'kimi-ai'],
+    ['kimi-', 'kimi'],
+    ['xai-', 'xai'],
+    ['grok-', 'xai'],
+    ['meta-', 'meta'],
+    ['devin-', 'devin'],
+  ];
+  for (const [prefix, provider] of prefixes) {
+    if (name.startsWith(prefix)) return provider;
+  }
+
+  if (readString(file, 'dca_token')) return 'meta';
+  if (readString(file, 'session_token')) return 'devin';
+  if (readString(file, 'uid') && (readString(file, 'realm') || readString(file, 'platform'))) {
+    return 'workbuddy';
+  }
+  if (readString(file, 'account_uuid') || readString(file, 'organization_uuid')) return 'claude';
+  if (readString(file, 'account_id') && readString(file, 'plan_type')) return 'codex';
+  if (readString(file, 'device_id') && readString(file, 'domain')) return 'kimi';
+  if (readString(file, 'sub') && readString(file, 'base_url')) return 'xai';
+  if (readString(file, 'auth_kind', 'authKind').toLowerCase() === 'oauth'
+    && readString(file, 'refresh_token', 'refreshToken')) {
+    return 'workbuddy';
+  }
+  return '';
+};
+
+/** Provider key for grouping and icons, falling back to inference. */
+export const authFileProviderKey = (file: AuthFileRecord): string => {
+  const declared = readString(file, 'provider', 'type', 'account_type');
+  const normalized = normalizeOAuthProvider(declared);
+  if (normalized && normalized !== 'unknown') return normalized;
+  return normalizeOAuthProvider(inferAuthFileProvider(file));
+};
+
 export const setOAuthCredentialFileDisabled = async (
   file: AuthFileRecord,
   disabled: boolean,
@@ -107,8 +164,7 @@ export const normalizeOAuthProvider = (value: string) => {
   return provider;
 };
 
-const authFileProvider = (file: AuthFileRecord) =>
-  normalizeOAuthProvider(readString(file, 'provider', 'type'));
+const authFileProvider = (file: AuthFileRecord) => authFileProviderKey(file);
 
 export const oauthModelProvidersFromAuthFiles = (files: AuthFileRecord[]): string[] =>
   [...new Set(files.filter(isOAuthCredentialFile).map(authFileProvider).filter(Boolean))].sort();
