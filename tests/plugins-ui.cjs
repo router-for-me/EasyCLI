@@ -89,11 +89,8 @@ const fs = require('node:fs');
     await dialog().waitFor({ state: 'detached' });
 
     await card('Sample provider').getByRole('button', { name: 'Usage dashboard' }).click();
-    await page.frameLocator('.plugin-resource iframe').getByRole('heading', { name: 'Sample resource preview' }).waitFor();
-    assert.deepEqual(await page.evaluate(() => window.pluginsFixture.resourceRequests), [{ pluginId: 'sample..plugin', menuIndex: 2 }]);
-    assert.equal(await page.locator('.plugin-resource iframe').getAttribute('referrerpolicy'), 'no-referrer');
-    assert.equal((await page.locator('.plugin-resource iframe').getAttribute('src')).includes('token'), false);
-    await page.getByRole('button', { name: 'Back to plugins' }).click();
+    assert.deepEqual(await page.evaluate(() => window.pluginsFixture.navigations), ['/plugin-pages/sample..plugin/2']);
+    assert.equal(await page.evaluate(() => window.pluginsFixture.commands.some(call => call.command.includes('webview') || call.command.includes('resource_url'))), false);
 
     const globalSwitch = page.getByRole('checkbox', { name: 'Enable plugins', exact: true });
     await globalSwitch.uncheck();
@@ -115,6 +112,13 @@ const fs = require('node:fs');
 
     await tab('Plugin store').click();
     await card('Community analytics').getByRole('button', { name: 'Install', exact: true }).waitFor();
+    assert.equal(await page.evaluate(() => window.pluginsFixture.commands.some(call => call.command === 'get_plugin_latest_releases')), false);
+    await page.locator('.plugins-heading').getByRole('button', { name: 'Refresh', exact: true }).click();
+    await card('Sample provider').getByText('1.0.0 → 3.0.0', { exact: false }).waitFor();
+    await page.evaluate(() => { window.pluginsFixture.latestReleaseVersion = '4.0.0'; });
+    await page.locator('.plugins-heading').getByRole('button', { name: 'Refresh', exact: true }).click();
+    await card('Sample provider').getByText('1.0.0 → 4.0.0', { exact: false }).waitFor();
+    assert.equal(await page.evaluate(() => window.pluginsFixture.commands.some(call => call.command === 'get_plugin_latest_releases' && call.args.repositories.includes('router-for-me/direct'))), false);
     await page.getByText('Offline source: Fixture registry unavailable').waitFor();
     assert.equal(await card('Private provider').getByRole('button', { name: 'Store authentication required' }).isDisabled(), true);
     await page.getByRole('combobox', { name: 'Plugin store' }).selectOption('updates');

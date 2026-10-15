@@ -1,5 +1,5 @@
 import { applyTemplateChanges, readTemplatePath, sameTemplateValue, type TemplateConfigChange } from '../services/templateConfig';
-import { createPluginMock } from './pluginMock';
+import { createPluginMock, type PluginWebviewMockState } from './pluginMock';
 import { createQuotaMock, createQuotaMockFiles } from './quotaMock';
 
 export type BrowserMockScenario = 'running' | 'stopped' | 'empty' | 'error';
@@ -945,6 +945,8 @@ export function createBrowserMockRuntime(
   scenario: BrowserMockScenario,
   emitEvent: EmitMockEvent = () => {},
   delayMs = 0,
+  pluginPages = 0,
+  onPluginWebview?: (state: PluginWebviewMockState) => void,
 ): BrowserMockRuntime {
   const state = createState(scenario);
   if (scenario === 'empty') {
@@ -958,7 +960,7 @@ export function createBrowserMockRuntime(
     state.usageStorage.totalRecords = 0;
     state.coreConfig.apiKeys = [];
   }
-  const pluginMock = createPluginMock(state);
+  const pluginMock = createPluginMock(state, pluginPages, onPluginWebview);
   const emit = (event: string, payload: unknown) => emitEvent(event, clone(payload));
 
   const invoke = async (command: string, rawPayload?: unknown): Promise<unknown> => {

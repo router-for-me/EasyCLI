@@ -22,6 +22,7 @@ mod network_proxy;
 ))]
 mod native_i18n;
 mod oauth_browser;
+mod plugin_webview;
 mod plugins;
 mod privacy_mode;
 mod progress;
@@ -40,7 +41,7 @@ mod windows_frame;
 use configuration_watcher::nearest_existing_watch_directory;
 use management_api::{
     format_management_request_error, management_authorization, management_endpoint,
-    management_http_client, read_management_text, read_management_value,
+    management_http_client, management_plaintext_key, read_management_text, read_management_value,
 };
 use oauth_browser::*;
 #[cfg(test)]
@@ -2505,6 +2506,7 @@ fn main() {
         .manage(DeepSeekHarnessProcessState::default())
         .manage(usage::UsageCollectorState::default())
         .manage(GuiConfigState::new(gui_config))
+        .manage(plugin_webview::PluginWebviewState::default())
         .manage(MainWindowSizeState::new(initial_window_size))
         .manage(AgentConfigStatusCache::default());
 
@@ -2789,7 +2791,11 @@ fn main() {
             clear_core_management_secret_key,
             management_api::management_request,
             plugins::get_plugin_support,
-            plugins::get_plugin_resource_url,
+            plugin_webview::show_plugin_webview,
+            plugin_webview::set_plugin_webview_bounds,
+            plugin_webview::hide_plugin_webview,
+            plugin_webview::close_plugin_webview,
+            plugins::get_plugin_latest_releases,
             provider_health::provider_health_probe,
             provider_health::get_core_models,
             provider_health::core_health_probe,
@@ -2900,6 +2906,24 @@ fn main() {
         }
         _ => {}
     });
+}
+
+/// Returns a path under the system temporary directory that is unique for the
+/// lifetime of the test process. The wall clock alone is not enough: parallel
+/// tests that start within the clock's resolution would otherwise share a
+/// directory and delete or overwrite each other's files.
+#[cfg(test)]
+pub(crate) fn unique_test_temp_path(prefix: &str) -> PathBuf {
+    static SEQUENCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    std::env::temp_dir().join(format!(
+        "{prefix}-{}-{}-{}",
+        std::process::id(),
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos(),
+        SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ))
 }
 
 #[cfg(test)]

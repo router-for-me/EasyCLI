@@ -20,7 +20,6 @@
 .template-config-toggle > .template-config-label { grid-column: 1; }
 .template-config-toggle > .template-config-control { grid-column: 2; grid-row: 1; width: auto; }
 .template-config-toggle > small { grid-column: 1 / -1; }
-.template-config-switch input:checked + .switch-track { border-color: var(--primary-color); background: var(--primary-color); }
 .template-config-switch input:focus-visible + .switch-track { outline: 2px solid var(--primary-color); outline-offset: 3px; }
 .template-config-directory { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
 .template-config-directory > input { flex: 1 1 180px; min-width: 0; width: auto; }
