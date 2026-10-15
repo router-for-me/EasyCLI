@@ -53,6 +53,7 @@ const fs = require('node:fs');
     assert.equal(await tab('Plugin store').getAttribute('aria-current'), 'page');
     assert.equal(await page.getByRole('searchbox').inputValue(), 'sample..plugin');
     assert.equal((await installs()).length, 0, 'checking never installs');
+    assert.equal(await page.evaluate(() => window.pluginsFixture.commands.some(call => call.command === 'get_plugin_latest_releases')), true, 'Check for updates refreshes releases');
     await tab('Local plugins').click();
     await card('Sample provider').getByRole('button', { name: 'Find in store', exact: true }).click();
     await card('Sample provider').getByRole('button', { name: 'Update', exact: true }).waitFor();
@@ -121,6 +122,7 @@ const fs = require('node:fs');
     await page.getByRole('heading', { name: 'No matching plugins' }).waitFor();
     await search.fill('');
 
+    await page.evaluate(() => { window.pluginsFixture.commands.length = 0; });
     await tab('Plugin store').click();
     await card('Community analytics').getByRole('button', { name: 'Install', exact: true }).waitFor();
     assert.equal(await page.evaluate(() => window.pluginsFixture.commands.some(call => call.command === 'get_plugin_latest_releases')), false);
