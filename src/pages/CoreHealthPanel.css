@@ -17,7 +17,6 @@
 .core-health-title p { margin: 3px 0 0; color: var(--text-quaternary); font-size: 12px; line-height: 1.6; }
 .core-health-actions { display: flex; align-items: center; gap: 8px; flex: none; }
 .core-health-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; padding: 7px 12px; font-size: 12px; white-space: nowrap; }
-.core-health-panel .core-health-actions .primary-button { color: var(--ui-accent-contrast, #fff); }
 .core-health-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 0 24px 16px; }
 .core-health-search { display: flex; align-items: center; gap: 8px; width: min(330px, 100%); min-width: 0; padding: 8px 11px; border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-quaternary); background: var(--bg-primary); }
 .core-health-search:focus-within { border-color: var(--primary-color); box-shadow: 0 0 0 2px var(--ui-focus-ring); }

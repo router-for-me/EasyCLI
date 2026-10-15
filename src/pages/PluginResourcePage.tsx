@@ -1,54 +1,78 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { ArrowLeft, ExternalLink } from 'lucide-react';
 import { useI18n } from '../i18n';
 import { pluginText } from '../i18n/plugins';
-import type { PluginResourceEntry } from '../services/pluginResources';
-import './PluginsPage.css';
+import { useOverlayOpen } from '../components/useOverlayOpen';
+import type { PluginNavEntry } from '../services/pluginNavigation';
+import { EMPTY_BOUNDS, effectiveBounds, newWebviewToken, roundBounds, sameBounds, type WebviewBounds } from '../services/pluginWebview';
 
-export function PluginResourceView({ entry, url, onBack, onError }: {
-  entry: PluginResourceEntry; url: string; onBack: () => void; onError: (error: string) => void;
-}) {
-  const { locale } = useI18n();
-  return <section className="plugin-resource">
-    <div className="plugin-toolbar">
-      <button className="secondary-button" onClick={onBack}><ArrowLeft size={16} />{pluginText('back', locale)}</button>
-      <strong>{entry.label}</strong>
-      <button className="secondary-button" onClick={() => void invoke('open_external_url', { url }).catch(error => onError(String(error)))}>
-        <ExternalLink size={16} />{pluginText('openExternal', locale)}
-      </button>
-    </div>
-    <iframe key={url} src={url} title={entry.label} referrerPolicy="no-referrer"
-      sandbox="allow-scripts allow-same-origin allow-forms allow-popups" allow="clipboard-read; clipboard-write" />
-  </section>;
-}
+const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 
-export function PluginResourcePage({ entry, onBack }: { entry: PluginResourceEntry; onBack: () => void }) {
+export function PluginResourcePage({ entry, reloadToken }: { entry: PluginNavEntry; reloadToken: number }) {
   const { t, locale } = useI18n();
-  const [url, setURL] = useState('');
+  const pt = (key: Parameters<typeof pluginText>[0]) => pluginText(key, locale);
+  const host = useRef<HTMLDivElement>(null);
+  const overlay = useOverlayOpen();
+  const [bounds, setBounds] = useState<WebviewBounds>(EMPTY_BOUNDS);
+  const [attempt, setAttempt] = useState(0);
+  const [ready, setReady] = useState(false);
   const [error, setError] = useState('');
-  const [retry, setRetry] = useState(0);
+  const wanted = effectiveBounds({ active: !error, overlay, bounds });
+  const wantedRef = useRef(wanted);
+  wantedRef.current = wanted;
+  const token = useRef(0);
+  const handledReload = useRef(reloadToken);
+
+  const measure = useCallback(() => {
+    if (!host.current) return;
+    const next = roundBounds(host.current.getBoundingClientRect(), window.innerHeight);
+    setBounds((previous) => sameBounds(previous, next) ? previous : next);
+  }, []);
+
+  useLayoutEffect(() => {
+    measure();
+    const observer = new ResizeObserver(measure);
+    if (host.current) observer.observe(host.current);
+    observer.observe(document.documentElement);
+    window.addEventListener('resize', measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [measure]);
+
+  useEffect(() => () => {
+    void invoke('hide_plugin_webview', { token: token.current }).catch(() => undefined);
+  }, []);
+
   useEffect(() => {
-    let disposed = false;
-    setURL(''); setError('');
-    void invoke<string>('get_plugin_resource_url', { pluginId: entry.pluginID, menuIndex: entry.menuIndex })
-      .then(value => { if (!disposed) {
-        // The native command rechecks the live catalog. Never open another page
-        // if its menu moved between the sidebar refresh and the click.
-        const resolved = new URL(value);
-        // Browser demo IPC returns data URLs; native IPC returns HTTP(S) only.
-        if (resolved.protocol === 'http:' || resolved.protocol === 'https:') {
-          const expected = new URL(entry.menu.path, resolved.origin);
-          if (resolved.href !== expected.href) throw new Error(pluginText('pageChanged', locale));
-        }
-        setURL(value);
-      } })
-      .catch(reason => { if (!disposed) setError(String(reason)); });
-    return () => { disposed = true; };
-  }, [entry.pluginID, entry.menuIndex, entry.menu.path, retry, locale]);
-  return <div className="plugins-page">
-    {error && <div className="plugin-error plugin-banner" role="alert">{error}<button className="secondary-button" onClick={() => setRetry(value => value + 1)}>{pluginText('retry', locale)}</button></div>}
-    {url ? <PluginResourceView entry={entry} url={url} onBack={onBack} onError={setError} />
-      : <><button className="secondary-button" onClick={onBack}>{pluginText('back', locale)}</button>{!error && <p role="status">{t('common.loading')}</p>}</>}
-  </div>;
+    const reload = handledReload.current !== reloadToken;
+    handledReload.current = reloadToken;
+    const mine = newWebviewToken();
+    token.current = mine;
+    let cancelled = false;
+    setReady(false);
+    setError('');
+    const labels = { back: pt('pageBack'), reload: pt('pageReload'), openExternal: pt('openExternal'), move: pt('pageMove') };
+    invoke('show_plugin_webview', { pluginId: entry.pluginID, menuIndex: entry.menuIndex, bounds: wantedRef.current, labels, reload, token: mine })
+      .then(() => {
+        if (!cancelled) setReady(true);
+      })
+      .catch((reason) => {
+        if (!cancelled) setError(message(reason));
+      });
+    return () => { cancelled = true; };
+  }, [entry.pluginID, entry.menuIndex, reloadToken, attempt, locale]);
+
+  useEffect(() => {
+    void invoke('set_plugin_webview_bounds', { bounds: wanted, token: token.current }).catch((reason) => setError(message(reason)));
+  }, [ready, wanted.x, wanted.y, wanted.width, wanted.height, wanted.viewportHeight]);
+
+  return <section className="page plugin-resource-page">
+    <h1 className="sr-only">{entry.label}</h1>
+    <div ref={host} className="plugin-resource-host">
+      {error ? <div className="plugin-error plugin-banner" role="alert"><span>{error}</span><button type="button" className="secondary-button" onClick={() => setAttempt((value) => value + 1)}>{pt('retry')}</button></div>
+        : !ready && <p className="plugin-resource-status" role="status">{t('common.loading')}</p>}
+    </div>
+  </section>;
 }

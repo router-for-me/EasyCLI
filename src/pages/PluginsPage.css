@@ -82,8 +82,13 @@
 .plugin-dialog-actions { display: flex; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; gap: 10px; padding: 18px 20px; border-top: 1px solid var(--border-color); }
 .plugins-page .primary-button, .plugins-page .secondary-button, .plugin-install-dialog .primary-button, .plugin-install-dialog .secondary-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 .plugins-page button svg { flex-shrink: 0; }
-.plugin-resource { display: flex; flex-direction: column; gap: 16px; }
-.plugin-resource iframe { width: 100%; min-height: 65vh; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-card); }
+.workspace:has(> .content > .plugin-resource-page) { overflow: hidden; }
+.content:has(> .plugin-resource-page) { height: 100%; padding: 0; }
+.plugin-resource-page { display: flex; height: 100%; flex-direction: column; }
+.plugin-resource-host { position: relative; min-height: 0; flex: 1 1 auto; }
+@media (max-width: 900px) { .app-shell:has(.plugin-resource-page) { grid-template-rows: max-content minmax(0, 1fr); } }
+.plugin-resource-status { margin: 24px; }
+.plugin-resource-host > .plugin-banner { margin: 16px; }
 @media (max-width: 700px) { .plugins-heading { align-items: flex-start; gap: 12px; } .plugins-heading h1 { font-size: 24px; } .plugin-summary { padding: 14px; gap: 14px; } .plugin-summary > span { width: 100%; } .plugin-summary > span:last-child { margin-left: 0; } .plugin-card, .plugin-settings { padding: 16px; } .plugin-banner { flex-wrap: wrap; } .plugin-navigation > .plugin-toolbar { flex-basis: 100%; } .plugin-search { max-width: none; } }
 @media (max-width: 420px) { .plugin-card-title { grid-template-columns: 40px minmax(0, 1fr); } .plugin-card-title > .plugin-badge { grid-column: 2; justify-self: start; } .plugin-tabs button { padding-inline: 10px; } }
 

@@ -1584,10 +1584,13 @@ api_key = "original-key"
 
 #[test]
 fn openclaw_agent_config_accepts_json5_and_preserves_unknown_fields() {
-    let models = test_agent_models(&["gpt-test", "deepseek-test"]);
+    let mut models = test_agent_models(&["gpt-test", "deepseek-test"]);
+    models[0].input_modalities = Some(vec!["text".to_string(), "image".to_string()]);
+    models[0].harness_metadata = Some(serde_json::json!({"maxTokens": 65536}));
+    models[1].harness_metadata = Some(serde_json::json!({"maxTokens": 32768}));
     let rendered = build_openclaw_agent_config(
             Some(
-                "// keep this comment\n{ theme: 'dark', models: { mode: 'merge', providers: { 'cpa-gui': { custom: 'keep' } } } }",
+                "// keep this comment\n{ theme: 'dark', models: { mode: 'merge', providers: { 'cpa-gui': { custom: 'keep', models: [{ id: 'deepseek-test', maxTokens: 16384 }] } } } }",
             ),
             "http://127.0.0.1:8317/v1",
             DEFAULT_API_KEY,
@@ -1611,13 +1614,17 @@ fn openclaw_agent_config_accepts_json5_and_preserves_unknown_fields() {
         value["agents"]["defaults"]["model"]["primary"],
         "cpa-gui/gpt-test"
     );
+    let provider_models = value["models"]["providers"][MANAGED_AGENT_PROVIDER_ID]["models"]
+        .as_array()
+        .unwrap();
+    assert_eq!(provider_models.len(), 2);
     assert_eq!(
-        value["models"]["providers"][MANAGED_AGENT_PROVIDER_ID]["models"]
-            .as_array()
-            .unwrap()
-            .len(),
-        2
+        provider_models[0]["input"],
+        serde_json::json!(["text", "image"])
     );
+    assert_eq!(provider_models[0]["maxTokens"], 65536);
+    assert!(provider_models[1].get("input").is_none());
+    assert_eq!(provider_models[1]["maxTokens"], 16384);
     assert!(value["agents"]["defaults"]["models"]["cpa-gui/gpt-test"].is_object());
     assert!(value["agents"]["defaults"]["models"]["cpa-gui/deepseek-test"].is_object());
 }
@@ -2921,4 +2928,16 @@ fn claude_code_fable_mapping_is_independent_and_round_trips() {
     let inspected = inspect_claude_code_model_mappings(&path).unwrap().unwrap();
     assert_eq!(inspected.fable, "route-fable");
     assert!(inspected.fable_1m);
+}
+
+
+#[test]
+fn default_tauri_capability_grants_app_version() {
+    let raw = include_str!("../../capabilities/default.json");
+    let parsed: serde_json::Value = serde_json::from_str(raw).unwrap();
+    let permissions = parsed["permissions"].as_array().unwrap();
+    assert!(
+        permissions.iter().any(|entry| entry.as_str() == Some("core:app:allow-version")),
+        "src-tauri/capabilities/default.json must include core:app:allow-version"
+    );
 }

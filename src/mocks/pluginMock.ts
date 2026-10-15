@@ -9,12 +9,54 @@ export interface PluginMockHost {
 
 export type PluginMockResult = { handled: false } | { handled: true; value: unknown };
 
+export interface PluginWebviewMockState {
+  visible: boolean;
+  bounds: { x: number; y: number; width: number; height: number; viewportHeight: number };
+  url: string;
+  reloads: number;
+  labels: { back: string; reload: string; openExternal: string; move: string } | null;
+}
+
+const MOCK_CORE_ORIGIN = 'http://127.0.0.1:8317';
+const WEBVIEW_COMMANDS = new Set([
+  'show_plugin_webview', 'set_plugin_webview_bounds', 'hide_plugin_webview', 'close_plugin_webview',
+]);
+const initialWebview = (): PluginWebviewMockState => ({
+  visible: false, bounds: { x: 0, y: 0, width: 0, height: 0, viewportHeight: 0 }, url: '', reloads: 0, labels: null,
+});
+
+function readToken(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0) throw new Error('Invalid plugin page token');
+  return value;
+}
+
+function readLabels(value: unknown): NonNullable<PluginWebviewMockState['labels']> {
+  const source = object(value);
+  const [back, reload, openExternal, move] = ['back', 'reload', 'openExternal', 'move'].map((key) => {
+    const entry = source[key];
+    if (typeof entry !== 'string' || !entry) throw new Error('Invalid plugin page labels');
+    return entry;
+  });
+  return { back, reload, openExternal, move };
+}
+
+function readBounds(value: unknown): PluginWebviewMockState['bounds'] {
+  const source = object(value);
+  const [x, y, width, height, viewportHeight] = ['x', 'y', 'width', 'height', 'viewportHeight'].map((key) => {
+    const entry = source[key];
+    if (typeof entry !== 'number' || !Number.isFinite(entry)) throw new Error('Plugin page bounds must be finite numbers');
+    return Math.max(0, Math.round(entry));
+  });
+  return { x, y, width, height, viewportHeight };
+}
+
 const object = (value: unknown): JsonObject =>
   value !== null && typeof value === 'object' && !Array.isArray(value) ? value as JsonObject : {};
 const text = (value: unknown): string => typeof value === 'string' ? value : '';
 const has = (value: JsonObject, key: string): boolean => Object.prototype.hasOwnProperty.call(value, key);
 const clone = <T,>(value: T): T => structuredClone(value);
 const COMMUNITY_SOURCE = 'https://plugins.example.invalid/community.json';
+const MAX_EXTRA_PAGES = 30;
 const NOT_FOUND = 'Management API error (404): not_found';
 const CONFIG_SAVED = { status: 'ok', 'config-version': 8 };
 
@@ -32,7 +74,10 @@ const CATALOG = [
       { name: 'redact-secrets', type: 'boolean', description: 'Hide secret values in captured metadata.', enum_values: [] },
       { name: 'mode', type: 'enum', description: 'Detail level for captured metadata.', enum_values: ['summary', 'detailed'] },
     ],
-    menus: [{ path: '/v0/resource/plugins/request-inspector/status', menu: 'Inspector status', description: 'Open the local browser demo status page.' }],
+    menus: [
+      { path: '/v0/resource/plugins/request-inspector/status', menu: 'Inspector status', description: 'Open the local browser demo status page.' },
+      { path: '/v0/resource/plugins/request-inspector/samples', menu: 'Sampled requests', description: 'Open the local browser demo sampling page.' },
+    ],
   },
   {
     id: 'response-tags', name: 'Response Tags', description: 'A community demo plugin for custom response tags.',
@@ -51,8 +96,17 @@ function mergePatch(current: unknown, patch: unknown): unknown {
   return Object.fromEntries(entries);
 }
 
-/** Pure in-memory plugin API. The demo page uses a data URL and never contacts a core. */
-export function createPluginMock(host: PluginMockHost) {
+export const clampPluginPages = (value: unknown): number => {
+  const count = Math.round(Number(value));
+  return Number.isFinite(count) ? Math.max(0, Math.min(MAX_EXTRA_PAGES, count)) : 0;
+};
+
+/** Pure in-memory plugin API. The plugin page webview is only simulated and never contacts a core. */
+export function createPluginMock(host: PluginMockHost, extraPages = 0, onWebview: (state: PluginWebviewMockState) => void = () => {}) {
+  const extraMenus = Array.from({ length: clampPluginPages(extraPages) }, (_, index) => ({
+    path: `/v0/resource/plugins/request-inspector/extra-${index + 1}`,
+    menu: `Extra page ${index + 1}`, description: 'Extra browser demo page.',
+  }));
   const installed = new Map<string, { version: string; sourceId: string }>();
   let initialized = false;
   // Seed only when the plugin feature is used so existing offline configuration
@@ -73,6 +127,14 @@ export function createPluginMock(host: PluginMockHost) {
     host.coreConfig.pluginsEnabled = object(host.extendedConfig.plugins).enabled === true;
   }
 
+  let webview = initialWebview();
+  let owner: number | null = null;
+  let latestToken = 0;
+  const updateWebview = (patch: Partial<PluginWebviewMockState>) => {
+    webview = { ...webview, ...patch };
+    onWebview(clone(webview));
+  };
+
   const settings = () => object(host.extendedConfig.plugins);
   const configs = () => object(settings().configs);
   const enabled = () => settings().enabled === true;
@@ -87,7 +149,7 @@ export function createPluginMock(host: PluginMockHost) {
       id, path: local ? filePath(id) : '', configured: has(configs(), id), registered: active,
       enabled: config.enabled === true, effective_enabled: active,
       supports_oauth: false, oauth_provider: '', supports_quota: false, quota_provider: '', logo: '',
-      config_fields: entry?.config_fields ?? [], menus: active ? entry?.menus ?? [] : [],
+      config_fields: entry?.config_fields ?? [], menus: active ? [...entry?.menus ?? [], ...id === 'request-inspector' ? extraMenus : []] : [],
       metadata: local && entry ? {
         name: entry.name, version: local.version, author: entry.author,
         github_repository: entry.repository, logo: '', config_fields: entry.config_fields,
@@ -122,24 +184,70 @@ export function createPluginMock(host: PluginMockHost) {
     return CONFIG_SAVED;
   }
 
+  function webviewCommand(command: string, payload: JsonObject): unknown {
+    if (command === 'show_plugin_webview') {
+      const pluginId = text(payload.pluginId);
+      const menuIndex = payload.menuIndex;
+      if (!pluginId) throw new Error('Invalid plugin id');
+      if (typeof menuIndex !== 'number' || !Number.isInteger(menuIndex) || menuIndex < 0) throw new Error('Invalid menu index');
+      if (typeof payload.reload !== 'boolean') throw new Error('Invalid reload flag');
+      const bounds = readBounds(payload.bounds);
+      const labels = readLabels(payload.labels);
+      const token = readToken(payload.token);
+      if (token <= latestToken) throw new Error('Plugin page request was superseded');
+      latestToken = token;
+      owner = token;
+      const entry = plugin(pluginId);
+      const menu = entry.menus[menuIndex];
+      if (!entry.effective_enabled || !menu) {
+        owner = null;
+        updateWebview({ visible: false });
+        throw new Error('Plugin page is unavailable');
+      }
+      const url = `${MOCK_CORE_ORIGIN}${menu.path}`;
+      const reloads = webview.url === url && payload.reload ? webview.reloads + 1 : webview.reloads;
+      updateWebview({ url, reloads, labels, bounds, visible: bounds.width > 0 && bounds.height > 0 });
+      return url;
+    }
+    if (command === 'close_plugin_webview') {
+      owner = null;
+      webview = initialWebview();
+      onWebview(clone(webview));
+    } else if (command === 'set_plugin_webview_bounds') {
+      const bounds = readBounds(payload.bounds);
+      if (readToken(payload.token) === owner) updateWebview({ bounds, visible: bounds.width > 0 && bounds.height > 0 });
+    } else {
+      const token = readToken(payload.token);
+      if (token >= latestToken) {
+        latestToken = token;
+        owner = null;
+        updateWebview({ visible: false });
+      }
+    }
+    return null;
+  }
+
   function handle(command: string, payload: JsonObject): PluginMockResult {
     const request = object(payload.request);
     const path = text(request.path);
     const pluginRequest = command === 'management_request' && (
       path === '/plugins' || path.startsWith('/plugins/') || path === '/config/plugins' || path.startsWith('/config/plugins/')
     );
-    if (!pluginRequest && command !== 'get_plugin_support' && command !== 'get_plugin_resource_url') return { handled: false };
+    if (!pluginRequest && command !== 'get_plugin_support' && command !== 'get_plugin_latest_releases' && !WEBVIEW_COMMANDS.has(command)) return { handled: false };
     if (host.scenario === 'error') throw new Error(`Browser Mock error scenario: ${command}`);
-    if (!host.coreStatus.ready) throw new Error('Browser Mock: the core is not ready');
+    if (!host.coreStatus.ready && (!WEBVIEW_COMMANDS.has(command) || command === 'show_plugin_webview')) {
+      throw new Error('Browser Mock: the core is not ready');
+    }
     initialize();
     const result = (value: unknown): PluginMockResult => ({ handled: true, value: clone(value) });
     if (command === 'get_plugin_support') return result(true);
-    if (command === 'get_plugin_resource_url') {
-      const entry = plugin(text(payload.pluginId));
-      const menu = Number.isInteger(payload.menuIndex) ? entry.menus[Number(payload.menuIndex)] : undefined;
-      if (!entry.effective_enabled || !menu) throw new Error('Plugin page is unavailable');
-      const html = '<!doctype html><html lang="en"><meta charset="utf-8"><title>Inspector status</title><style>body{font:16px system-ui;margin:40px;line-height:1.7;color:#26324a;background:#f5f7fb}article{max-width:700px;padding:28px;border:1px solid #dfe4ed;border-radius:16px;background:white}strong{color:#178260}</style><article><h1>Request Inspector</h1><p><strong>Plugin is running</strong></p><p>This is a local browser demo of a plugin resource page. No requests are sent to a proxy or plugin server.</p><p>Return to the plugin list to edit settings, disable the plugin, or try its update.</p></article></html>';
-      return result(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    if (WEBVIEW_COMMANDS.has(command)) return result(webviewCommand(command, payload));
+    if (command === 'get_plugin_latest_releases') {
+      const repositories = Array.isArray(payload.repositories) ? payload.repositories.map(text) : [];
+      return result(repositories.map(repository => {
+        const entry = CATALOG.find(entry => entry.repository.replace(/^https:\/\/github\.com\//, '') === repository);
+        return entry ? { repository, version: entry.version, error: null } : { repository, version: null, error: 'Invalid GitHub repository' };
+      }));
     }
     const method = text(request.method).toUpperCase();
     if (path === '/config/plugins' || path.startsWith('/config/plugins/')) return result(configRequest(method, path, request.body));
@@ -154,7 +262,7 @@ export function createPluginMock(host: PluginMockHost) {
         const local = installed.get(entry.id);
         return { ...entry, ...plugin(entry.id), name: entry.name, version: entry.version,
           store_id: `${entry.source_id}/${entry.id}`, installed: Boolean(local), installed_version: local?.version ?? '',
-          installed_source_id: local?.sourceId ?? '', install_source_status: local ? 'match' : '',
+          installed_source_id: local?.sourceId ?? '', install_source_status: local ? 'matched' : '',
           update_available: Boolean(local && local.version !== entry.version),
         };
       }) });
