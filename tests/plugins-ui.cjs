@@ -31,9 +31,19 @@ const fs = require('node:fs');
     const tab = name => page.locator('.plugin-tabs').getByRole('button', { name, exact: true });
     const dialog = () => page.getByRole('dialog');
     const installs = () => page.evaluate(() => window.pluginsFixture.installs);
+    const captureStore = async name => {
+      if (!process.env.PLUGIN_SCREENSHOT_DIR) return;
+      const dismiss = page.locator('.app-notice-entry .action-feedback-dismiss');
+      if (await dismiss.count()) {
+        await dismiss.first().click();
+        await page.locator('.app-notice-entry').waitFor({ state: 'detached' });
+      }
+      fs.mkdirSync(process.env.PLUGIN_SCREENSHOT_DIR, { recursive: true });
+      await page.screenshot({ path: path.join(process.env.PLUGIN_SCREENSHOT_DIR, name), fullPage: true });
+    };
     const noOverflow = async () => assert.equal(await page.evaluate(() =>
       document.documentElement.scrollWidth <= innerWidth + 1), true, 'Plugin page must fit the viewport');
-    await open();
+    await open('theme=dark');
     await card('Sample provider').getByRole('button', { name: 'Configure', exact: true }).waitFor();
     assert.equal(await page.locator('.plugin-card').count(), 4);
     await tab('Local plugins').waitFor();
@@ -118,9 +128,11 @@ const fs = require('node:fs');
     await page.getByText('Offline source: Fixture registry unavailable').waitFor();
     assert.equal(await card('Private provider').getByRole('button', { name: 'Store authentication required' }).isDisabled(), true);
     const sourceSelector = page.getByRole('combobox', { name: 'Store source', exact: true });
+    await captureStore('store-all.png');
     await sourceSelector.selectOption('id:community');
     assert.equal(await page.locator('.plugin-card').count(), 1);
     await card('Community analytics').waitFor();
+    await captureStore('store-community.png');
     await search.fill('sample');
     await page.getByRole('heading', { name: 'No matching plugins' }).waitFor();
     await search.fill('');
@@ -129,6 +141,7 @@ const fs = require('node:fs');
     await sourceSelector.selectOption('id:official');
     assert.equal(await page.locator('.plugin-card').count(), 1);
     await card('Sample provider').waitFor();
+    await captureStore('store-official-updates.png');
     await page.getByRole('button', { name: 'Refresh', exact: true }).click();
     await page.waitForFunction(() => !document.querySelector('.plugin-loading'));
     assert.equal(await sourceSelector.inputValue(), 'id:official', 'refresh retains the store selection');
