@@ -77,7 +77,16 @@ pub(crate) fn read_deepseek_harness_desktop_version(application: &Path) -> Optio
     }
     #[cfg(target_os = "macos")]
     {
-        read_codex_asar_version(&application.parent()?.parent()?.join("Resources/app.asar"))
+        let contents = if application.is_dir()
+            && application
+                .extension()
+                .is_some_and(|extension| extension == "app")
+        {
+            application.join("Contents")
+        } else {
+            application.parent()?.parent()?.to_path_buf()
+        };
+        read_codex_asar_version(&contents.join("Resources/app.asar"))
     }
     #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
