@@ -833,6 +833,10 @@ pub(crate) async fn fetch_codex_runtime_models(
     port: u16,
     api_key: &str,
 ) -> Result<Vec<codex_catalog::CodexRuntimeModel>, String> {
+    // CPA uses this Codex compatibility version to shape model metadata.
+    // Keep it independent of the GUI version to preserve extended reasoning levels.
+    const CODEX_MODEL_CATALOG_CLIENT_VERSION: &str = "0.162.1";
+
     if port == 0 {
         return Err("Invalid kernel port".to_string());
     }
@@ -853,7 +857,7 @@ pub(crate) async fn fetch_codex_runtime_models(
     for (index, endpoint) in endpoints.iter().enumerate() {
         let response = client
             .get(endpoint)
-            .query(&[("client_version", env!("CARGO_PKG_VERSION"))])
+            .query(&[("client_version", CODEX_MODEL_CATALOG_CLIENT_VERSION)])
             .bearer_auth(api_key)
             .header(reqwest::header::ACCEPT, "application/json")
             .header(reqwest::header::USER_AGENT, USER_AGENT)
