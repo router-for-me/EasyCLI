@@ -7,6 +7,8 @@ import {
   movePluginPageToFolder,
   movePluginPageToTop,
   parsePluginNavArrangement,
+  placePluginNavItem,
+  pluginNavDropPlan,
   renamePluginNavFolder,
   renamePluginPage,
   resolvePluginNav,
@@ -100,6 +102,70 @@ describe('arrangement changes', () => {
     layout = createPluginNavFolder(layout, 'f1', 'New folder');
     expect(renamePluginNavFolder(layout, 'f1', '  ')).toBe(layout);
     expect(renamePluginNavFolder(layout, 'f1', ' Work ').custom).toEqual([{ kind: 'folder', id: 'f1', name: 'Work', children: [] }]);
+  });
+});
+
+describe('drag and drop', () => {
+  const page = (name: string, inPlugins = false) => ({ kind: 'page' as const, path: path(name), inPlugins });
+  const top = (name: string) => ({ kind: 'page' as const, path: path(name), folder: null, inPlugins: false });
+  const child = (name: string, folder: string) => ({ kind: 'page' as const, path: path(name), folder, inPlugins: false });
+  const plugin = (name: string) => ({ kind: 'page' as const, path: path(name), folder: null, inPlugins: true });
+  const folder = { kind: 'folder' as const, id: 'f1' };
+  const layout = arrangement([
+    { kind: 'page', path: path('a') },
+    { kind: 'folder', id: 'f1', name: 'Tools', children: [path('b'), path('x')] },
+    { kind: 'folder', id: 'f2', name: 'Empty', children: [] },
+  ]);
+  const drop = (item: Parameters<typeof pluginNavDropPlan>[0], target: Parameters<typeof pluginNavDropPlan>[1], ratio: number) => {
+    const plan = pluginNavDropPlan(item, target, ratio);
+    return plan ? placePluginNavItem(layout, item, plan.placement).custom : null;
+  };
+
+  test('places pages before or after rows in the main menu and inside folders', () => {
+    expect(pluginNavDropPlan(page('c', true), top('a'), 0.2)).toMatchObject({ target: top('a'), position: 'before' });
+    expect(drop(page('c', true), top('a'), 0.2)?.[0]).toEqual({ kind: 'page', path: path('c') });
+    expect(drop(page('c', true), top('a'), 0.8)?.[1]).toEqual({ kind: 'page', path: path('c') });
+    expect(drop(page('a'), child('b', 'f1'), 0.8)).toEqual([
+      { kind: 'folder', id: 'f1', name: 'Tools', children: [path('b'), path('a'), path('x')] },
+      { kind: 'folder', id: 'f2', name: 'Empty', children: [] },
+    ]);
+    expect(drop(page('x'), child('b', 'f1'), 0.1)?.[1]).toEqual({ kind: 'folder', id: 'f1', name: 'Tools', children: [path('x'), path('b')] });
+  });
+
+  test('drops into a folder on its head or empty placeholder, and before it near the top edge', () => {
+    expect(pluginNavDropPlan(page('c', true), folder, 0.6)?.position).toBe('into');
+    expect(drop(page('a'), folder, 0.6)?.[0]).toEqual({ kind: 'folder', id: 'f1', name: 'Tools', children: [path('b'), path('x'), path('a')] });
+    expect(drop(page('c', true), folder, 0.1)?.[1]).toEqual({ kind: 'page', path: path('c') });
+    expect(drop(page('a'), { kind: 'empty', folder: 'f2' }, 0.5)?.[1]).toEqual({ kind: 'folder', id: 'f2', name: 'Empty', children: [path('a')] });
+  });
+
+  test('returns pages to the plugin group and appends to the main menu above it', () => {
+    expect(pluginNavDropPlan(page('b'), plugin('c'), 0.5)).toMatchObject({ target: { kind: 'plugins' }, position: 'into' });
+    expect(drop(page('b'), plugin('c'), 0.5)?.[1]).toEqual({ kind: 'folder', id: 'f1', name: 'Tools', children: [path('x')] });
+    expect(drop(page('b'), { kind: 'plugins' }, 0.8)?.flatMap((node) => node.kind === 'folder' ? node.children : [node.path])).not.toContain(path('b'));
+    expect(drop(page('c', true), { kind: 'plugins' }, 0.2)?.at(-1)).toEqual({ kind: 'page', path: path('c') });
+    expect(pluginNavDropPlan(page('c', true), { kind: 'plugins' }, 0.8)).toBeNull();
+    expect(pluginNavDropPlan(page('c', true), plugin('d'), 0.5)).toBeNull();
+    expect(pluginNavDropPlan(page('a'), top('a'), 0.8)).toBeNull();
+  });
+
+  test('moves folders only within the main menu so they never nest', () => {
+    expect(drop(folder, top('a'), 0.2)?.map((node) => node.kind === 'folder' ? node.id : node.path)).toEqual(['f1', path('a'), 'f2']);
+    expect(drop(folder, { kind: 'folder', id: 'f2' }, 0.8)?.map((node) => node.kind === 'folder' ? node.id : node.path)).toEqual([path('a'), 'f2', 'f1']);
+    expect(drop(folder, { kind: 'plugins' }, 0.9)?.at(-1)).toMatchObject({ id: 'f1' });
+    expect(pluginNavDropPlan(folder, child('b', 'f1'), 0.5)).toBeNull();
+    expect(pluginNavDropPlan(folder, { kind: 'empty', folder: 'f2' }, 0.5)).toBeNull();
+    expect(pluginNavDropPlan(folder, plugin('c'), 0.5)).toBeNull();
+    expect(pluginNavDropPlan(folder, folder, 0.5)).toBeNull();
+    expect(placePluginNavItem(layout, folder, { zone: 'folder', id: 'f2', ref: null, after: false })).toBe(layout);
+  });
+
+  test('keeps hidden records in place and returns the same layout for a no-op move', () => {
+    const hidden = arrangement([{ kind: 'page', path: path('gone') }, { kind: 'page', path: path('a') }]);
+    expect(placePluginNavItem(hidden, page('c', true), { zone: 'top', ref: { kind: 'page', path: path('a') }, after: false }).custom)
+      .toEqual([{ kind: 'page', path: path('gone') }, { kind: 'page', path: path('c') }, { kind: 'page', path: path('a') }]);
+    expect(placePluginNavItem(layout, page('a'), { zone: 'top', ref: { kind: 'folder', id: 'f1' }, after: false })).toBe(layout);
+    expect(placePluginNavItem(layout, page('a'), { zone: 'folder', id: 'missing', ref: null, after: false })).toBe(layout);
   });
 });
 

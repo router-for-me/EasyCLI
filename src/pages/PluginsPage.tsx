@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Download, ExternalLink, Folder, LogIn, Puzzle, RefreshCw, Search, Settings2, Trash2, X } from 'lucide-react';
+import { Download, ExternalLink, Folder, LayoutList, LogIn, Puzzle, RefreshCw, Search, Settings2, Trash2, X } from 'lucide-react';
 import { useI18n } from '../i18n';
 import { pluginText } from '../i18n/plugins';
 import { FloatingNotice, useAppNotice } from '../appNotice';
@@ -9,6 +9,9 @@ import { pluginsApi, pluginStoreApi, type PluginListEntry, type PluginListRespon
 import { buildPluginResourceRoute, collectPluginResourceEntries, getPluginTitle, isOfficialPlugin, notifyPluginResourcesChanged, type PluginResourceEntry } from '../services/pluginResources';
 import { getPluginStatus, isPluginInstalled } from '../services/pluginStatus';
 import { refreshPluginReleaseVersions } from '../services/pluginReleaseVersions';
+import { requestPluginNavOrganize } from '../services/pluginNavigation';
+import { useNavCompact } from '../components/usePluginNavLayout';
+import { pluginNavArrangementStore } from '../services/pluginNavArrangementStore';
 import { PluginConfigDialog } from './PluginConfigDialog';
 import { PluginInstallDialog } from './PluginInstallDialog';
 import { PluginOAuthDialog } from './PluginOAuthDialog';
@@ -120,6 +123,13 @@ export function PluginsPage() {
   const installedCount = data?.plugins.filter(isPluginInstalled).length ?? 0;
   const configOnlyCount = data?.plugins.filter(plugin => plugin.configured && !isPluginInstalled(plugin)).length ?? 0;
   const locked = busy || loading || Boolean(configPlugin || installEntry || oauthPlugin);
+  const { status: navStatus, arrangement: navLayout } = useSyncExternalStore(pluginNavArrangementStore.subscribe, pluginNavArrangementStore.get);
+  const navCompact = useNavCompact();
+  const hasNavFolders = navLayout.custom.some((node) => node.kind === 'folder');
+  const organizeBlocker = navStatus === 'unreadable' ? t('app.nav.layout.loadFailed')
+    : !hasNavFolders && (!data?.pluginsEnabled || !collectPluginResourceEntries(data.plugins).length) ? t('app.nav.layout.noPages')
+      : navStatus === 'loading' ? t('common.loading')
+        : navCompact ? t('app.nav.layout.narrowWindow') : null;
 
   return <div className="plugins-page">
     <header className="plugins-heading"><div><h1>{pt('title')}</h1><p>{pt('description')}</p></div><button className="secondary-button" disabled={locked} onClick={() => void load(tabRef.current, true)}><RefreshCw size={16} aria-hidden="true" />{t('common.refresh')}</button></header>
@@ -142,7 +152,10 @@ export function PluginsPage() {
             {tab === 'store' && <select aria-label={pt('store')} value={filter} onChange={e => setFilter(e.target.value)}>{['all', 'installed', 'updates'].map(value => <option key={value} value={value}>{pt(value as 'all' | 'installed' | 'updates')}</option>)}</select>}
           </div>}
         </div>
-        {tab === 'settings' ? <PluginSettingsPanel onSaved={() => { notice.showNotice(pt('saved')); void load(); }} /> : <>
+        {tab === 'settings' ? <>
+          <section className="plugin-nav-organize"><div><h2>{t('app.nav.layout.settingsTitle')}</h2><p>{organizeBlocker ?? t('app.nav.layout.settingsHint')}</p></div><button className="secondary-button" disabled={Boolean(organizeBlocker)} onClick={requestPluginNavOrganize}><LayoutList size={15} aria-hidden="true" />{t('app.nav.layout.organize')}</button></section>
+          <PluginSettingsPanel onSaved={() => { notice.showNotice(pt('saved')); void load(); }} />
+        </> : <>
           {loading && <p className="plugin-loading" role="status">{t('common.loading')}…</p>}
           {tab === 'installed' ? <div className="plugin-grid">{plugins.map(plugin => {
             const status = getPluginStatus(plugin, data?.pluginsEnabled ?? false);

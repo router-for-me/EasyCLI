@@ -45,6 +45,7 @@ import { usePluginNavLayout } from './components/usePluginNavLayout';
 import { usePluginNavEntries } from './usePluginNavEntries';
 import {
   PLUGIN_NAV_GROUP,
+  PLUGIN_NAV_ORGANIZE_EVENT,
   findPluginNavEntry,
   isPluginRoute,
   pluginFolderGroup,
@@ -192,6 +193,12 @@ function AppContent() {
   const [pluginFolderStates, setPluginFolderState] = usePluginFolderStates();
   const [navLayoutSaveFailed, setNavLayoutSaveFailed] = useState(false);
   useEffect(() => pluginNavArrangementStore.onSaveFailed(() => setNavLayoutSaveFailed(true)), []);
+  const [organizeRequested, setOrganizeRequested] = useState(false);
+  useEffect(() => {
+    const organize = () => setOrganizeRequested(true);
+    window.addEventListener(PLUGIN_NAV_ORGANIZE_EVENT, organize);
+    return () => window.removeEventListener(PLUGIN_NAV_ORGANIZE_EVENT, organize);
+  }, []);
   const navPages = pages.filter((page) => page.id !== 'easy');
   const pluginChildActive = pluginNav.plugins.some((page) => page.entry.route === active);
   const pluginNavGroups = useMemo((): PluginNavGroup[] => [
@@ -211,12 +218,14 @@ function AppContent() {
     pluginNavOverride,
   );
   const showPluginTree = pluginEntries.length > 0 || pluginNav.custom.length > 0;
-  const collapsedPluginFolders = useMemo(() => new Set(pluginNav.custom.flatMap((node) =>
+  const organizingPluginNav = organizeRequested && !navCompact && navArrangement.status === 'ready' && showPluginTree;
+  useEffect(() => { if (organizeRequested && !organizingPluginNav) setOrganizeRequested(false); }, [organizeRequested, organizingPluginNav]);
+  const collapsedPluginFolders = useMemo(() => new Set(organizingPluginNav ? [] : pluginNav.custom.flatMap((node) =>
     node.kind === 'folder' && (pluginFolderStates.get(node.id) === 'collapsed' || autoCollapsedGroups.has(pluginFolderGroup(node.id))) ? [node.id] : [])),
-  [pluginNav, pluginFolderStates, autoCollapsedGroups]);
+  [organizingPluginNav, pluginNav, pluginFolderStates, autoCollapsedGroups]);
   const [pluginReload, setPluginReload] = useState(0);
   useEffect(() => setPluginNavOverride(null), [autoPluginLayout, pluginGroupCount]);
-  const pluginNavLayout = navCompact || !autoCollapsedGroups.has(PLUGIN_NAV_GROUP) ? 'expanded' : 'collapsed';
+  const pluginNavLayout = navCompact || organizingPluginNav || !autoCollapsedGroups.has(PLUGIN_NAV_GROUP) ? 'expanded' : 'collapsed';
   const pluginNavExpanded = pluginNavLayout === 'expanded';
   const pluginPageLabel = findResolvedPluginPage(pluginNav, active)?.label;
   const activePage = pages.find((page) => page.id === active);
@@ -408,6 +417,7 @@ function AppContent() {
               className="nav-section"
               aria-label={t('app.navigation')}
               data-plugin-layout={pluginGroupCount ? pluginNavLayout : undefined}
+              data-organizing={organizingPluginNav || undefined}
             >
               {navPages.map((page) => {
                 const Icon = page.icon;
@@ -429,7 +439,7 @@ function AppContent() {
                       .filter(Boolean)
                       .join(' ')}
                     aria-current={page.id === active ? 'page' : undefined}
-                    disabled={locked}
+                    disabled={locked || organizingPluginNav}
                     title={locked ? t('app.nav.lockedHint') : undefined}
                     onClick={() => select(page.id)}
                   >
@@ -468,6 +478,8 @@ function AppContent() {
                     compact={navCompact}
                     collapsedFolders={collapsedPluginFolders}
                     onFolderCollapsed={(id, collapsed) => setPluginFolderState(id, collapsed ? 'collapsed' : 'expanded')}
+                    organizing={organizingPluginNav}
+                    onOrganize={setOrganizeRequested}
                     onSelect={(route) => select(route as AppPageId)}
                     onChange={pluginNavArrangementStore.update}
                   />

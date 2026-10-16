@@ -11,14 +11,37 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  MeasuringStrategy,
+  PointerSensor,
+  closestCenter,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type Active,
+  type Announcements,
+  type DragEndEvent,
+  type DragMoveEvent,
+  type DragStartEvent,
+  type DraggableAttributes,
+  type KeyboardCoordinateGetter,
+  type Over,
+} from '@dnd-kit/core';
+import {
   AppWindow,
   ArrowUpToLine,
+  Check,
   ChevronRight,
   Ellipsis,
   Folder,
   FolderInput,
   FolderOpen,
   FolderPlus,
+  GripVertical,
+  LayoutList,
   Lock,
   Pencil,
   Puzzle,
@@ -35,10 +58,15 @@ import {
   emptyPluginNavArrangement,
   movePluginPageToFolder,
   movePluginPageToTop,
+  placePluginNavItem,
+  pluginNavDropPlan,
   renamePluginNavFolder,
   renamePluginPage,
   returnPluginPage,
   type PluginNavArrangement,
+  type PluginNavDragItem,
+  type PluginNavDropPlan,
+  type PluginNavDropTarget,
   type ResolvedPluginNav,
   type ResolvedPluginPage,
 } from '../services/pluginNavArrangement';
@@ -67,8 +95,15 @@ type MenuTarget = { kind: 'page'; page: ResolvedPluginPage } | { kind: 'folder';
 type OpenMenu = { target: MenuTarget; key: string; x: number; y: number };
 type Renaming = { kind: 'page'; path: string } | { kind: 'folder'; id: string } | null;
 
+type DragData = { item: PluginNavDragItem; label: string };
+type DropData = { target: PluginNavDropTarget };
+type RowHandle = { attributes: DraggableAttributes; listeners: ReturnType<typeof useDraggable>['listeners'] };
+
 const pageKey = (path: string) => `page:${path}`;
 const folderKey = (id: string) => `folder:${id}`;
+const emptyKey = (id: string) => `empty:${id}`;
+const targetKey = (target: PluginNavDropTarget) =>
+  target.kind === 'plugins' ? PLUGINS_KEY : target.kind === 'folder' ? folderKey(target.id) : target.kind === 'empty' ? emptyKey(target.folder) : pageKey(target.path);
 const isFolderState = (value: unknown): value is PluginNavLayout => value === 'collapsed' || value === 'expanded';
 
 function readFolderStates(): Map<string, PluginNavLayout> {
@@ -94,16 +129,73 @@ export function usePluginFolderStates() {
   return [states, setFolderState] as const;
 }
 
-function NavRow({ id, className, onContextMenu, children }: {
+const rowKeyboardCoordinates: KeyboardCoordinateGetter = (event, { context: { active, collisionRect, droppableRects } }) => {
+  if (event.code !== 'ArrowDown' && event.code !== 'ArrowUp') return undefined;
+  event.preventDefault();
+  if (!active || !collisionRect) return undefined;
+  const down = event.code === 'ArrowDown';
+  const center = collisionRect.top + collisionRect.height / 2;
+  const middle = (rect: { top: number; height: number }) => rect.top + rect.height / 2;
+  const next = [...droppableRects.entries()]
+    .filter(([id, rect]) => id !== active.id && (down ? middle(rect) > center + 1 : middle(rect) < center - 1))
+    .map(([, rect]) => rect)
+    .sort((a, b) => (down ? a.top - b.top : b.top - a.top))[0];
+  if (!next) return undefined;
+  return { x: collisionRect.left, y: next.top + next.height * (down ? 0.75 : 0.2) - collisionRect.height / 2 };
+};
+
+function dropPlanFor(active: Active, over: Over | null): PluginNavDropPlan | null {
+  const drag = active.data.current as DragData | undefined;
+  const drop = over?.data.current as DropData | undefined;
+  const rect = active.rect.current.translated;
+  if (!drag || !drop || !over || !rect || over.rect.height <= 0) return null;
+  const ratio = Math.min(Math.max((rect.top + rect.height / 2 - over.rect.top) / over.rect.height, 0), 1);
+  return pluginNavDropPlan(drag.item, drop.target, ratio);
+}
+
+function NavRow({ id, drag, label, target, organizing, indicator, className, onContextMenu, children }: {
   id: string;
+  drag: PluginNavDragItem | null;
+  label: string;
+  target: PluginNavDropTarget;
+  organizing: boolean;
+  indicator?: PluginNavDropPlan['position'];
   className: string;
   onContextMenu?: (event: ReactMouseEvent<HTMLElement>) => void;
-  children: ReactNode;
+  children: (handle: RowHandle | null) => ReactNode;
 }) {
+  const { t } = useI18n();
+  const { setNodeRef: setDropRef } = useDroppable({ id, data: { target } satisfies DropData, disabled: !organizing });
+  const { setNodeRef: setDragRef, attributes, listeners, isDragging } = useDraggable({
+    id,
+    data: drag ? { item: drag, label } satisfies DragData : undefined,
+    disabled: !organizing || !drag,
+    attributes: { roleDescription: t('app.nav.layout.dragRole') },
+  });
+  const ref = useCallback((node: HTMLDivElement | null) => {
+    setDropRef(node);
+    setDragRef(node);
+  }, [setDropRef, setDragRef]);
   return (
-    <div className={className} data-plugin-nav-key={id} onContextMenu={onContextMenu}>
-      {children}
+    <div
+      ref={ref}
+      className={[className, isDragging ? 'dragging' : ''].filter(Boolean).join(' ')}
+      data-plugin-nav-key={id}
+      data-drop={indicator}
+      onContextMenu={onContextMenu}
+    >
+      {children(organizing && drag ? { attributes, listeners } : null)}
     </div>
+  );
+}
+
+function EmptyFolderRow({ id, organizing, indicator }: { id: string; organizing: boolean; indicator?: PluginNavDropPlan['position'] }) {
+  const { t } = useI18n();
+  const { setNodeRef } = useDroppable({ id: emptyKey(id), data: { target: { kind: 'empty', folder: id } } satisfies DropData, disabled: !organizing });
+  return (
+    <p ref={setNodeRef} className="nav-plugin-empty" data-plugin-nav-key={emptyKey(id)} data-drop={indicator}>
+      {t(organizing ? 'app.nav.layout.dropHere' : 'app.nav.layout.emptyFolder')}
+    </p>
   );
 }
 
@@ -296,6 +388,8 @@ export function PluginNavTree({
   compact,
   collapsedFolders,
   onFolderCollapsed,
+  organizing,
+  onOrganize,
   onSelect,
   onChange,
 }: {
@@ -309,6 +403,8 @@ export function PluginNavTree({
   compact: boolean;
   collapsedFolders: ReadonlySet<string>;
   onFolderCollapsed: (id: string, collapsed: boolean) => void;
+  organizing: boolean;
+  onOrganize: (organizing: boolean) => void;
   onSelect: (route: string) => void;
   onChange: (change: (arrangement: PluginNavArrangement) => PluginNavArrangement) => void;
 }) {
@@ -316,8 +412,17 @@ export function PluginNavTree({
   const root = useRef<HTMLDivElement>(null);
   const [menu, setMenu] = useState<OpenMenu | null>(null);
   const [renaming, setRenaming] = useState<Renaming>(null);
+  const [dragging, setDragging] = useState<DragData | null>(null);
+  const [plan, setPlan] = useState<PluginNavDropPlan | null>(null);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: rowKeyboardCoordinates }),
+  );
   const editable = status === 'ready' && !compact;
   const hasPluginPages = nav.plugins.length > 0;
+  const folderDrag = dragging?.item.kind === 'folder';
+  const indicatorKey = plan ? targetKey(plan.target) : null;
+  const indicator = (key: string) => (key === indicatorKey ? plan?.position : undefined);
 
   const focusRow = useCallback((key: string, control: 'more' | 'main') => {
     requestAnimationFrame(() => {
@@ -329,6 +434,21 @@ export function PluginNavTree({
     });
   }, []);
 
+  const wasOrganizing = useRef(organizing);
+  useEffect(() => {
+    if (organizing === wasOrganizing.current) return;
+    wasOrganizing.current = organizing;
+    setMenu(null);
+    setRenaming(null);
+    requestAnimationFrame(() => {
+      const section = root.current?.closest('.nav-section');
+      const target = organizing
+        ? section?.querySelector<HTMLElement>('[aria-roledescription]')
+        : section?.querySelector<HTMLElement>(`[data-plugin-nav-key="${PLUGINS_KEY}"] > button:first-child`);
+      target?.focus();
+    });
+  }, [organizing]);
+
   const menuRef = useRef(menu);
   menuRef.current = menu;
   const closeMenu = useCallback((restoreFocus: boolean) => {
@@ -338,7 +458,7 @@ export function PluginNavTree({
   }, [focusRow]);
 
   const openMenu = (target: MenuTarget, key: string, x: number, y: number) => {
-    if (!editable && !(target.kind === 'plugins' && status === 'unreadable' && !compact)) return;
+    if (organizing || (!editable && !(target.kind === 'plugins' && status === 'unreadable' && !compact))) return;
     setRenaming(null);
     setMenu({ target, key, x, y });
   };
@@ -350,6 +470,10 @@ export function PluginNavTree({
   };
 
   const openFromContext = (target: MenuTarget, key: string) => (event: ReactMouseEvent<HTMLElement>) => {
+    if (organizing) {
+      event.preventDefault();
+      return;
+    }
     if (compact || status === 'loading' || (!editable && target.kind !== 'plugins')) return;
     event.preventDefault();
     openMenu(target, key, event.clientX, event.clientY);
@@ -421,6 +545,7 @@ export function PluginNavTree({
     }
     return [
       { key: 'new', label: t('app.nav.layout.newFolder'), icon: FolderPlus, movesFocus: true, onSelect: () => newFolder() },
+      { key: 'organize', label: t('app.nav.layout.organize'), icon: LayoutList, movesFocus: true, onSelect: () => onOrganize(true) },
       { separator: true, key: 'separator' },
       { key: 'reset', label: t('app.nav.layout.resetLayout'), icon: RotateCcw, onSelect: () => onChange(() => emptyPluginNavArrangement()) },
     ];
@@ -439,111 +564,226 @@ export function PluginNavTree({
     </button>
   );
 
+  const grip = organizing ? <GripVertical size={14} strokeWidth={1.75} className="nav-plugin-grip" aria-hidden="true" /> : null;
+
   const finishRename = (key: string, apply: (value: string) => void) => (value: string | null, refocus: boolean) => {
     if (value !== null) apply(value);
     setRenaming(null);
     if (refocus) focusRow(key, 'main');
   };
 
-  const pageRow = (page: ResolvedPluginPage) => {
+  const pageRow = (page: ResolvedPluginPage, folder: string | null, inPlugins: boolean) => {
     const { entry } = page;
     const key = pageKey(entry.path);
     const isActive = entry.route === active;
     const isRenaming = renaming?.kind === 'page' && renaming.path === entry.path;
-    const title = locked ? t('app.nav.lockedHint') : page.renamed ? `${entry.label} · ${entry.pluginTitle}` : entry.description;
+    const rowLocked = locked && !organizing;
+    const title = rowLocked ? t('app.nav.lockedHint') : page.renamed ? `${entry.label} · ${entry.pluginTitle}` : entry.description;
     return (
-      <NavRow key={key} id={key} className="nav-plugin-row" onContextMenu={openFromContext({ kind: 'page', page }, key)}>
-        {isRenaming ? (
-          <div className="nav-plugin-rename-row">
-            <AppWindow size={16} strokeWidth={1.75} aria-hidden="true" />
-            <RenameInput
-              value={page.label}
-              label={t('app.nav.layout.nameInput')}
-              onDone={finishRename(key, (value) => onChange((current) => renamePluginPage(current, entry.path, value, entry.label)))}
-            />
-          </div>
-        ) : (
-          <button
-            type="button"
-            className={['nav-plugin-entry', isActive ? 'active' : '', locked ? 'locked' : ''].filter(Boolean).join(' ')}
-            aria-current={isActive ? 'page' : undefined}
-            data-plugin-route={entry.route}
-            disabled={locked}
-            title={title}
-            onClick={() => onSelect(entry.route)}
-          >
-            <AppWindow size={16} strokeWidth={1.75} aria-hidden="true" />
-            <span>{page.label}</span>
-            {locked ? <Lock size={12} strokeWidth={1.75} className="nav-lock-icon" aria-hidden="true" /> : null}
-          </button>
+      <NavRow
+        key={key}
+        id={key}
+        drag={isRenaming ? null : { kind: 'page', path: entry.path, inPlugins }}
+        label={page.label}
+        target={{ kind: 'page', path: entry.path, folder, inPlugins }}
+        organizing={organizing}
+        indicator={indicator(key)}
+        className="nav-plugin-row"
+        onContextMenu={openFromContext({ kind: 'page', page }, key)}
+      >
+        {(handle) => (
+          <>
+            {isRenaming ? (
+              <div className="nav-plugin-rename-row">
+                <AppWindow size={16} strokeWidth={1.75} aria-hidden="true" />
+                <RenameInput
+                  value={page.label}
+                  label={t('app.nav.layout.nameInput')}
+                  onDone={finishRename(key, (value) => onChange((current) => renamePluginPage(current, entry.path, value, entry.label)))}
+                />
+              </div>
+            ) : (
+              <button
+                type="button"
+                className={['nav-plugin-entry', isActive ? 'active' : '', rowLocked ? 'locked' : ''].filter(Boolean).join(' ')}
+                aria-current={isActive ? 'page' : undefined}
+                data-plugin-route={entry.route}
+                disabled={rowLocked}
+                title={title}
+                onClick={organizing ? undefined : () => onSelect(entry.route)}
+                {...handle?.attributes}
+                {...handle?.listeners}
+              >
+                {grip}
+                <AppWindow size={16} strokeWidth={1.75} aria-hidden="true" />
+                <span>{page.label}</span>
+                {rowLocked ? <Lock size={12} strokeWidth={1.75} className="nav-lock-icon" aria-hidden="true" /> : null}
+              </button>
+            )}
+            {editable && !organizing && !isRenaming ? moreButton({ kind: 'page', page }, key, page.label) : null}
+          </>
         )}
-        {editable && !isRenaming ? moreButton({ kind: 'page', page }, key, page.label) : null}
       </NavRow>
     );
   };
 
+  const finishDrag = () => {
+    setDragging(null);
+    setPlan(null);
+  };
+
+  const handleDragStart = ({ active: dragged }: DragStartEvent) => {
+    setMenu(null);
+    setRenaming(null);
+    setDragging((dragged.data.current as DragData | undefined) ?? null);
+  };
+
+  const handleDragMove = ({ active: dragged, over }: DragMoveEvent) => {
+    const next = dropPlanFor(dragged, over);
+    setPlan((current) => (JSON.stringify(current) === JSON.stringify(next) ? current : next));
+  };
+
+  const handleDragEnd = ({ active: dragged, over, activatorEvent }: DragEndEvent) => {
+    const next = dropPlanFor(dragged, over);
+    const drag = dragged.data.current as DragData | undefined;
+    finishDrag();
+    if (!next || !drag) return;
+    onChange((current) => placePluginNavItem(current, drag.item, next.placement));
+    if (activatorEvent instanceof KeyboardEvent) focusRow(String(dragged.id), 'main');
+  };
+
+  const dragName = (dragged: Active) => (dragged.data.current as DragData | undefined)?.label ?? '';
+  const announcements: Announcements = {
+    onDragStart: ({ active: dragged }) => t('app.nav.layout.dragStart', { name: dragName(dragged) }),
+    onDragOver: () => undefined,
+    onDragEnd: ({ active: dragged }) => t('app.nav.layout.dragEnd', { name: dragName(dragged) }),
+    onDragCancel: ({ active: dragged }) => t('app.nav.layout.dragCancel', { name: dragName(dragged) }),
+  };
+
   return (
     <div ref={root} className="nav-plugin-tree">
-      {nav.custom.map((node, index) => {
-        if (node.kind === 'page') return pageRow(node.page);
-        const key = folderKey(node.id);
-        const groupId = `nav-plugin-folder-${index}`;
-        const expanded = compact || !collapsedFolders.has(node.id);
-        const containsActive = node.pages.some((page) => page.entry.route === active);
-        const isRenaming = renaming?.kind === 'folder' && renaming.id === node.id;
-        const FolderIcon = expanded ? FolderOpen : Folder;
-        const toggle = () => onFolderCollapsed(node.id, expanded);
-        return (
-          <Fragment key={key}>
-            <NavRow id={key} className="nav-plugin-row nav-plugin-folder has-toggle" onContextMenu={openFromContext({ kind: 'folder', id: node.id, name: node.name }, key)}>
-              {isRenaming ? (
-                <div className="nav-plugin-rename-row">
-                  <FolderIcon size={16} strokeWidth={1.75} aria-hidden="true" />
-                  <RenameInput
-                    value={node.name}
-                    label={t('app.nav.layout.nameInput')}
-                    onDone={finishRename(key, (value) => onChange((current) => renamePluginNavFolder(current, node.id, value)))}
-                  />
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  className={['nav-plugin-folder-head', !expanded && containsActive ? 'active' : ''].filter(Boolean).join(' ')}
-                  aria-expanded={expanded}
-                  aria-controls={groupId}
-                  onClick={toggle}
-                >
-                  <FolderIcon size={16} strokeWidth={1.75} aria-hidden="true" />
-                  <span>{node.name}</span>
-                </button>
-              )}
-              {editable && !isRenaming ? moreButton({ kind: 'folder', id: node.id, name: node.name }, key, node.name) : null}
-              <PluginNavToggle expanded={expanded} controls={groupId} label={t('app.nav.layout.toggleFolder', { name: node.name })} onToggle={toggle} />
-            </NavRow>
-            {expanded ? (
-              <div id={groupId} className="nav-plugin-children" role="group" aria-label={node.name}>
-                {node.pages.length
-                  ? node.pages.map((page) => pageRow(page))
-                  : <p className="nav-plugin-empty">{t('app.nav.layout.emptyFolder')}</p>}
-              </div>
-            ) : null}
-          </Fragment>
-        );
-      })}
-      <NavRow
-        id={PLUGINS_KEY}
-        className={['nav-plugin-parent', 'nav-plugin-row', hasPluginPages ? 'has-toggle' : ''].filter(Boolean).join(' ')}
-        onContextMenu={openFromContext({ kind: 'plugins' }, PLUGINS_KEY)}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
+        accessibility={{ announcements, screenReaderInstructions: { draggable: t('app.nav.layout.dragInstructions') } }}
+        onDragStart={handleDragStart}
+        onDragMove={handleDragMove}
+        onDragOver={handleDragMove}
+        onDragEnd={handleDragEnd}
+        onDragCancel={finishDrag}
       >
-        {parentRow}
-        {status === 'loading' || compact ? null : moreButton({ kind: 'plugins' }, PLUGINS_KEY, t('app.nav.plugins'))}
-        {hasPluginPages ? (
-          <PluginNavToggle expanded={pluginsExpanded} controls={PLUGIN_CHILDREN_ID} label={t('app.nav.pluginPages')} onToggle={onTogglePlugins} />
+        {nav.custom.map((node, index) => {
+          if (node.kind === 'page') return pageRow(node.page, null, false);
+          const key = folderKey(node.id);
+          const groupId = `nav-plugin-folder-${index}`;
+          const expanded = !folderDrag && (organizing || compact || !collapsedFolders.has(node.id));
+          const containsActive = node.pages.some((page) => page.entry.route === active);
+          const isRenaming = renaming?.kind === 'folder' && renaming.id === node.id;
+          const FolderIcon = expanded ? FolderOpen : Folder;
+          const toggle = () => onFolderCollapsed(node.id, expanded);
+          return (
+            <Fragment key={key}>
+              <NavRow
+                id={key}
+                drag={isRenaming ? null : { kind: 'folder', id: node.id }}
+                label={node.name}
+                target={{ kind: 'folder', id: node.id }}
+                organizing={organizing}
+                indicator={indicator(key)}
+                className={['nav-plugin-row', 'nav-plugin-folder', organizing ? '' : 'has-toggle'].filter(Boolean).join(' ')}
+                onContextMenu={openFromContext({ kind: 'folder', id: node.id, name: node.name }, key)}
+              >
+                {(handle) => (
+                  <>
+                    {isRenaming ? (
+                      <div className="nav-plugin-rename-row">
+                        <FolderIcon size={16} strokeWidth={1.75} aria-hidden="true" />
+                        <RenameInput
+                          value={node.name}
+                          label={t('app.nav.layout.nameInput')}
+                          onDone={finishRename(key, (value) => onChange((current) => renamePluginNavFolder(current, node.id, value)))}
+                        />
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        className={['nav-plugin-folder-head', !expanded && containsActive ? 'active' : ''].filter(Boolean).join(' ')}
+                        aria-expanded={expanded}
+                        aria-controls={groupId}
+                        onClick={organizing ? undefined : toggle}
+                        {...handle?.attributes}
+                        {...handle?.listeners}
+                      >
+                        {grip}
+                        <FolderIcon size={16} strokeWidth={1.75} aria-hidden="true" />
+                        <span>{node.name}</span>
+                      </button>
+                    )}
+                    {editable && !organizing && !isRenaming ? moreButton({ kind: 'folder', id: node.id, name: node.name }, key, node.name) : null}
+                    {organizing ? null : (
+                      <PluginNavToggle expanded={expanded} controls={groupId} label={t('app.nav.layout.toggleFolder', { name: node.name })} onToggle={toggle} />
+                    )}
+                  </>
+                )}
+              </NavRow>
+              {expanded ? (
+                <div id={groupId} className="nav-plugin-children" role="group" aria-label={node.name}>
+                  {node.pages.length
+                    ? node.pages.map((page) => pageRow(page, node.id, false))
+                    : <EmptyFolderRow id={node.id} organizing={organizing} indicator={indicator(emptyKey(node.id))} />}
+                </div>
+              ) : null}
+            </Fragment>
+          );
+        })}
+        <NavRow
+          id={PLUGINS_KEY}
+          drag={null}
+          label={t('app.nav.plugins')}
+          target={{ kind: 'plugins' }}
+          organizing={organizing}
+          indicator={indicator(PLUGINS_KEY)}
+          className={['nav-plugin-parent', 'nav-plugin-row', hasPluginPages && !organizing ? 'has-toggle' : ''].filter(Boolean).join(' ')}
+          onContextMenu={openFromContext({ kind: 'plugins' }, PLUGINS_KEY)}
+        >
+          {() => (
+            <>
+              {parentRow}
+              {status === 'loading' || compact || organizing ? null : moreButton({ kind: 'plugins' }, PLUGINS_KEY, t('app.nav.plugins'))}
+              {hasPluginPages && !organizing ? (
+                <PluginNavToggle expanded={pluginsExpanded} controls={PLUGIN_CHILDREN_ID} label={t('app.nav.pluginPages')} onToggle={onTogglePlugins} />
+              ) : null}
+            </>
+          )}
+        </NavRow>
+        {pluginsExpanded && hasPluginPages ? (
+          <div id={PLUGIN_CHILDREN_ID} className="nav-plugin-children" role="group" aria-label={t('app.nav.pluginPages')}>
+            {nav.plugins.map((page) => pageRow(page, null, true))}
+          </div>
         ) : null}
-      </NavRow>
-      {pluginsExpanded && hasPluginPages ? (
-        <div id={PLUGIN_CHILDREN_ID} className="nav-plugin-children" role="group" aria-label={t('app.nav.pluginPages')}>
-          {nav.plugins.map((page) => pageRow(page))}
+        <DragOverlay dropAnimation={null}>
+          {dragging ? (
+            <div className="nav-plugin-drag-overlay">
+              <GripVertical size={14} strokeWidth={1.75} className="nav-plugin-grip" aria-hidden="true" />
+              {dragging.item.kind === 'folder'
+                ? <Folder size={16} strokeWidth={1.75} aria-hidden="true" />
+                : <AppWindow size={16} strokeWidth={1.75} aria-hidden="true" />}
+              <span>{dragging.label}</span>
+            </div>
+          ) : null}
+        </DragOverlay>
+      </DndContext>
+      {organizing ? (
+        <div className="nav-plugin-organize-bar">
+          <button type="button" className="nav-plugin-organize-new" onClick={() => newFolder()}>
+            <FolderPlus size={14} strokeWidth={1.75} aria-hidden="true" />
+            <span>{t('app.nav.layout.newFolder')}</span>
+          </button>
+          <button type="button" className="nav-plugin-organize-done" onClick={() => onOrganize(false)}>
+            <Check size={14} strokeWidth={1.75} aria-hidden="true" />
+            <span>{t('app.nav.layout.done')}</span>
+          </button>
         </div>
       ) : null}
       {menu ? <PluginNavMenu items={menuItems(menu.target)} x={menu.x} y={menu.y} onClose={closeMenu} /> : null}

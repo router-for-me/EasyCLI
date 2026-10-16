@@ -16,7 +16,9 @@ export const toPluginNavEntry = ({ pluginID, pluginTitle, menuIndex, menu, label
   ({ pluginID, pluginTitle, menuIndex, path: menu.path, label, description, route });
 
 export const PLUGIN_NAV_GROUP = 'plugins';
+export const PLUGIN_NAV_ORGANIZE_EVENT = 'plugin-nav-organize';
 export const pluginFolderGroup = (id: string) => `folder:${id}`;
+export const requestPluginNavOrganize = () => window.dispatchEvent(new Event(PLUGIN_NAV_ORGANIZE_EVENT));
 
 export type PluginNavGroup = { id: string; rows: number; active: boolean; manual: PluginNavLayout | null };
 export type PluginNavSpace = { available: number; rowHeight: number; gap: number; padding: number; compact: boolean };
