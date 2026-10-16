@@ -1,42 +1,81 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import {
+  collapsePluginNavGroups,
   findPluginNavEntry,
   isPluginRoute,
-  pluginNavLayout,
   readCachedPluginNavEntries,
+  resolvePluginNavCollapse,
   resolvePluginNavLayout,
   writeCachedPluginNavEntries,
   type PluginNavEntry,
+  type PluginNavGroup,
 } from '../src/services/pluginNavigation';
 import { buildPluginResourceRoute } from '../src/services/pluginResources';
 
-const base = { rowHeight: 34, gap: 2, padding: 4, staticCount: 9, compact: false };
+const space = (available: number, extra: Partial<{ rowHeight: number; compact: boolean }> = {}) =>
+  ({ available, rowHeight: 34, gap: 2, padding: 4, compact: false, ...extra });
 const needed = (rows: number) => rows * 34 + (rows - 1) * 2 + 4;
+const group = (id: string, rows: number, extra: Partial<PluginNavGroup> = {}): PluginNavGroup =>
+  ({ id, rows, active: false, manual: null, ...extra });
 
 const entry = (pluginID: string, menuIndex: number): PluginNavEntry => ({
   pluginID,
+  pluginTitle: pluginID,
   menuIndex,
+  path: `/v0/resource/plugins/${pluginID}/${menuIndex}`,
   label: `${pluginID}-${menuIndex}`,
   description: 'desc',
   route: buildPluginResourceRoute(pluginID, menuIndex),
 });
 
-describe('pluginNavLayout', () => {
+describe('collapsePluginNavGroups', () => {
+  const plugins = group('plugins', 2);
+
   test('stays expanded when every row fits', () => {
-    expect(pluginNavLayout({ ...base, pluginCount: 2, available: needed(11) })).toBe('expanded');
+    expect(collapsePluginNavGroups(space(needed(11)), 9, [plugins])).toEqual([]);
   });
 
   test('collapses as soon as one pixel is missing', () => {
-    expect(pluginNavLayout({ ...base, pluginCount: 2, available: needed(11) - 1 })).toBe('collapsed');
+    expect(collapsePluginNavGroups(space(needed(11) - 1), 9, [plugins])).toEqual(['plugins']);
   });
 
-  test('stays expanded in compact mode however little room there is', () => {
-    expect(pluginNavLayout({ ...base, pluginCount: 5, available: 0, compact: true })).toBe('expanded');
+  test('stays expanded in compact mode, without rows or without a measured row', () => {
+    expect(collapsePluginNavGroups(space(0, { compact: true }), 9, [plugins])).toEqual([]);
+    expect(collapsePluginNavGroups(space(0), 9, [group('plugins', 0)])).toEqual([]);
+    expect(collapsePluginNavGroups(space(0, { rowHeight: 0 }), 9, [plugins])).toEqual([]);
   });
 
-  test('stays expanded without plugin entries or a measured row', () => {
-    expect(pluginNavLayout({ ...base, pluginCount: 0, available: 0 })).toBe('expanded');
-    expect(pluginNavLayout({ ...base, pluginCount: 3, available: 0, rowHeight: 0 })).toBe('expanded');
+  test('collapses groups without the current page first, from the bottom up, and only as many as needed', () => {
+    const groups = [group('folder:a', 2), group('folder:b', 3, { active: true }), group('folder:c', 2), group('plugins', 4)];
+    expect(collapsePluginNavGroups(space(needed(9 + 11) - 1), 9, groups)).toEqual(['plugins']);
+    expect(collapsePluginNavGroups(space(needed(9 + 5)), 9, groups)).toEqual(['plugins', 'folder:c']);
+    expect(collapsePluginNavGroups(space(needed(9 + 3)), 9, groups)).toEqual(['plugins', 'folder:c', 'folder:a']);
+    expect(collapsePluginNavGroups(space(needed(9)), 9, groups)).toEqual(['plugins', 'folder:c', 'folder:a', 'folder:b']);
+  });
+
+  test('never changes groups the user expanded or collapsed and counts them as they are', () => {
+    const groups = [group('folder:a', 3, { manual: 'expanded' }), group('folder:b', 5, { manual: 'collapsed' }), group('plugins', 2)];
+    expect(collapsePluginNavGroups(space(needed(9 + 3 + 2)), 9, groups)).toEqual([]);
+    expect(collapsePluginNavGroups(space(needed(9)), 9, groups)).toEqual(['plugins']);
+  });
+});
+
+describe('resolvePluginNavCollapse', () => {
+  const groups = [group('folder:a', 2), group('plugins', 3)];
+
+  test('reports the automatic plugin layout without an override', () => {
+    expect(resolvePluginNavCollapse(space(needed(9 + 2)), 9, groups, null)).toEqual({ collapsed: ['plugins'], pluginsAuto: 'collapsed' });
+  });
+
+  test('keeps a manual plugin expansion and collapses other groups to make room', () => {
+    const override = { layout: 'expanded' as const, auto: 'collapsed' as const, count: 3 };
+    expect(resolvePluginNavCollapse(space(needed(9 + 3)), 9, groups, override)).toEqual({ collapsed: ['folder:a'], pluginsAuto: 'collapsed' });
+  });
+
+  test('keeps a manual plugin collapse and ignores a stale override', () => {
+    const override = { layout: 'collapsed' as const, auto: 'expanded' as const, count: 3 };
+    expect(resolvePluginNavCollapse(space(needed(20)), 9, groups, override)).toEqual({ collapsed: ['plugins'], pluginsAuto: 'expanded' });
+    expect(resolvePluginNavCollapse(space(needed(20)), 9, [groups[0], group('plugins', 4)], override)).toEqual({ collapsed: [], pluginsAuto: 'expanded' });
   });
 });
 
@@ -92,12 +131,20 @@ describe('plugin entry cache', () => {
     expect(readCachedPluginNavEntries()).toEqual(entries);
   });
 
-  test('tolerates invalid JSON and malformed rows', () => {
-    store.set('cpa-gui-plugin-nav-entries', '{oops');
+  test('ignores the previous cache without menu paths', () => {
+    const { path: _path, ...legacy } = entry('alpha', 0);
+    store.set('cpa-gui-plugin-nav-entries', JSON.stringify([legacy]));
     expect(readCachedPluginNavEntries()).toEqual([]);
-    store.set('cpa-gui-plugin-nav-entries', JSON.stringify([entry('alpha', 0), { pluginID: 1 }, null, 'x']));
+    store.set('cpa-gui-plugin-nav-entries.v2', JSON.stringify([legacy]));
+    expect(readCachedPluginNavEntries()).toEqual([]);
+  });
+
+  test('tolerates invalid JSON and malformed rows', () => {
+    store.set('cpa-gui-plugin-nav-entries.v2', '{oops');
+    expect(readCachedPluginNavEntries()).toEqual([]);
+    store.set('cpa-gui-plugin-nav-entries.v2', JSON.stringify([entry('alpha', 0), { pluginID: 1 }, null, 'x']));
     expect(readCachedPluginNavEntries()).toEqual([entry('alpha', 0)]);
-    store.set('cpa-gui-plugin-nav-entries', '{"a":1}');
+    store.set('cpa-gui-plugin-nav-entries.v2', '{"a":1}');
     expect(readCachedPluginNavEntries()).toEqual([]);
   });
 
