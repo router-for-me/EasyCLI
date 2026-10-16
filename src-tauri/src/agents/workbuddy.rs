@@ -200,7 +200,10 @@ pub(crate) fn validate_workbuddy_config(value: &Value) -> Result<(), String> {
 }
 
 fn workbuddy_request_model(id: &str) -> &str {
-    id.strip_prefix("custom-local:").unwrap_or(id)
+    let id = id.strip_prefix("custom-local:").unwrap_or(id);
+    let id = id.strip_prefix("workbuddy/").unwrap_or(id);
+    let id = id.strip_prefix("codebuddy/").unwrap_or(id);
+    id.strip_prefix("workbuddy:").unwrap_or(id)
 }
 
 fn workbuddy_models(value: &Value) -> &[Value] {

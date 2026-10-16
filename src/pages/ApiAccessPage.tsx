@@ -50,6 +50,7 @@ import metaIcon from '../assets/icons/meta.svg';
 import openaiIcon from '../assets/icons/openai-light.svg';
 import vertexIcon from '../assets/icons/vertex.svg';
 import grokIcon from '../assets/icons/grok.svg';
+import workbuddyIcon from '../assets/icons/workbuddy.png';
 import {
   isRecord,
   managementApi,
@@ -106,7 +107,7 @@ export type ProviderSection =
   | 'claude-api-key'
   | 'openai-compatibility';
 
-export type ProviderCategory = ProviderSection | 'deepseek';
+export type ProviderCategory = ProviderSection | 'deepseek' | 'workbuddy';
 
 export const OPENAI_THINKING_LEVELS = ['low', 'medium', 'high', 'xhigh'] as const;
 export { DEEPSEEK_BASE_URL };
@@ -274,6 +275,15 @@ const providerDefinitions: ProviderDefinition[] = [
     icon: deepseekIcon,
     openAi: false,
   },
+  {
+    id: 'workbuddy',
+    section: 'openai-compatibility',
+    responseKey: 'openai-compatibility',
+    labelKey: 'apiAccess.provider.workbuddy',
+    label: 'WorkBuddy',
+    icon: workbuddyIcon,
+    openAi: true,
+  },
   { id: 'claude-api-key', section: 'claude-api-key', responseKey: 'claude-api-key', labelKey: 'apiAccess.provider.claude', icon: claudeIcon, openAi: false },
   { id: 'gemini-api-key', section: 'gemini-api-key', responseKey: 'gemini-api-key', labelKey: 'apiAccess.provider.gemini', icon: geminiIcon, openAi: false },
   { id: 'interactions-api-key', section: 'interactions-api-key', responseKey: 'interactions-api-key', labelKey: 'apiAccess.provider.gemini', label: 'Gemini Interactions', icon: geminiIcon, openAi: false },
@@ -331,6 +341,12 @@ const isDeepSeekRecord = (record: Record<string, unknown>) => {
   return name.includes('deepseek') || /^https?:\/\/api\.deepseek\.com(?:\/|$)/i.test(baseUrl);
 };
 
+const isWorkBuddyRecord = (record: Record<string, unknown>) => {
+  const name = readString(record, 'name').trim().toLowerCase();
+  const baseUrl = readString(record, 'base-url', 'baseUrl').trim().toLowerCase();
+  return name.includes('workbuddy') || /127\.0\.0\.1:8788/i.test(baseUrl);
+};
+
 export const providerCategoryMatchesRecord = (
   category: ProviderCategory,
   record: Record<string, unknown>,
@@ -342,8 +358,11 @@ export const providerCategoryMatchesRecord = (
   if (category === 'codex-api-key') {
     return section === 'codex-api-key' && !isDeepSeekRecord(record);
   }
+  if (category === 'workbuddy') {
+    return section === 'openai-compatibility' && isWorkBuddyRecord(record);
+  }
   if (category === 'openai-compatibility') {
-    return section === 'openai-compatibility';
+    return section === 'openai-compatibility' && !isWorkBuddyRecord(record);
   }
   return true;
 };
@@ -391,6 +410,7 @@ const rowFromRecord = (
 export const providerRowsFromGroups = (section: ProviderSection, groups: Record<string, unknown>[]): ProviderRow[] =>
   providerEntries(section, groups).map(({ record, source }, index) => {
     const deepSeek = section === 'codex-api-key' && (isDeepSeekRecord(record) || isDeepSeekRecord(source.group));
+    const workBuddy = section === 'openai-compatibility' && (isWorkBuddyRecord(record) || isWorkBuddyRecord(source.group));
     const row = rowFromRecord(section, record, index);
     const key = source.keyIndex !== undefined && Array.isArray(source.group.keys)
       ? source.group.keys[source.keyIndex]
@@ -398,8 +418,8 @@ export const providerRowsFromGroups = (section: ProviderSection, groups: Record<
     return {
       ...row,
       source,
-      category: deepSeek ? 'deepseek' : section,
-      name: deepSeek ? 'DeepSeek' : row.name,
+      category: deepSeek ? 'deepseek' : workBuddy ? 'workbuddy' : section,
+      name: deepSeek ? 'DeepSeek' : workBuddy ? 'WorkBuddy' : row.name,
       disabled: isRecord(key) ? providerKeyIsDisabled(source.group, key) : row.disabled,
     };
   });
@@ -775,6 +795,29 @@ const emptyProviderDraft = (): ProviderDraft => ({
 export const createProviderDraft = (category: ProviderCategory): ProviderDraft => {
   const draft = emptyProviderDraft();
   if (category === 'openai-compatibility') return { ...draft, thinkingLevels: [], thinkingLevelsEdited: false };
+  if (category === 'workbuddy') {
+    return {
+      ...draft,
+      name: 'WorkBuddy',
+      remark: 'WorkBuddy Proxy',
+      baseUrl: 'http://127.0.0.1:8788/v1',
+      models: [
+        { name: 'default-model', alias: 'default-model' },
+        { name: 'fast-model', alias: 'fast-model' },
+        { name: 'balanced-model', alias: 'balanced-model' },
+        { name: 'primary-model', alias: 'primary-model' },
+        { name: 'deep-model', alias: 'deep-model' },
+        { name: 'deepseek-v4.1-flash', alias: 'deepseek-v4.1-flash' },
+        { name: 'claude-3-5-sonnet-20241022', alias: 'claude-3-5-sonnet-20241022' },
+        { name: 'claude-3-7-sonnet', alias: 'claude-3-7-sonnet' },
+        { name: 'gpt-4o', alias: 'gpt-4o' },
+        { name: 'deepseek-chat', alias: 'deepseek-chat' },
+        { name: 'deepseek-reasoner', alias: 'deepseek-reasoner' },
+      ],
+      thinkingLevels: [],
+      thinkingLevelsEdited: false,
+    };
+  }
   if (category !== 'deepseek') return draft;
   return {
     ...draft,
@@ -789,9 +832,11 @@ export const applyProviderRemarkIdentity = (
   draft: ProviderDraft,
 ): ProviderDraft => draft.groupKeys ? draft : category === 'deepseek'
   ? { ...draft, name: draft.name.trim() || 'DeepSeek' }
-  : definitionFor(category).openAi
-    ? { ...draft, name: draft.remark.trim() }
-    : draft;
+  : category === 'workbuddy'
+    ? { ...draft, name: draft.name.trim() || 'WorkBuddy' }
+    : definitionFor(category).openAi
+      ? { ...draft, name: draft.remark.trim() }
+      : draft;
 
 export const applyProviderPreset = (
   category: ProviderCategory,

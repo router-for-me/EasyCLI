@@ -4,6 +4,21 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <script>
+      window.addEventListener('error', function(e) {
+        var el = document.getElementById('debug-err') || document.createElement('div');
+        el.id = 'debug-err';
+        el.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:white;color:red;padding:24px;z-index:999999;overflow:auto;font-family:monospace;font-size:14px;';
+        el.innerHTML += '<h3>[JS Error]</h3><pre>' + (e.error ? (e.error.stack || e.error.message) : e.message) + '</pre>';
+        if (!document.body) { document.documentElement.appendChild(el); } else { document.body.appendChild(el); }
+      });
+      window.addEventListener('unhandledrejection', function(e) {
+        var el = document.getElementById('debug-err') || document.createElement('div');
+        el.id = 'debug-err';
+        el.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:white;color:red;padding:24px;z-index:999999;overflow:auto;font-family:monospace;font-size:14px;';
+        var reason = e.reason;
+        el.innerHTML += '<h3>[Promise Rejection]</h3><pre>' + (reason ? (reason.stack || reason.message || reason) : 'unknown') + '</pre>';
+        if (!document.body) { document.documentElement.appendChild(el); } else { document.body.appendChild(el); }
+      });
       (() => {
         let paint = { system: false, appearance: 'light', light: '#ffffff', dark: '#0b0d11' };
         const read = (key, parse) => {

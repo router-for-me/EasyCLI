@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
+  CalendarCheck,
+  ChevronDown,
   ChevronRight,
+  ChevronUp,
   Check,
   CircleAlert,
   CircleCheck,
@@ -13,6 +16,7 @@ import {
   LogIn,
   Plus,
   RefreshCw,
+  Sparkles,
   UserRound,
 } from 'lucide-react';
 import antigravityIcon from '../assets/icons/antigravity.svg';
@@ -22,6 +26,7 @@ import grokIcon from '../assets/icons/grok.svg';
 import devinIcon from '../assets/icons/devin.svg';
 import kimiIcon from '../assets/icons/kimi-light.svg';
 import metaIcon from '../assets/icons/meta.svg';
+import workbuddyIcon from '../assets/icons/workbuddy.png';
 import { useI18n } from '../i18n';
 import { usePrivacyMask } from '../privacy';
 import { FloatingNotice, useAppNotice } from '../appNotice';
@@ -41,8 +46,9 @@ import { handleHorizontalTabKey } from '../components/tabKeyboardNavigation';
 import { PluginOAuthProviders } from './PluginOAuthProviders';
 import { notifyPluginResourcesChanged, PLUGIN_RESOURCES_REFRESH_EVENT } from '../services/pluginResources';
 import { VertexLoginCard } from './VertexLoginCard';
+import { WorkBuddyTasksPage } from './WorkBuddyTasksPage';
 
-type OAuthProviderId = 'codex' | 'claude' | 'antigravity' | 'kimi' | 'xai' | 'devin' | 'meta';
+type OAuthProviderId = 'codex' | 'claude' | 'workbuddy' | 'antigravity' | 'kimi' | 'xai' | 'devin' | 'meta';
 type OAuthFlowStatus = 'idle' | 'waiting' | 'success' | 'error';
 
 type OAuthProviderState = {
@@ -69,6 +75,13 @@ type OAuthStartResult = {
   openError?: string | null;
 };
 
+type WorkBuddyOAuthStartResult = {
+  state: string;
+  authUrl: string;
+  realm: string;
+  platform: string;
+};
+
 type OAuthBrowserOption = {
   id: string;
   label: string;
@@ -82,6 +95,7 @@ type OAuthStatusResult = {
 const oauthProviders = [
   { id: 'codex' as const, name: 'Codex OAuth', icon: codexIcon },
   { id: 'claude' as const, name: 'Claude OAuth', icon: claudeIcon },
+  { id: 'workbuddy' as const, name: 'WorkBuddy OAuth', icon: workbuddyIcon },
   { id: 'antigravity' as const, name: 'Antigravity OAuth', icon: antigravityIcon },
   { id: 'kimi' as const, name: 'Kimi OAuth', icon: kimiIcon },
   { id: 'xai' as const, name: 'xAI OAuth', icon: grokIcon },
@@ -186,7 +200,9 @@ export function OAuthManagementPage() {
         role="tabpanel"
         aria-labelledby={`oauth-subpage-tab-${activeSubpage}`}
       >
-        {activeSubpage === 'login' ? <OAuthLoginPage onOpenAuthFiles={openAuthFiles} /> : null}
+        {activeSubpage === 'login' ? (
+          <OAuthLoginPage onOpenAuthFiles={openAuthFiles} />
+        ) : null}
         {activeSubpage === 'authFiles' ? (
           <AuthFileManagementPage key={authFilesProvider ?? 'all'} initialProvider={authFilesProvider} />
         ) : null}
@@ -196,6 +212,7 @@ export function OAuthManagementPage() {
 }
 
 export function OAuthLoginPage({ onOpenAuthFiles }: { onOpenAuthFiles?: (provider?: string) => void } = {}) {
+  const [workbuddyTasksExpanded, setWorkbuddyTasksExpanded] = useState(false);
   const { t } = useI18n();
   const privacy = usePrivacyMask();
   const [accounts, setAccounts] = useState<Map<string, OAuthAccountSummary[]> | null>(null);
@@ -207,6 +224,10 @@ export function OAuthLoginPage({ onOpenAuthFiles }: { onOpenAuthFiles?: (provide
   const [browsers, setBrowsers] = useState<OAuthBrowserOption[]>([]);
   const [browsersLoading, setBrowsersLoading] = useState(true);
   const [selectedBrowser, setSelectedBrowser] = useState(loadOAuthBrowserPreference);
+  const [workbuddyRealm, setWorkbuddyRealm] = useState<'intl' | 'cn'>('intl');
+  const workbuddyRealmRef = useRef(workbuddyRealm);
+  workbuddyRealmRef.current = workbuddyRealm;
+  const [quickTask, setQuickTask] = useState<string | null>(null);
   const pollingTimers = useRef<Partial<Record<OAuthProviderId, number>>>({});
   const pollingRequests = useRef<Partial<Record<OAuthProviderId, boolean>>>({});
   const pollingSessions = useRef<Partial<Record<OAuthProviderId, string>>>({});
@@ -319,10 +340,60 @@ export function OAuthLoginPage({ onOpenAuthFiles }: { onOpenAuthFiles?: (provide
   }, []);
 
   const startPolling = useCallback(
-    (provider: OAuthProviderId, state: string) => {
+    (provider: OAuthProviderId, state: string, targetRealm?: 'intl' | 'cn') => {
       clearPollingTimer(provider);
       pollingSessions.current[provider] = state;
       const isCurrent = () => pollingSessions.current[provider] === state;
+      if (provider === 'workbuddy') {
+        const realmToPoll = targetRealm || workbuddyRealmRef.current;
+        const checkStatus = async () => {
+          if (pollingRequests.current[provider]) return;
+          pollingRequests.current[provider] = true;
+          try {
+            const result = await invoke<{ status: string; message?: string; uid?: string }>(
+              'poll_workbuddy_oauth',
+              { state, realm: realmToPoll },
+            );
+            if (!isCurrent()) return;
+            if (result.status === 'success') {
+              completeProviderAuth(provider);
+              void loadAccounts();
+              showNotice(t('oauth.loginSuccess', { provider: providerLabel(provider) }), 'success');
+            } else if (result.status === 'error' || result.status === 'expired') {
+              updateProviderState(provider, {
+                status: 'error',
+                error: result.message || t('oauth.authFailed'),
+                polling: false,
+              });
+              clearPollingTimer(provider);
+              showNotice(
+                { key: 'oauth.loginFailed', variables: {
+                  provider: providerLabel(provider),
+                  detail: result.message ? `: ${result.message}` : '',
+                } },
+                'error',
+              );
+            }
+          } catch (error) {
+            if (!isCurrent()) return;
+            updateProviderState(provider, {
+              status: 'error',
+              error: String(error),
+              polling: false,
+            });
+            clearPollingTimer(provider);
+            showNotice(String(error), 'error');
+          } finally {
+            if (isCurrent()) delete pollingRequests.current[provider];
+          }
+        };
+        pollingTimers.current[provider] = window.setInterval(
+          () => void checkStatus(),
+          OAUTH_POLL_INTERVAL_MS,
+        );
+        void checkStatus();
+        return;
+      }
       const checkStatus = async () => {
         if (pollingRequests.current[provider]) return;
         pollingRequests.current[provider] = true;
@@ -405,6 +476,31 @@ export function OAuthLoginPage({ onOpenAuthFiles }: { onOpenAuthFiles?: (provide
       callbackError: undefined,
     });
 
+    if (provider === 'workbuddy') {
+      try {
+        const result = await invoke<WorkBuddyOAuthStartResult>('start_workbuddy_oauth', {
+          realm: workbuddyRealm,
+          platform: 'CLI',
+        });
+        updateProviderState(provider, {
+          url: result.authUrl,
+          state: result.state,
+          status: 'waiting',
+          polling: true,
+        });
+        const targetRealm = (result.realm as 'intl' | 'cn') || workbuddyRealm;
+        startPolling(provider, result.state, targetRealm);
+      } catch (error) {
+        updateProviderState(provider, {
+          status: 'error',
+          error: String(error),
+          polling: false,
+        });
+        showNotice(String(error), 'error');
+      }
+      return;
+    }
+
     try {
       await captureCredentialSnapshot(provider);
       const result = await invoke<OAuthStartResult>('start_oauth_login', {
@@ -448,6 +544,30 @@ export function OAuthLoginPage({ onOpenAuthFiles }: { onOpenAuthFiles?: (provide
         polling: false,
       });
       showNotice(String(error), 'error');
+    }
+  };
+
+  const runWorkBuddyQuickTask = async (kind: 'checkin' | 'all', label: string) => {
+    setQuickTask(kind);
+    try {
+      const payload = await invoke<Record<string, unknown>>(
+        kind === 'checkin' ? 'run_workbuddy_checkin' : 'run_workbuddy_all_tasks',
+        { uid: null },
+      );
+      let detail = '';
+      if (typeof payload.msg === 'string' && payload.msg.trim()) {
+        detail = `：${payload.msg}`;
+      } else if (Array.isArray(payload.results) && payload.results.length > 0) {
+        detail = `：${(payload.results as Record<string, unknown>[])
+          .map((r) => r.msg || r.error || (r.ok ? '成功' : '失败'))
+          .join('；')}`;
+      }
+      showNotice(`WorkBuddy ${label}${detail || '已执行完成'}`, 'success');
+      console.info('WorkBuddy task result', payload);
+    } catch (error) {
+      showNotice(`WorkBuddy ${label}失败：${error}`, 'error');
+    } finally {
+      setQuickTask(null);
     }
   };
 
@@ -611,7 +731,7 @@ export function OAuthLoginPage({ onOpenAuthFiles }: { onOpenAuthFiles?: (provide
           const LoginIcon = hasAccounts || state.status === 'success' ? Plus : LogIn;
 
           return (
-            <section className={`panel oauth-card${state.polling ? ' is-waiting' : ''}`} key={provider.id}>
+            <section className={`panel oauth-card${provider.id === 'workbuddy' && workbuddyTasksExpanded ? ' is-expanded' : ''}${state.polling ? ' is-waiting' : ''}`} key={provider.id}>
               <div className="provider-title-row">
                 <img src={provider.icon} alt="" className={provider.id === 'devin' ? 'provider-logo devin-logo' : 'provider-logo'} />
                 <div>
@@ -666,6 +786,22 @@ export function OAuthLoginPage({ onOpenAuthFiles }: { onOpenAuthFiles?: (provide
                   <div className="oauth-flow-status error" role="alert">
                     <CircleAlert size={15} aria-hidden="true" />
                     <span>{t('oauth.flow.error', { error: privacy.text(state.error || t('oauth.authFailed')) })}</span>
+                  </div>
+                ) : null}
+                {provider.id === 'workbuddy' ? (
+                  <div style={{ marginTop: 8, marginBottom: 8 }}>
+                    <label style={{ fontSize: '0.8125rem', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      <span style={{ color: 'var(--text-secondary)' }}>服务区域 (Realm)</span>
+                      <select
+                        value={workbuddyRealm}
+                        disabled={state.polling}
+                        onChange={(e) => setWorkbuddyRealm(e.target.value as 'intl' | 'cn')}
+                        style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid var(--border-color)', background: 'var(--bg-input)', fontSize: '0.8125rem' }}
+                      >
+                        <option value="intl">国际版 (www.workbuddy.ai)</option>
+                        <option value="cn">国内版 (copilot.tencent.com)</option>
+                      </select>
+                    </label>
                   </div>
                 ) : null}
                 <p className="oauth-hint">{t(provider.id === 'devin' ? 'oauth.devinHint' : provider.id === 'meta' ? 'oauth.metaHint' : 'oauth.hint')}</p>
@@ -729,6 +865,58 @@ export function OAuthLoginPage({ onOpenAuthFiles }: { onOpenAuthFiles?: (provide
                   </button>
                 ) : null}
               </div>
+
+              {provider.id === 'workbuddy' ? (
+                <>
+                  <div className="button-row management-card-actions">
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      disabled={providerAccounts.length === 0}
+                      title={providerAccounts.length === 0 ? '请先完成 WorkBuddy 登录' : '今日签到'}
+                      onClick={() => void runWorkBuddyQuickTask('checkin', '每日签到')}
+                    >
+                      {quickTask === 'checkin' ? (
+                        <LoaderCircle size={16} className="spin" aria-hidden="true" />
+                      ) : (
+                        <CalendarCheck size={16} aria-hidden="true" />
+                      )}
+                      每日签到
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      disabled={providerAccounts.length === 0}
+                      title={providerAccounts.length === 0 ? '请先完成 WorkBuddy 登录' : '一键完成全部任务'}
+                      onClick={() => void runWorkBuddyQuickTask('all', '全部任务')}
+                    >
+                      {quickTask === 'all' ? (
+                        <LoaderCircle size={16} className="spin" aria-hidden="true" />
+                      ) : (
+                        <Sparkles size={16} aria-hidden="true" />
+                      )}
+                      一键完成
+                    </button>
+                    <button
+                      type="button"
+                      className={`secondary-button ${workbuddyTasksExpanded ? 'active' : ''}`}
+                      onClick={() => setWorkbuddyTasksExpanded((prev) => !prev)}
+                      aria-expanded={workbuddyTasksExpanded}
+                    >
+                      {workbuddyTasksExpanded ? (
+                        <ChevronUp size={16} aria-hidden="true" />
+                      ) : (
+                        <ChevronDown size={16} aria-hidden="true" />
+                      )}
+                      {workbuddyTasksExpanded ? '收起任务中心' : '任务中心'}
+                    </button>
+                  </div>
+
+                  {workbuddyTasksExpanded ? (
+                    <WorkBuddyTasksPage embedded />
+                  ) : null}
+                </>
+              ) : null}
             </section>
           );
         })}
