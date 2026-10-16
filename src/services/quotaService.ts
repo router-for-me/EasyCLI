@@ -96,7 +96,8 @@ const headersByProvider: Record<QuotaProvider, Record<string, string>> = {
   antigravity: {
     Authorization: 'Bearer $TOKEN$',
     'Content-Type': 'application/json',
-    'User-Agent': 'antigravity/cli/1.0.13 (aidev_client; os_type=darwin; arch=arm64)',
+    // Keep quota and loadCodeAssist requests aligned with Management Center's Hub client.
+    'User-Agent': 'antigravity/hub/2.23.0 darwin/arm64',
   },
 };
 
