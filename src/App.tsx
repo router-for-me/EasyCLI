@@ -455,7 +455,6 @@ function AppContent() {
                   <PluginNavTree
                     key={page.id}
                     nav={pluginNav}
-                    arrangement={navArrangement.arrangement}
                     status={navArrangement.status}
                     parentRow={row}
                     pluginsExpanded={pluginNavExpanded}

@@ -379,6 +379,17 @@ const path = require('node:path');
     assert.equal(await crowded.evaluate(() => document.activeElement.textContent), '新建文件夹…');
     await crowded.context().close();
 
+    const duplicated = await seeded([
+      { kind: 'folder', id: 'tools', name: 'Tools', children: ['/v0/resource/plugins/request-inspector/samples'] },
+      { kind: 'folder', id: 'tools', name: 'Tools copy', children: [] },
+      { kind: 'page', path: '/v0/resource/plugins/request-inspector/samples' },
+    ], { width: 1280, height: 900 });
+    await section(duplicated).locator(pageKeyOf('samples')).click({ button: 'right' });
+    await duplicated.getByRole('menuitem', { name: '移到一级菜单' }).waitFor();
+    await duplicated.getByRole('menuitem', { name: '移入文件夹' }).click();
+    assert.deepEqual(await duplicated.getByRole('menu').nth(1).getByRole('menuitem').allTextContents(), ['新建文件夹…'], 'the menu follows the displayed layout, not duplicate records');
+    await duplicated.context().close();
+
     const ime = await seeded([{ kind: 'folder', id: 'tools', name: 'Tools', children: [] }], { width: 1280, height: 900 });
     const inav = section(ime);
     await inav.locator('.nav-plugin-folder').click({ button: 'right' });
