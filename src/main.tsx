@@ -7,6 +7,7 @@ import { I18nProvider } from './i18n';
 import { initializeTheme, initializeThemePreferences } from './theme';
 import { initializeUsagePreferences } from './services/usagePreferences';
 import { initializePrivacyMode } from './privacy';
+import { pluginNavArrangementStore } from './services/pluginNavArrangementStore';
 import './styles/index.css';
 
 async function bootstrap() {
@@ -15,6 +16,7 @@ async function bootstrap() {
     const { installBrowserMock } = await import('./mocks/browserMock');
     installBrowserMock();
   }
+  void pluginNavArrangementStore.load();
 
   initializeTheme();
 

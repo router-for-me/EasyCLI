@@ -134,7 +134,7 @@ const path = require('node:path');
     await page.waitForFunction(() => document.querySelector('[data-mock-plugin-webview]')?.dataset.mockUrl?.endsWith('/samples'));
     await aligned();
 
-    await page.locator('.nav-plugin-parent > button:not(.nav-plugin-toggle)').click();
+    await page.locator('.nav-plugin-parent > button:not(.nav-plugin-toggle, .nav-plugin-more)').click();
     await page.getByRole('heading', { level: 1, name: '插件' }).waitFor();
     await hidden();
     await page.locator('.plugin-menus button', { hasText: 'Inspector status' }).first().click();

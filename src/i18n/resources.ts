@@ -70,5 +70,12 @@ export const zhTW: Record<MessageKey, string> = {
   'appUpdate.notes.loading': '正在取得更新說明…',
   'appUpdate.notes.failed': '暫時無法取得更新說明，請稍後重新檢查。',
   'appUpdate.notes.notChecked': '檢查軟體更新後，將顯示最新版的更新說明。',
+  'app.nav.layout.rename': '重新命名',
+  'app.nav.layout.moveToTop': '移到一級選單',
+  'app.nav.layout.newFolder': '新增資料夾',
+  'app.nav.layout.newFolderWith': '新增資料夾…',
+  'app.nav.layout.resetLayout': '恢復預設版面',
+  'app.nav.layout.loadFailed': '無法讀取側邊欄版面，暫時無法整理',
+  'app.nav.layout.saveFailed': '側邊欄版面儲存失敗，已恢復到上次儲存的狀態',
 };
 export const ja: Record<MessageKey, string> = jaOverrides;
