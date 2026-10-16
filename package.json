@@ -8,6 +8,7 @@
     "build": "tsc && vite build",
     "check": "tsc --noEmit",
     "preview": "vite preview",
+    "test:ui:plugin-pins": "node tests/plugin-pins-ui.cjs",
     "test:ui:accessibility": "node tests/app-shell-accessibility-ui.cjs",
     "test:ui:api-provider-dialog": "node tests/api-provider-dialog-layout-ui.cjs",
     "test:ui:api-access-layout": "node tests/api-access-layout-ui.cjs",

@@ -31,9 +31,19 @@ const fs = require('node:fs');
     const tab = name => page.locator('.plugin-tabs').getByRole('button', { name, exact: true });
     const dialog = () => page.getByRole('dialog');
     const installs = () => page.evaluate(() => window.pluginsFixture.installs);
+    const captureStore = async name => {
+      if (!process.env.PLUGIN_SCREENSHOT_DIR) return;
+      const dismiss = page.locator('.app-notice-entry .action-feedback-dismiss');
+      if (await dismiss.count()) {
+        await dismiss.first().click();
+        await page.locator('.app-notice-entry').waitFor({ state: 'detached' });
+      }
+      fs.mkdirSync(process.env.PLUGIN_SCREENSHOT_DIR, { recursive: true });
+      await page.screenshot({ path: path.join(process.env.PLUGIN_SCREENSHOT_DIR, name), fullPage: true });
+    };
     const noOverflow = async () => assert.equal(await page.evaluate(() =>
       document.documentElement.scrollWidth <= innerWidth + 1), true, 'Plugin page must fit the viewport');
-    await open();
+    await open('theme=dark');
     await card('Sample provider').getByRole('button', { name: 'Configure', exact: true }).waitFor();
     assert.equal(await page.locator('.plugin-card').count(), 4);
     await tab('Local plugins').waitFor();
@@ -44,10 +54,22 @@ const fs = require('node:fs');
     assert.equal(await card('kiro').getByRole('button', { name: 'Sign in', exact: true }).count(), 0);
     assert.equal(await card('kiro').getByRole('button', { name: 'Uninstall kiro', exact: true }).count(), 0);
     assert.equal(await card('kiro').getByRole('button', { name: 'Disable', exact: true }).count(), 0);
-    assert.equal(await card('Unloaded provider').getByRole('button', { name: 'Find in store', exact: true }).count(), 0);
+    assert.equal(await card('Unloaded provider').getByRole('button', { name: 'Find in store', exact: true }).count(), 1);
     await card('Unloaded provider').getByRole('button', { name: 'Open logs', exact: true }).click();
     assert.equal(await page.evaluate(() => window.pluginsFixture.commands.some(call => call.command === 'open_core_logs_directory')), true);
     await noOverflow();
+    await card('Sample provider').getByRole('button', { name: 'Check for updates', exact: true }).click();
+    await page.getByText('sample..plugin: Some sources could not be checked.', { exact: false }).waitFor();
+    assert.equal(await tab('Plugin store').getAttribute('aria-current'), 'page');
+    assert.equal(await page.getByRole('searchbox').inputValue(), 'sample..plugin');
+    assert.equal((await installs()).length, 0, 'checking never installs');
+    assert.equal(await page.evaluate(() => window.pluginsFixture.commands.some(call => call.command === 'get_plugin_latest_releases')), true, 'Check for updates refreshes releases');
+    await tab('Local plugins').click();
+    await card('Sample provider').getByRole('button', { name: 'Find in store', exact: true }).click();
+    await card('Sample provider').getByRole('button', { name: 'Update', exact: true }).waitFor();
+    assert.equal(await page.getByText('sample..plugin: Some sources could not be checked.', { exact: false }).count(), 0);
+    await tab('Local plugins').click();
+
 
     const searchInput = page.getByRole('searchbox');
     await searchInput.fill('qoder');
@@ -110,6 +132,7 @@ const fs = require('node:fs');
     await page.getByRole('heading', { name: 'No matching plugins' }).waitFor();
     await search.fill('');
 
+    await page.evaluate(() => { window.pluginsFixture.commands.length = 0; });
     await tab('Plugin store').click();
     await card('Community analytics').getByRole('button', { name: 'Install', exact: true }).waitFor();
     assert.equal(await page.evaluate(() => window.pluginsFixture.commands.some(call => call.command === 'get_plugin_latest_releases')), false);
@@ -121,6 +144,36 @@ const fs = require('node:fs');
     assert.equal(await page.evaluate(() => window.pluginsFixture.commands.some(call => call.command === 'get_plugin_latest_releases' && call.args.repositories.includes('router-for-me/direct'))), false);
     await page.getByText('Offline source: Fixture registry unavailable').waitFor();
     assert.equal(await card('Private provider').getByRole('button', { name: 'Store authentication required' }).isDisabled(), true);
+    const sourceSelector = page.getByRole('combobox', { name: 'Store source', exact: true });
+    await captureStore('store-all.png');
+    await sourceSelector.selectOption('id:community');
+    assert.equal(await page.locator('.plugin-card').count(), 1);
+    await card('Community analytics').waitFor();
+    await captureStore('store-community.png');
+    await search.fill('sample');
+    await page.getByRole('heading', { name: 'No matching plugins' }).waitFor();
+    await search.fill('');
+    await page.getByRole('combobox', { name: 'Plugin store', exact: true }).selectOption('updates');
+    await page.getByRole('heading', { name: 'No matching plugins' }).waitFor();
+    await sourceSelector.selectOption('id:official');
+    assert.equal(await page.locator('.plugin-card').count(), 1);
+    await card('Sample provider').waitFor();
+    await captureStore('store-official-updates.png');
+    await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+    await page.waitForFunction(() => !document.querySelector('.plugin-loading'));
+    assert.equal(await sourceSelector.inputValue(), 'id:official', 'refresh retains the store selection');
+    await sourceSelector.selectOption('id:offline');
+    await page.getByRole('heading', { name: 'No matching plugins' }).waitFor();
+    await page.getByText('Offline source: Fixture registry unavailable').waitFor();
+    // Both local-card shortcuts must escape a previously selected registry.
+    for (const action of ['Find in store', 'Check for updates']) {
+      await sourceSelector.selectOption('id:offline');
+      await tab('Local plugins').click();
+      await card('Sample provider').getByRole('button', { name: action, exact: true }).click();
+      await card('Sample provider').waitFor();
+      assert.equal(await sourceSelector.inputValue(), '', `${action} clears the previous registry filter`);
+    }
+    await search.fill('');
     await page.getByRole('combobox', { name: 'Plugin store' }).selectOption('updates');
     assert.equal(await page.locator('.plugin-card').count(), 1);
     await page.getByRole('combobox', { name: 'Plugin store' }).selectOption('all');
