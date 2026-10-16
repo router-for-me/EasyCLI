@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState } from 'react';
+import { useLayoutEffect, useState, useSyncExternalStore } from 'react';
 import {
   resolvePluginNavCollapse,
   type PluginNavGroup,
@@ -7,6 +7,14 @@ import {
 } from '../services/pluginNavigation';
 
 const COMPACT_QUERY = '(max-width: 900px)';
+
+const subscribeCompact = (change: () => void) => {
+  const media = window.matchMedia(COMPACT_QUERY);
+  media.addEventListener('change', change);
+  return () => media.removeEventListener('change', change);
+};
+
+export const useNavCompact = () => useSyncExternalStore(subscribeCompact, () => window.matchMedia(COMPACT_QUERY).matches);
 
 const px = (value: string) => Number.parseFloat(value) || 0;
 

@@ -109,6 +109,75 @@ export function deletePluginNavFolder(arrangement: PluginNavArrangement, id: str
   return { ...arrangement, custom: arrangement.custom.filter((node) => node.kind !== 'folder' || node.id !== id) };
 }
 
+export type PluginNavDragItem = { kind: 'page'; path: string; inPlugins: boolean } | { kind: 'folder'; id: string };
+export type PluginNavDropTarget =
+  | { kind: 'page'; path: string; folder: string | null; inPlugins: boolean }
+  | { kind: 'folder'; id: string }
+  | { kind: 'empty'; folder: string }
+  | { kind: 'plugins' };
+type PluginNavRef = { kind: 'page'; path: string } | { kind: 'folder'; id: string };
+export type PluginNavPlacement =
+  | { zone: 'top'; ref: PluginNavRef | null; after: boolean }
+  | { zone: 'folder'; id: string; ref: string | null; after: boolean }
+  | { zone: 'plugins' };
+export type PluginNavDropPlan = { target: PluginNavDropTarget; position: 'before' | 'after' | 'into'; placement: PluginNavPlacement };
+
+const PLUGINS_TARGET: PluginNavDropTarget = { kind: 'plugins' };
+const TOP_END: PluginNavPlacement = { zone: 'top', ref: null, after: false };
+
+export function pluginNavDropPlan(item: PluginNavDragItem, target: PluginNavDropTarget, ratio: number): PluginNavDropPlan | null {
+  const upper = ratio < 0.5;
+  const side = (ref: PluginNavRef): PluginNavDropPlan => ({ target, position: upper ? 'before' : 'after', placement: { zone: 'top', ref, after: !upper } });
+  if (item.kind === 'folder') {
+    if (target.kind === 'folder') return target.id === item.id ? null : side({ kind: 'folder', id: target.id });
+    if (target.kind === 'page' && !target.folder && !target.inPlugins) return side({ kind: 'page', path: target.path });
+    return target.kind === 'plugins' ? { target, position: 'before', placement: TOP_END } : null;
+  }
+  const intoPlugins: PluginNavDropPlan | null = item.inPlugins ? null : { target: PLUGINS_TARGET, position: 'into', placement: { zone: 'plugins' } };
+  if (target.kind === 'plugins') return upper ? { target, position: 'before', placement: TOP_END } : intoPlugins;
+  if (target.kind === 'empty') return { target, position: 'into', placement: { zone: 'folder', id: target.folder, ref: null, after: false } };
+  if (target.kind === 'folder') {
+    return ratio < 0.25
+      ? { target, position: 'before', placement: { zone: 'top', ref: { kind: 'folder', id: target.id }, after: false } }
+      : { target, position: 'into', placement: { zone: 'folder', id: target.id, ref: null, after: false } };
+  }
+  if (target.path === item.path) return null;
+  if (target.inPlugins) return intoPlugins;
+  if (!target.folder) return side({ kind: 'page', path: target.path });
+  return { target, position: upper ? 'before' : 'after', placement: { zone: 'folder', id: target.folder, ref: target.path, after: !upper } };
+}
+
+const sameRef = (node: PluginNavNode, ref: PluginNavRef) =>
+  ref.kind === 'page' ? node.kind === 'page' && node.path === ref.path : node.kind === 'folder' && node.id === ref.id;
+const insertAt = <T>(list: T[], value: T, index: number, after: boolean): T[] => {
+  const at = index < 0 ? list.length : index + (after ? 1 : 0);
+  return [...list.slice(0, at), value, ...list.slice(at)];
+};
+
+export function placePluginNavItem(arrangement: PluginNavArrangement, item: PluginNavDragItem, placement: PluginNavPlacement): PluginNavArrangement {
+  let custom: PluginNavNode[];
+  if (item.kind === 'folder') {
+    const node = arrangement.custom.find((current) => current.kind === 'folder' && current.id === item.id);
+    if (!node || placement.zone !== 'top') return arrangement;
+    const rest = arrangement.custom.filter((current) => current !== node);
+    const { ref } = placement;
+    custom = insertAt(rest, node, ref ? rest.findIndex((current) => sameRef(current, ref)) : -1, placement.after);
+  } else {
+    const rest = withoutPath(arrangement, item.path);
+    if (placement.zone === 'plugins') custom = rest;
+    else if (placement.zone === 'top') {
+      const { ref } = placement;
+      custom = insertAt(rest, { kind: 'page', path: item.path }, ref ? rest.findIndex((current) => sameRef(current, ref)) : -1, placement.after);
+    } else {
+      if (!rest.some((node) => node.kind === 'folder' && node.id === placement.id)) return arrangement;
+      custom = rest.map((node) => node.kind === 'folder' && node.id === placement.id
+        ? { ...node, children: insertAt(node.children, item.path, placement.ref ? node.children.indexOf(placement.ref) : -1, placement.after) }
+        : node);
+    }
+  }
+  return JSON.stringify(custom) === JSON.stringify(arrangement.custom) ? arrangement : { ...arrangement, custom };
+}
+
 export function findResolvedPluginPage(nav: ResolvedPluginNav, route: string): ResolvedPluginPage | undefined {
   const pages = [...nav.custom.flatMap((node) => node.kind === 'page' ? [node.page] : node.pages), ...nav.plugins];
   return pages.find((page) => page.entry.route === route);
