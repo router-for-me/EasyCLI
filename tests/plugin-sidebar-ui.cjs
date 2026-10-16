@@ -179,6 +179,8 @@ const path = require('node:path');
     await inspectorPlaceholder.waitFor({ state: 'hidden' });
     assert.equal(await arranged.evaluate(() => document.activeElement.textContent), '新建文件夹');
     await arranged.keyboard.press('ArrowDown');
+    assert.equal(await arranged.evaluate(() => document.activeElement.textContent), '整理侧栏…');
+    await arranged.keyboard.press('ArrowDown');
     assert.equal(await arranged.evaluate(() => document.activeElement.textContent), '恢复默认布局');
     await arranged.keyboard.press('Escape');
     await menu.waitFor({ state: 'detached' });
@@ -290,6 +292,115 @@ const path = require('node:path');
     const unreadableItem = broken.getByRole('menuitem', { name: '侧栏布局读取失败，暂时无法整理' });
     assert.equal(await unreadableItem.isDisabled(), true);
     await unreadable.close();
+
+    const dragTo = async (page, source, target, ratio) => {
+      const from = await source.boundingBox();
+      await page.mouse.move(from.x + 24, from.y + from.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(from.x + 24, from.y + from.height / 2 + 8, { steps: 3 });
+      const to = await target.boundingBox();
+      await page.mouse.move(to.x + 24, to.y + to.height * ratio, { steps: 12 });
+      await page.waitForTimeout(50);
+      await page.mouse.up();
+      await page.waitForTimeout(80);
+    };
+    const organize = await open('mock=running&mockPluginPages=3', { width: 1280, height: 900 });
+    const onav = section(organize);
+    const rowOf = (sub) => onav.locator(pageKeyOf(sub));
+    const entryOf = (sub) => rowOf(sub).locator('.nav-plugin-entry');
+    const pluginsHead = onav.locator('[data-plugin-nav-key="plugins"]');
+    const folderHead = onav.locator('.nav-plugin-folder');
+    const organizing = () => onav.evaluate((element) => element.hasAttribute('data-organizing'));
+    const otail = async () => {
+      const all = await onav.locator('button:not(.nav-plugin-toggle, .nav-plugin-more)').evaluateAll((buttons) => buttons.map((button) => button.textContent.trim()));
+      return all.slice(all.indexOf('版本管理') + 1);
+    };
+    const pages = ['Inspector status', 'Sampled requests', 'Extra page 1', 'Extra page 2', 'Extra page 3'];
+    const bar = ['新建文件夹', '完成'];
+    await children(organize).first().waitFor();
+    await pluginsHead.locator('.nav-plugin-more').click();
+    await organize.getByRole('menuitem', { name: '整理侧栏…' }).click();
+    await organize.waitForFunction(() => document.querySelector('.nav-section')?.hasAttribute('data-organizing'));
+    await organize.waitForFunction(() => document.activeElement?.getAttribute('data-plugin-route') === '/plugin-pages/request-inspector/0');
+    assert.equal(await organize.evaluate(() => document.activeElement.getAttribute('aria-roledescription')), '可拖动');
+    assert.equal(await onav.getByRole('button', { name: '首页' }).isDisabled(), true);
+    assert.equal(await onav.getByRole('button', { name: '版本管理' }).isDisabled(), true);
+    assert.equal(await onav.locator('.nav-plugin-more, .nav-plugin-toggle').count(), 0);
+    assert.equal(await onav.locator('.nav-plugin-grip').count(), 5);
+    assert.deepEqual(await otail(), ['插件', ...pages, ...bar]);
+    await entryOf('samples').click();
+    assert.equal(await organize.locator('section.plugin-resource-page').count(), 0, 'rows do not navigate while organizing');
+
+    await onav.locator('.nav-plugin-organize-new').click();
+    await onav.locator('input.nav-plugin-rename').fill('Tools');
+    await onav.locator('input.nav-plugin-rename').press('Enter');
+    const emptyRow = onav.locator('[data-plugin-nav-key^="empty:"]');
+    assert.equal(await emptyRow.textContent(), '拖入页面');
+    await dragTo(organize, entryOf('samples'), emptyRow, 0.5);
+    assert.deepEqual(await otail(), ['Tools', 'Sampled requests', '插件', 'Inspector status', 'Extra page 1', 'Extra page 2', 'Extra page 3', ...bar]);
+    await dragTo(organize, entryOf('extra-1'), folderHead, 0.1);
+    assert.deepEqual(await otail(), ['Extra page 1', 'Tools', 'Sampled requests', '插件', 'Inspector status', 'Extra page 2', 'Extra page 3', ...bar]);
+    await dragTo(organize, entryOf('status'), rowOf('samples'), 0.8);
+    assert.deepEqual(await otail(), ['Extra page 1', 'Tools', 'Sampled requests', 'Inspector status', '插件', 'Extra page 2', 'Extra page 3', ...bar]);
+
+    const head = folderHead.locator('button').first();
+    const from = await head.boundingBox();
+    await organize.mouse.move(from.x + 24, from.y + from.height / 2);
+    await organize.mouse.down();
+    await organize.mouse.move(from.x + 24, from.y + from.height / 2 - 8, { steps: 3 });
+    assert.equal(await onav.locator('[id^="nav-plugin-folder-"]').count(), 0, 'folders collapse while a folder is dragged');
+    const extraBox = await rowOf('extra-1').boundingBox();
+    await organize.mouse.move(from.x + 24, extraBox.y + extraBox.height * 0.2, { steps: 12 });
+    assert.equal(await rowOf('extra-1').getAttribute('data-drop'), 'before');
+    await organize.mouse.up();
+    await organize.waitForTimeout(80);
+    assert.deepEqual(await otail(), ['Tools', 'Sampled requests', 'Inspector status', 'Extra page 1', '插件', 'Extra page 2', 'Extra page 3', ...bar]);
+    await dragTo(organize, folderHead.locator('button').first(), rowOf('extra-2'), 0.5);
+    assert.deepEqual(await otail(), ['Tools', 'Sampled requests', 'Inspector status', 'Extra page 1', '插件', 'Extra page 2', 'Extra page 3', ...bar], 'a folder cannot enter the plugin group');
+    await dragTo(organize, entryOf('samples'), pluginsHead, 0.8);
+    assert.deepEqual(await otail(), ['Tools', 'Inspector status', 'Extra page 1', '插件', 'Sampled requests', 'Extra page 2', 'Extra page 3', ...bar]);
+
+    const press = async (key) => {
+      await organize.keyboard.press(key);
+      await organize.waitForTimeout(50);
+    };
+    const pickUp = () => press('Space');
+    await entryOf('extra-3').focus();
+    await pickUp();
+    for (let step = 0; step < 3; step += 1) await press('ArrowUp');
+    assert.equal(await pluginsHead.getAttribute('data-drop'), 'before');
+    await press('Space');
+    assert.deepEqual(await otail(), ['Tools', 'Inspector status', 'Extra page 1', 'Extra page 3', '插件', 'Sampled requests', 'Extra page 2', ...bar]);
+    await organize.waitForFunction(() => document.activeElement?.getAttribute('data-plugin-route') === '/plugin-pages/request-inspector/4');
+    await pickUp();
+    await press('ArrowUp');
+    await press('ArrowUp');
+    assert.equal(await rowOf('status').getAttribute('data-drop'), 'before');
+    await press('Escape');
+    assert.equal(await onav.locator('[data-drop]').count(), 0);
+    assert.deepEqual(await otail(), ['Tools', 'Inspector status', 'Extra page 1', 'Extra page 3', '插件', 'Sampled requests', 'Extra page 2', ...bar], 'Escape cancels a keyboard move');
+    const organized = await organize.evaluate(() => window.__TAURI_INTERNALS__.invoke('get_plugin_nav_layout'));
+    assert.deepEqual(organized.custom.map((node) => node.kind === 'folder' ? `${node.name}:${node.children.map((child) => child.split('/').pop())}` : node.path.split('/').pop()),
+      ['Tools:status', 'extra-1', 'extra-3']);
+
+    await organize.waitForTimeout(80);
+    await onav.locator('.nav-plugin-organize-done').click();
+    assert.equal(await organizing(), false);
+    await organize.waitForFunction(() => document.activeElement?.textContent === '插件');
+    assert.equal(await onav.getByRole('button', { name: '首页' }).isDisabled(), false);
+    assert.equal(await onav.locator('.nav-plugin-organize-bar').count(), 0);
+    await entryOf('samples').click();
+    await organize.locator('section.plugin-resource-page').waitFor();
+
+    await pluginsHead.locator('button').first().click();
+    await organize.getByRole('button', { name: '插件设置' }).click();
+    const settingsEntry = organize.locator('.plugin-nav-organize');
+    assert.equal(await settingsEntry.locator('h2').textContent(), '侧栏中的插件页面');
+    await settingsEntry.getByRole('button', { name: '整理侧栏…' }).click();
+    await organize.waitForFunction(() => document.querySelector('.nav-section')?.hasAttribute('data-organizing'));
+    await onav.locator('.nav-plugin-organize-done').click();
+    assert.equal(await organizing(), false);
+    await organize.context().close();
 
     const autoContext = await browser.newContext({ viewport: { width: 1280, height: 900 }, locale: 'zh-CN' });
     await autoContext.addInitScript(() => {
@@ -417,9 +528,19 @@ const path = require('node:path');
     await disabled.waitForFunction(() => !document.querySelector('.nav-section [data-plugin-route]'));
     await dnav.locator('.nav-plugin-folder').getByRole('button', { name: 'Tools', exact: true }).waitFor();
     await dnav.getByText('空文件夹').waitFor();
+    const organizeButton = disabled.locator('.plugin-nav-organize').getByRole('button', { name: '整理侧栏…' });
+    assert.equal(await organizeButton.isEnabled(), true, 'saved folders keep the settings organize entry');
     await dnav.locator('[data-plugin-nav-key="plugins"] .nav-plugin-more').click();
     await disabled.getByRole('menuitem', { name: '恢复默认布局' }).waitFor();
     await disabled.keyboard.press('Escape');
+
+    await resize(disabled, { width: 800, height: 900 });
+    assert.equal(await organizeButton.isDisabled(), true, 'the settings organize entry is disabled in compact mode');
+    await disabled.locator('.plugin-nav-organize').getByText('窗口过窄，加宽窗口后才能整理侧栏').waitFor();
+    await disabled.evaluate(() => window.dispatchEvent(new Event('plugin-nav-organize')));
+    await resize(disabled, { width: 1280, height: 900 });
+    await disabled.waitForTimeout(200);
+    assert.equal(await dnav.evaluate((element) => element.hasAttribute('data-organizing')), false, 'a request from a narrow window does not start organizing later');
     await disabled.context().close();
 
     const compactArranged = await open('mock=running', { width: 800, height: 400 });
@@ -428,7 +549,7 @@ const path = require('node:path');
     await compactArranged.context().close();
 
     assert.deepEqual(errors, []);
-    console.log('PASS: plugin submenu auto and manual expansion, live resize, navigation, locked state, compact bar, page rename, folders, promotion, save rollback, unreadable layouts, multi-group auto collapse, scrollable folder submenus, IME-safe rename and empty folders without plugin pages.');
+    console.log('PASS: plugin submenu auto and manual expansion, live resize, navigation, locked state, compact bar, page rename, folders, promotion, save rollback, unreadable layouts, organize mode with pointer and keyboard drag, multi-group auto collapse, scrollable folder submenus, IME-safe rename, empty folders without plugin pages and compact organize gating.');
   } finally {
     if (browser) await browser.close();
     await server.close();
