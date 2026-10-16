@@ -39,6 +39,9 @@ yaml-serde-edit = { version = "0.1", default-features = false }
 yaml-edit = "0.2"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 
+[dev-dependencies]
+tauri = { version = "~2.11", features = ["test"] }
+
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 
