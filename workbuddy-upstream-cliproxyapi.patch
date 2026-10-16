@@ -493,7 +493,7 @@ index 0efbc87..3ba16d9 100644
 +	WorkBuddy = "workbuddy"
  )
 diff --git a/internal/registry/model_definitions.go b/internal/registry/model_definitions.go
-index f2dbce0..6cf71f3 100644
+index f2dbce0..a26e7a4 100644
 --- a/internal/registry/model_definitions.go
 +++ b/internal/registry/model_definitions.go
 @@ -37,6 +37,7 @@ type staticModelsJSON struct {
@@ -513,86 +513,205 @@ index f2dbce0..6cf71f3 100644
  	default:
  		return nil
  	}
-@@ -558,6 +561,94 @@ func GetMetaModels() []*ModelInfo {
+@@ -558,6 +561,213 @@ func GetMetaModels() []*ModelInfo {
  	return cloneModelInfos(getModels().Meta)
  }
  
 +var staticWorkBuddyModels = []*ModelInfo{
 +	{
-+		ID:            "default-model",
++		ID:            "hy4-preview-f",
 +		Type:          "workbuddy",
-+		OwnedBy:       "workbuddy",
-+		DisplayName:   "WorkBuddy Auto",
-+		ContextLength: 200000,
++		OwnedBy:       "tencent",
++		DisplayName:   "Hunyuan 4 Preview Free (WorkBuddy)",
++		ContextLength: 128000,
 +	},
 +	{
-+		ID:            "fast-model",
++		ID:            "hy3",
 +		Type:          "workbuddy",
-+		OwnedBy:       "workbuddy",
-+		DisplayName:   "WorkBuddy Fast",
-+		ContextLength: 200000,
-+	},
-+	{
-+		ID:            "balanced-model",
-+		Type:          "workbuddy",
-+		OwnedBy:       "workbuddy",
-+		DisplayName:   "WorkBuddy Balanced",
-+		ContextLength: 256000,
-+	},
-+	{
-+		ID:            "primary-model",
-+		Type:          "workbuddy",
-+		OwnedBy:       "workbuddy",
-+		DisplayName:   "WorkBuddy Primary",
-+		ContextLength: 272000,
-+	},
-+	{
-+		ID:            "deep-model",
-+		Type:          "workbuddy",
-+		OwnedBy:       "workbuddy",
-+		DisplayName:   "WorkBuddy Deep",
-+		ContextLength: 200000,
++		OwnedBy:       "tencent",
++		DisplayName:   "Hunyuan 3 (WorkBuddy)",
++		ContextLength: 128000,
 +	},
 +	{
 +		ID:            "deepseek-v4.1-flash",
 +		Type:          "workbuddy",
 +		OwnedBy:       "deepseek",
-+		DisplayName:   "DeepSeek Flash (WorkBuddy)",
++		DisplayName:   "DeepSeek V4.1 Flash (WorkBuddy)",
 +		ContextLength: 128000,
 +	},
 +	{
-+		ID:            "claude-3-7-sonnet",
-+		Type:          "workbuddy",
-+		OwnedBy:       "anthropic",
-+		DisplayName:   "Claude 3.7 Sonnet (WorkBuddy)",
-+		ContextLength: 200000,
-+	},
-+	{
-+		ID:            "claude-3-5-sonnet-20241022",
-+		Type:          "workbuddy",
-+		OwnedBy:       "anthropic",
-+		DisplayName:   "Claude 3.5 Sonnet (WorkBuddy)",
-+		ContextLength: 200000,
-+	},
-+	{
-+		ID:            "deepseek-chat",
-+		Type:          "workbuddy",
-+		OwnedBy:       "deepseek",
-+		DisplayName:   "DeepSeek V3 (WorkBuddy)",
-+		ContextLength: 64000,
-+	},
-+	{
-+		ID:            "deepseek-reasoner",
-+		Type:          "workbuddy",
-+		OwnedBy:       "deepseek",
-+		DisplayName:   "DeepSeek R1 (WorkBuddy)",
-+		ContextLength: 64000,
-+	},
-+	{
-+		ID:            "gpt-4o",
++		ID:            "gpt-6-astra",
 +		Type:          "workbuddy",
 +		OwnedBy:       "openai",
-+		DisplayName:   "GPT-4o (WorkBuddy)",
++		DisplayName:   "GPT-6 Astra (WorkBuddy)",
++		ContextLength: 128000,
++	},
++	{
++		ID:            "gpt-5.6-sol",
++		Type:          "workbuddy",
++		OwnedBy:       "openai",
++		DisplayName:   "GPT-5.6 Sol (WorkBuddy)",
++		ContextLength: 128000,
++	},
++	{
++		ID:            "gpt-5.6-terra",
++		Type:          "workbuddy",
++		OwnedBy:       "openai",
++		DisplayName:   "GPT-5.6 Terra (WorkBuddy)",
++		ContextLength: 128000,
++	},
++	{
++		ID:            "gpt-5.6-luna",
++		Type:          "workbuddy",
++		OwnedBy:       "openai",
++		DisplayName:   "GPT-5.6 Luna (WorkBuddy)",
++		ContextLength: 128000,
++	},
++	{
++		ID:            "gpt-5.5",
++		Type:          "workbuddy",
++		OwnedBy:       "openai",
++		DisplayName:   "GPT-5.5 (WorkBuddy)",
++		ContextLength: 128000,
++	},
++	{
++		ID:            "gpt-5.4",
++		Type:          "workbuddy",
++		OwnedBy:       "openai",
++		DisplayName:   "GPT-5.4 (WorkBuddy)",
++		ContextLength: 128000,
++	},
++	{
++		ID:            "grok-4.7",
++		Type:          "workbuddy",
++		OwnedBy:       "xai",
++		DisplayName:   "Grok 4.7 (WorkBuddy)",
++		ContextLength: 128000,
++	},
++	{
++		ID:            "gemini-3.5-flash",
++		Type:          "workbuddy",
++		OwnedBy:       "google",
++		DisplayName:   "Gemini 3.5 Flash (WorkBuddy)",
++		ContextLength: 128000,
++	},
++	{
++		ID:            "glm-5.3-flash",
++		Type:          "workbuddy",
++		OwnedBy:       "zhipu",
++		DisplayName:   "GLM 5.3 Flash (WorkBuddy)",
++		ContextLength: 128000,
++	},
++	{
++		ID:            "glm-5.3",
++		Type:          "workbuddy",
++		OwnedBy:       "zhipu",
++		DisplayName:   "GLM 5.3 (WorkBuddy)",
++		ContextLength: 128000,
++	},
++	{
++		ID:            "glm-5.2",
++		Type:          "workbuddy",
++		OwnedBy:       "zhipu",
++		DisplayName:   "GLM 5.2 (WorkBuddy)",
++		ContextLength: 128000,
++	},
++	{
++		ID:            "kimi-k3",
++		Type:          "workbuddy",
++		OwnedBy:       "moonshot",
++		DisplayName:   "Kimi K3 (WorkBuddy)",
++		ContextLength: 128000,
++	},
++	{
++		ID:            "kimi-k2.6",
++		Type:          "workbuddy",
++		OwnedBy:       "moonshot",
++		DisplayName:   "Kimi K2.6 (WorkBuddy)",
++		ContextLength: 128000,
++	},
++	{
++		ID:            "kimi-k2.8-preview",
++		Type:          "workbuddy",
++		OwnedBy:       "moonshot",
++		DisplayName:   "Kimi K2.8 Preview (WorkBuddy)",
++		ContextLength: 128000,
++	},
++	{
++		ID:            "step-5-preview",
++		Type:          "workbuddy",
++		OwnedBy:       "stepfun",
++		DisplayName:   "Step 5 Preview (WorkBuddy)",
++		ContextLength: 128000,
++	},
++	{
++		ID:            "gpt-6-sol",
++		Type:          "workbuddy",
++		OwnedBy:       "openai",
++		DisplayName:   "GPT-6 Sol (WorkBuddy)",
++		ContextLength: 128000,
++	},
++	{
++		ID:            "gpt-6-luna",
++		Type:          "workbuddy",
++		OwnedBy:       "openai",
++		DisplayName:   "GPT-6 Luna (WorkBuddy)",
++		ContextLength: 128000,
++	},
++	{
++		ID:            "gemini-3.8-flash",
++		Type:          "workbuddy",
++		OwnedBy:       "google",
++		DisplayName:   "Gemini 3.8 Flash (WorkBuddy)",
++		ContextLength: 128000,
++	},
++	{
++		ID:            "glm-5.1",
++		Type:          "workbuddy",
++		OwnedBy:       "zhipu",
++		DisplayName:   "GLM 5.1 (WorkBuddy)",
++		ContextLength: 128000,
++	},
++	{
++		ID:            "glm-5v-turbo",
++		Type:          "workbuddy",
++		OwnedBy:       "zhipu",
++		DisplayName:   "GLM 5V Turbo (WorkBuddy)",
++		ContextLength: 128000,
++	},
++	{
++		ID:            "minimax-m3",
++		Type:          "workbuddy",
++		OwnedBy:       "minimax",
++		DisplayName:   "MiniMax M3 (WorkBuddy)",
++		ContextLength: 128000,
++	},
++	{
++		ID:            "kimi-k3-1",
++		Type:          "workbuddy",
++		OwnedBy:       "moonshot",
++		DisplayName:   "Kimi K3.1 (WorkBuddy)",
++		ContextLength: 128000,
++	},
++	{
++		ID:            "kimi-k2.7",
++		Type:          "workbuddy",
++		OwnedBy:       "moonshot",
++		DisplayName:   "Kimi K2.7 (WorkBuddy)",
++		ContextLength: 128000,
++	},
++	{
++		ID:            "deepseek-v4-pro",
++		Type:          "workbuddy",
++		OwnedBy:       "deepseek",
++		DisplayName:   "DeepSeek V4 Pro (WorkBuddy)",
++		ContextLength: 128000,
++	},
++	{
++		ID:            "space-bunny",
++		Type:          "workbuddy",
++		OwnedBy:       "workbuddy",
++		DisplayName:   "Space Bunny (WorkBuddy)",
 +		ContextLength: 128000,
 +	},
 +}
@@ -608,7 +727,7 @@ index f2dbce0..6cf71f3 100644
  // LookupStaticModelInfo searches all static model definitions for a model by ID.
  // Returns nil if no matching model is found.
  func LookupStaticModelInfo(modelID string) *ModelInfo {
-@@ -577,10 +668,12 @@ func LookupStaticModelInfo(modelID string) *ModelInfo {
+@@ -577,10 +787,12 @@ func LookupStaticModelInfo(modelID string) *ModelInfo {
  		data.XAI,
  		GetDevinModels(),
  		GetMetaModels(),

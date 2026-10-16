@@ -245,3 +245,50 @@
   align-items: center;
   gap: 8px;
 }
+
+/* Embedded Mode inside OAuth Card */
+.workbuddy-tasks-embedded {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--border-color, #e2e8f0);
+}
+
+.workbuddy-embedded-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.workbuddy-embedded-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.workbuddy-embedded-badge {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-primary, #0f172a);
+}
+
+.workbuddy-embedded-hint {
+  font-size: 0.76rem;
+  color: var(--text-secondary, #64748b);
+}
+
+.workbuddy-embedded-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.oauth-card.is-expanded {
+  grid-column: 1 / -1;
+}

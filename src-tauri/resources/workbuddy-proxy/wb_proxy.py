@@ -9934,7 +9934,7 @@ def clear_logs():
 #: app itself offers them - so they belong in the advertised list exactly when
 #: the realm's own picker carries them. They are not filtered out here: the
 #: membership rule is the picker list itself (see merge_catalog).
-ALIAS_MODELS = {
+VIRTUAL_ALIAS_MODELS = {
     "default-model",
     "fast-model",
     "balanced-model",
@@ -9942,11 +9942,12 @@ ALIAS_MODELS = {
     "deep-model",
     "auto",
 }
+ALIAS_MODELS = VIRTUAL_ALIAS_MODELS
 #: Models the API advertises but that are not usable for chat, so no client
 #: should ever see them: "lite" backs internal helpers (title generation,
 #: compaction) and upstream rejects it with 11102, and the codewise/completion
-#: entries are text-completion or IDE-inline models.
-NON_CHAT_MODELS = {"lite", "wb-lite", "builtin-lite"}
+#: entries are text-completion or IDE-inline models, or virtual aliases.
+NON_CHAT_MODELS = {"lite", "wb-lite", "builtin-lite"} | VIRTUAL_ALIAS_MODELS
 NON_CHAT_PREFIXES = ("codewise-", "completion-")
 NON_CHAT_SUFFIXES = ("-image-alpha", "-image-alpha-edit", "-taco-completion")
 def is_chat_model(mid):
@@ -9974,6 +9975,8 @@ CN_UI_ORDER = [
     "kimi-k2.7",
     "kimi-k2.6",
     "deepseek-v4-pro",
+    "step-5-preview",
+    "space-bunny",
 ]
 INTL_UI_ORDER = [
     "hy4-preview-f",
@@ -9993,6 +9996,10 @@ INTL_UI_ORDER = [
     "kimi-k3",
     "kimi-k2.6",
     "kimi-k2.8-preview",
+    "step-5-preview",
+    "gpt-6-sol",
+    "gpt-6-luna",
+    "gemini-3.8-flash",
 ]
 def merge_reasoning(base, live):
     """Field-level merge of one model's reasoning block.
@@ -10041,40 +10048,20 @@ def merge_catalog(primary, realm=None, extras=False):
             merged[mid] = base
         elif mid not in merged:
             merged[mid] = {}
-    # Order: the picker's own list first. That list is what the desktop app
-    # shows, so /v1/models must not disagree with it - neither on order nor on
-    # membership. Iterating `primary` (not the curated table) is also what
-    # brings the quick presets through: fast-model and friends are real,
-    # requestable models the picker offers, and the table below never names
-    # them, so the table-first order used to hide them.
+    # Order is strictly matched to the desktop app's picker list:
+    # Domestic (CN) = exactly the 16 models in CN_UI_ORDER.
+    # International (Intl) = exactly the 21 models in INTL_UI_ORDER.
+    # All = union of both.
     order = CN_UI_ORDER if r == "cn" else INTL_UI_ORDER
     if r == "all":
         order = list(INTL_UI_ORDER) + [m for m in CN_UI_ORDER if m not in INTL_UI_ORDER]
     out = []
     seen = set()
-
-    def emit(mid):
-        if mid in merged and mid not in seen:
-            seen.add(mid)
-            out.append((mid, merged[mid]))
-
-    for mid, _meta in primary or []:
-        emit(mid)
-    # Names the curated table knows and the picker did not restate, so a model
-    # upstream adds before the desktop caches it still reaches /v1/models. A
-    # free "-f" build is skipped when its plain sibling is already listed: the
-    # picker shows one of the two, and the table carries the other from an
-    # older release.
     for mid in order:
-        if mid.endswith("-f") and mid[:-2] in seen:
-            continue
-        emit(mid)
-    if extras:
-        # A model neither the table nor the picker has ever named still ships
-        # when the live catalogue lists it - that is how a newly added upstream
-        # model reaches /v1/models without a release.
-        for mid, _meta in primary or []:
-            emit(mid)
+        if mid not in seen:
+            seen.add(mid)
+            meta = merged.get(mid) or {"id": mid, "name": mid}
+            out.append((mid, meta))
     return out
 _catalog_lock = threading.Lock()
 

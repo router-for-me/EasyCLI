@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 're
 import { invoke } from '@tauri-apps/api/core';
 import {
   CalendarCheck,
+  ChevronDown,
   ChevronRight,
+  ChevronUp,
   Check,
   CircleAlert,
   CircleCheck,
@@ -199,13 +201,7 @@ export function OAuthManagementPage() {
         aria-labelledby={`oauth-subpage-tab-${activeSubpage}`}
       >
         {activeSubpage === 'login' ? (
-          <OAuthLoginPage
-            onOpenAuthFiles={openAuthFiles}
-            onOpenWorkBuddyTasks={() => setActiveSubpage('workbuddyTasks')}
-          />
-        ) : null}
-        {activeSubpage === 'workbuddyTasks' ? (
-          <WorkBuddyTasksPage onBack={() => setActiveSubpage('login')} />
+          <OAuthLoginPage onOpenAuthFiles={openAuthFiles} />
         ) : null}
         {activeSubpage === 'authFiles' ? (
           <AuthFileManagementPage key={authFilesProvider ?? 'all'} initialProvider={authFilesProvider} />
@@ -215,7 +211,8 @@ export function OAuthManagementPage() {
   );
 }
 
-export function OAuthLoginPage({ onOpenAuthFiles, onOpenWorkBuddyTasks }: { onOpenAuthFiles?: (provider?: string) => void; onOpenWorkBuddyTasks?: () => void } = {}) {
+export function OAuthLoginPage({ onOpenAuthFiles }: { onOpenAuthFiles?: (provider?: string) => void } = {}) {
+  const [workbuddyTasksExpanded, setWorkbuddyTasksExpanded] = useState(false);
   const { t } = useI18n();
   const privacy = usePrivacyMask();
   const [accounts, setAccounts] = useState<Map<string, OAuthAccountSummary[]> | null>(null);
@@ -734,7 +731,7 @@ export function OAuthLoginPage({ onOpenAuthFiles, onOpenWorkBuddyTasks }: { onOp
           const LoginIcon = hasAccounts || state.status === 'success' ? Plus : LogIn;
 
           return (
-            <section className={`panel oauth-card${state.polling ? ' is-waiting' : ''}`} key={provider.id}>
+            <section className={`panel oauth-card${provider.id === 'workbuddy' && workbuddyTasksExpanded ? ' is-expanded' : ''}${state.polling ? ' is-waiting' : ''}`} key={provider.id}>
               <div className="provider-title-row">
                 <img src={provider.icon} alt="" className={provider.id === 'devin' ? 'provider-logo devin-logo' : 'provider-logo'} />
                 <div>
@@ -869,32 +866,56 @@ export function OAuthLoginPage({ onOpenAuthFiles, onOpenWorkBuddyTasks }: { onOp
                 ) : null}
               </div>
 
-              {provider.id === 'workbuddy' && onOpenWorkBuddyTasks ? (
-                <div className="button-row management-card-actions">
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    disabled={providerAccounts.length === 0}
-                    title={providerAccounts.length === 0 ? '请先完成 WorkBuddy 登录' : '今日签到'}
-                    onClick={() => void runWorkBuddyQuickTask('checkin', '每日签到')}
-                  >
-                    {quickTask === 'checkin' ? <LoaderCircle size={16} className="spin" aria-hidden="true" /> : <CalendarCheck size={16} aria-hidden="true" />}
-                    每日签到
-                  </button>
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    disabled={providerAccounts.length === 0}
-                    title={providerAccounts.length === 0 ? '请先完成 WorkBuddy 登录' : '一键完成全部任务'}
-                    onClick={() => void runWorkBuddyQuickTask('all', '全部任务')}
-                  >
-                    {quickTask === 'all' ? <LoaderCircle size={16} className="spin" aria-hidden="true" /> : <Sparkles size={16} aria-hidden="true" />}
-                    一键完成
-                  </button>
-                  <button type="button" className="secondary-button" onClick={onOpenWorkBuddyTasks}>
-                    打开任务中心
-                  </button>
-                </div>
+              {provider.id === 'workbuddy' ? (
+                <>
+                  <div className="button-row management-card-actions">
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      disabled={providerAccounts.length === 0}
+                      title={providerAccounts.length === 0 ? '请先完成 WorkBuddy 登录' : '今日签到'}
+                      onClick={() => void runWorkBuddyQuickTask('checkin', '每日签到')}
+                    >
+                      {quickTask === 'checkin' ? (
+                        <LoaderCircle size={16} className="spin" aria-hidden="true" />
+                      ) : (
+                        <CalendarCheck size={16} aria-hidden="true" />
+                      )}
+                      每日签到
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      disabled={providerAccounts.length === 0}
+                      title={providerAccounts.length === 0 ? '请先完成 WorkBuddy 登录' : '一键完成全部任务'}
+                      onClick={() => void runWorkBuddyQuickTask('all', '全部任务')}
+                    >
+                      {quickTask === 'all' ? (
+                        <LoaderCircle size={16} className="spin" aria-hidden="true" />
+                      ) : (
+                        <Sparkles size={16} aria-hidden="true" />
+                      )}
+                      一键完成
+                    </button>
+                    <button
+                      type="button"
+                      className={`secondary-button ${workbuddyTasksExpanded ? 'active' : ''}`}
+                      onClick={() => setWorkbuddyTasksExpanded((prev) => !prev)}
+                      aria-expanded={workbuddyTasksExpanded}
+                    >
+                      {workbuddyTasksExpanded ? (
+                        <ChevronUp size={16} aria-hidden="true" />
+                      ) : (
+                        <ChevronDown size={16} aria-hidden="true" />
+                      )}
+                      {workbuddyTasksExpanded ? '收起任务中心' : '任务中心'}
+                    </button>
+                  </div>
+
+                  {workbuddyTasksExpanded ? (
+                    <WorkBuddyTasksPage embedded />
+                  ) : null}
+                </>
               ) : null}
             </section>
           );

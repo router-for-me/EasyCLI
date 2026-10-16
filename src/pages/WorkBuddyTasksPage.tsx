@@ -150,7 +150,7 @@ const isTaskOk = (result: Record<string, unknown> | undefined): boolean | null =
   return null;
 };
 
-export function WorkBuddyTasksPage({ onBack }: { onBack?: () => void }) {
+export function WorkBuddyTasksPage({ onBack, embedded }: { onBack?: () => void; embedded?: boolean }) {
   const notice = useAppNotice();
   const noticeRef = useRef(notice);
   noticeRef.current = notice;
@@ -351,10 +351,60 @@ export function WorkBuddyTasksPage({ onBack }: { onBack?: () => void }) {
   };
 
   return (
-    <section className="page workbuddy-tasks-page">
+    <div className={embedded ? 'workbuddy-tasks-embedded' : 'page workbuddy-tasks-page'}>
       <FloatingNotice key={notice.revision} notice={notice.notice} onDismiss={notice.clearNotice} />
 
-      <header className="workbuddy-tasks-header">
+      {embedded ? (
+        <div className="workbuddy-embedded-header">
+          <div className="workbuddy-embedded-title">
+            <span className="workbuddy-embedded-badge">任务中心</span>
+            <span className="workbuddy-embedded-hint">每日签到、活跃打卡与成长任务</span>
+          </div>
+          <div className="workbuddy-embedded-actions">
+            <button
+              type="button"
+              className="secondary-button compact-button"
+              disabled={loadingAccounts || refreshingCredits}
+              onClick={() => void handleRefreshCredits()}
+              title="向腾讯服务器同步最新账号积分"
+            >
+              {refreshingCredits ? (
+                <LoaderCircle size={14} className="spin" aria-hidden="true" />
+              ) : (
+                <RefreshCw size={14} aria-hidden="true" />
+              )}
+              刷新积分
+            </button>
+            <button
+              type="button"
+              className="secondary-button compact-button"
+              disabled={busyTask !== null}
+              onClick={() => void importDesktopAccounts()}
+            >
+              {busyTask === '__import__' ? (
+                <LoaderCircle size={14} className="spin" aria-hidden="true" />
+              ) : (
+                <Download size={14} aria-hidden="true" />
+              )}
+              导入桌面账号
+            </button>
+            <button
+              type="button"
+              className="primary-button compact-button"
+              disabled={busyTask !== null || accounts.length === 0}
+              onClick={() => void runAll()}
+            >
+              {busyTask === '__all__' ? (
+                <LoaderCircle size={14} className="spin" aria-hidden="true" />
+              ) : (
+                <Sparkles size={14} aria-hidden="true" />
+              )}
+              一键全部任务
+            </button>
+          </div>
+        </div>
+      ) : (
+        <header className="workbuddy-tasks-header">
         <div className="workbuddy-tasks-title">
           <img src={workbuddyIcon} alt="" />
           <div>
@@ -411,6 +461,7 @@ export function WorkBuddyTasksPage({ onBack }: { onBack?: () => void }) {
           </button>
         </div>
       </header>
+      )}
 
       {/* Credit Delta Banner */}
       {creditDeltaMessage ? (
@@ -583,6 +634,6 @@ export function WorkBuddyTasksPage({ onBack }: { onBack?: () => void }) {
           <div className="workbuddy-task-log">{runLog.join('\n')}</div>
         </section>
       ) : null}
-    </section>
+    </div>
   );
 }
