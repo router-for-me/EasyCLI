@@ -1759,7 +1759,7 @@ pub(crate) fn logical_window_size_from_physical(
 }
 
 pub(crate) fn fit_window_size_to_current_monitor<R: tauri::Runtime>(
-    window: &tauri::WebviewWindow<R>,
+    window: &tauri::Window<R>,
     saved_size: SavedWindowSize,
 ) -> SavedWindowSize {
     let monitor = window
@@ -1806,8 +1806,7 @@ pub(crate) fn restore_main_window_size(app: &tauri::AppHandle) -> Result<(), Str
     let Some(saved_size) = window_size_state.snapshot()? else {
         return Ok(());
     };
-    let window = app
-        .get_webview_window("main")
+    let window = main_window(app)
         .ok_or_else(|| "Main window does not exist; cannot restore window size".to_string())?;
     let restored_size = fit_window_size_to_current_monitor(&window, saved_size);
 
@@ -1825,8 +1824,7 @@ pub(crate) fn persist_main_window_size(app: &tauri::AppHandle) -> Result<(), Str
     let saved_size = match window_size_state.snapshot()? {
         Some(size) => size,
         None => {
-            let window = app
-                .get_webview_window("main")
+            let window = main_window(app)
                 .ok_or_else(|| "Main window does not exist; cannot save window size".to_string())?;
             let physical_size = window
                 .inner_size()
