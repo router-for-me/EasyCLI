@@ -70,17 +70,5 @@ export const zhTW: Record<MessageKey, string> = {
   'appUpdate.notes.loading': '正在取得更新說明…',
   'appUpdate.notes.failed': '暫時無法取得更新說明，請稍後重新檢查。',
   'appUpdate.notes.notChecked': '檢查軟體更新後，將顯示最新版的更新說明。',
-  'app.nav.layout.rename': '重新命名',
-  'app.nav.layout.moveToTop': '移到一級選單',
-  'app.nav.layout.newFolder': '新增資料夾',
-  'app.nav.layout.newFolderWith': '新增資料夾…',
-  'app.nav.layout.resetLayout': '恢復預設版面',
-  'app.nav.layout.loadFailed': '無法讀取側邊欄版面，暫時無法整理',
-  'app.nav.layout.saveFailed': '側邊欄版面儲存失敗，已恢復到上次儲存的狀態',
-  'app.nav.layout.organize': '整理側邊欄…',
-  'app.nav.layout.dragInstructions': '按空白鍵或 Enter 鍵拿起，用上下方向鍵移動，再按空白鍵或 Enter 鍵放下，按 Esc 取消。',
-  'app.nav.layout.settingsTitle': '側邊欄中的插件頁面',
-  'app.nav.layout.settingsHint': '在側邊欄中拖動插件頁面，調整順序或放進資料夾。',
-  'app.nav.layout.narrowWindow': '視窗過窄，加寬視窗後才能整理側邊欄',
 };
 export const ja: Record<MessageKey, string> = jaOverrides;

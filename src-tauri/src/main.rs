@@ -22,7 +22,6 @@ mod network_proxy;
 ))]
 mod native_i18n;
 mod oauth_browser;
-mod plugin_nav_layout;
 mod plugin_webview;
 mod plugins;
 mod privacy_mode;
@@ -2712,8 +2711,6 @@ fn main() {
             desktop_theme::save_theme_selection,
             privacy_mode::get_privacy_mode,
             privacy_mode::save_privacy_mode,
-            plugin_nav_layout::get_plugin_nav_layout,
-            plugin_nav_layout::save_plugin_nav_layout,
             health_check,
             detect_core_platform,
             get_core_status,
