@@ -127,7 +127,6 @@ export function createPluginMock(host: PluginMockHost, extraPages = 0, onWebview
     host.coreConfig.pluginsEnabled = object(host.extendedConfig.plugins).enabled === true;
   }
 
-  let navLayout: JsonObject | null = null;
   let webview = initialWebview();
   let owner: number | null = null;
   let latestToken = 0;
@@ -229,12 +228,6 @@ export function createPluginMock(host: PluginMockHost, extraPages = 0, onWebview
   }
 
   function handle(command: string, payload: JsonObject): PluginMockResult {
-    if (command === 'get_plugin_nav_layout') return { handled: true, value: clone(navLayout) };
-    if (command === 'save_plugin_nav_layout') {
-      if (!payload.layout || typeof payload.layout !== 'object' || Array.isArray(payload.layout)) throw new Error('Invalid plugin navigation layout');
-      navLayout = clone(payload.layout as JsonObject);
-      return { handled: true, value: null };
-    }
     const request = object(payload.request);
     const path = text(request.path);
     const pluginRequest = command === 'management_request' && (

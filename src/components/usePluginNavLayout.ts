@@ -1,39 +1,21 @@
-import { useLayoutEffect, useState, useSyncExternalStore } from 'react';
-import {
-  resolvePluginNavCollapse,
-  type PluginNavGroup,
-  type PluginNavLayout,
-  type PluginNavOverride,
-} from '../services/pluginNavigation';
+import { useLayoutEffect, useState } from 'react';
+import { pluginNavLayout, type PluginNavLayout } from '../services/pluginNavigation';
 
 const COMPACT_QUERY = '(max-width: 900px)';
 
-const subscribeCompact = (change: () => void) => {
-  const media = window.matchMedia(COMPACT_QUERY);
-  media.addEventListener('change', change);
-  return () => media.removeEventListener('change', change);
-};
-
-export const useNavCompact = () => useSyncExternalStore(subscribeCompact, () => window.matchMedia(COMPACT_QUERY).matches);
-
 const px = (value: string) => Number.parseFloat(value) || 0;
-
-type PluginNavCollapseState = { collapsed: ReadonlySet<string>; pluginsAuto: PluginNavLayout; compact: boolean };
-const initialState: PluginNavCollapseState = { collapsed: new Set(), pluginsAuto: 'expanded', compact: false };
 
 export function usePluginNavLayout(
   nav: HTMLElement | null,
-  rows: number,
-  groups: PluginNavGroup[],
-  override: PluginNavOverride | null,
-): PluginNavCollapseState {
-  const [state, setState] = useState<PluginNavCollapseState>(initialState);
-  const signature = JSON.stringify([rows, groups, override]);
+  staticCount: number,
+  pluginCount: number,
+): { layout: PluginNavLayout; compact: boolean } {
+  const [state, setState] = useState<{ layout: PluginNavLayout; compact: boolean }>({ layout: 'expanded', compact: false });
 
   useLayoutEffect(() => {
     const sidebar = nav?.closest<HTMLElement>('.sidebar');
-    if (!nav || !sidebar) {
-      setState((current) => (current.collapsed.size === 0 && current.pluginsAuto === 'expanded' && !current.compact ? current : initialState));
+    if (!nav || !sidebar || pluginCount === 0) {
+      setState((current) => (current.layout === 'expanded' && !current.compact ? current : { layout: 'expanded', compact: false }));
       return undefined;
     }
     const brand = sidebar.querySelector<HTMLElement>('.sidebar-brand');
@@ -47,18 +29,19 @@ export function usePluginNavLayout(
         - px(sidebarStyle.paddingTop) - px(sidebarStyle.paddingBottom)
         - (brand ? brand.offsetHeight + px(getComputedStyle(brand).marginBottom) : 0)
         - (bottom?.offsetHeight ?? 0);
-      const { collapsed, pluginsAuto } = resolvePluginNavCollapse({
+      const layout = pluginNavLayout({
         available,
         rowHeight: row?.offsetHeight ?? 0,
         gap: px(navStyle.rowGap),
         padding: px(navStyle.paddingTop) + px(navStyle.paddingBottom),
+        staticCount,
+        pluginCount,
         compact: media.matches,
-      }, rows, groups, override);
+      });
       setState((current) => (
-        current.pluginsAuto === pluginsAuto && current.compact === media.matches
-          && current.collapsed.size === collapsed.length && collapsed.every((id) => current.collapsed.has(id))
+        current.layout === layout && current.compact === media.matches
           ? current
-          : { collapsed: new Set(collapsed), pluginsAuto, compact: media.matches }
+          : { layout, compact: media.matches }
       ));
     };
     measure();
@@ -73,7 +56,7 @@ export function usePluginNavLayout(
       window.removeEventListener('resize', measure);
       media.removeEventListener('change', measure);
     };
-  }, [nav, signature]);
+  }, [nav, staticCount, pluginCount]);
 
   return state;
 }
