@@ -2,6 +2,10 @@ import { getCurrentLocale, type AppLocale } from './index';
 import { createTraditionalMessages } from './traditional';
 
 const messages = {
+  pinToSidebar: ['固定到侧边栏', 'Pin to sidebar', 'サイドバーに固定'],
+  pinnedPlugins: ['固定的插件', 'Pinned plugins', '固定したプラグイン'],
+  pinSaveFailed: ['无法保存侧边栏偏好设置。请检查本地存储后重试。', 'Could not save sidebar preferences. Check local storage and try again.', 'サイドバー設定を保存できません。ローカルストレージを確認して再試行してください。'],
+  pageChanged: ['插件页面已更改。请刷新插件列表后重试。', 'The plugin page changed. Refresh the plugin list and try again.', 'プラグインページが変更されました。一覧を更新して再試行してください。'],
   title: ['插件', 'Plugins', 'プラグイン'],
   description: ['管理内核插件，扩展 API 与工具能力。', 'Extend the core with plugins, APIs and tools.', 'プラグインでコアの API とツールを拡張します。'],
   installed: ['已安装', 'Installed', 'インストール済み'],
@@ -28,7 +32,13 @@ const messages = {
   globalDisabled: ['插件功能已关闭', 'Globally disabled', '全体で無効'],
   notLoaded: ['未加载', 'Not loaded', '未読み込み'],
   notLoadedHint: ['已启用，但内核尚未完成注册。若持续未加载，请查看内核日志。', 'Enabled, but the core has not registered this plugin. If it remains unloaded, check the core logs.', '有効ですが、コアへの登録が完了していません。この状態が続く場合はコアのログを確認してください。'],
-  findInStore: ['前往商店安装', 'Find in store', 'ストアで探す'],
+  findInStore: ['在商店中查找', 'Find in store', 'ストアで探す'],
+  checkUpdates: ['检查更新', 'Check for updates', '更新を確認'],
+  updateFound: ['有可用更新，请核对下方来源后选择更新。', 'An update is available. Review the source below and choose Update.', '更新があります。下のソースを確認して「更新」を選択してください。'],
+  updateCurrent: ['已是最新版本。', 'This plugin is up to date.', 'このプラグインは最新です。'],
+  updateIncomplete: ['部分来源无法检查。请查看下方错误后重试。', 'Some sources could not be checked. Review the errors below and retry.', '確認できないソースがあります。下のエラーを確認して再試行してください。'],
+  updateMissing: ['已配置的商店中未找到此插件。', 'This plugin was not found in the configured stores.', '設定されたストアにこのプラグインが見つかりません。'],
+  updateReview: ['无法确认安装来源或版本。请核对下方列表。', 'The installed source or version could not be verified. Review the listings below.', 'インストール元またはバージョンを確認できません。下の一覧を確認してください。'],
   openLogs: ['查看日志', 'Open logs', 'ログを開く'],
   configure: ['配置', 'Configure', '設定'],
   oauth: ['账号授权', 'Sign in', 'アカウント認証'],

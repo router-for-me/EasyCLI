@@ -638,3 +638,8 @@
     display: none;
   }
 }
+
+.nav-plugin-heading { margin: 12px 8px 4px; font-size: 11px; opacity: .7; }
+.nav-plugin-logo { width: 16px; height: 16px; flex: 0 0 16px; object-fit: contain; }
+
+.nav-pinned-plugins { display: contents; }
