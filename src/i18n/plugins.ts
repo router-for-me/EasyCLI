@@ -2,6 +2,10 @@ import { getCurrentLocale, type AppLocale } from './index';
 import { createTraditionalMessages } from './traditional';
 
 const messages = {
+  pinToSidebar: ['固定到侧边栏', 'Pin to sidebar', 'サイドバーに固定'],
+  pinnedPlugins: ['固定的插件', 'Pinned plugins', '固定したプラグイン'],
+  pinSaveFailed: ['无法保存侧边栏偏好设置。请检查本地存储后重试。', 'Could not save sidebar preferences. Check local storage and try again.', 'サイドバー設定を保存できません。ローカルストレージを確認して再試行してください。'],
+  pageChanged: ['插件页面已更改。请刷新插件列表后重试。', 'The plugin page changed. Refresh the plugin list and try again.', 'プラグインページが変更されました。一覧を更新して再試行してください。'],
   title: ['插件', 'Plugins', 'プラグイン'],
   description: ['管理内核插件，扩展 API 与工具能力。', 'Extend the core with plugins, APIs and tools.', 'プラグインでコアの API とツールを拡張します。'],
   installed: ['已安装', 'Installed', 'インストール済み'],

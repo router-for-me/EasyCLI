@@ -8,6 +8,8 @@ import { useConfirmation } from '../components/ConfirmationDialog';
 import { pluginsApi, pluginStoreApi, type PluginListEntry, type PluginListResponse, type PluginStoreEntry, type PluginStoreResponse } from '../services/plugins';
 import { buildPluginResourceRoute, collectPluginResourceEntries, getPluginTitle, isOfficialPlugin, notifyPluginResourcesChanged, type PluginResourceEntry } from '../services/pluginResources';
 import { getPluginStatus, isPluginInstalled } from '../services/pluginStatus';
+import { usePluginPins, setPluginPinned, removePluginPins } from '../pluginPins';
+import { pluginPinKey, resourcePin } from '../services/pluginPins';
 import { refreshPluginReleaseVersions } from '../services/pluginReleaseVersions';
 import { PluginConfigDialog } from './PluginConfigDialog';
 import { PluginInstallDialog } from './PluginInstallDialog';
@@ -22,6 +24,7 @@ const message = (error: unknown) => error instanceof Error ? error.message : Str
 export function PluginsPage() {
   const { t, locale } = useI18n();
   const pt = (key: Parameters<typeof pluginText>[0]) => pluginText(key, locale);
+  const pins = usePluginPins();
   const [tab, setTab] = useState<Tab>('installed');
   const [supported, setSupported] = useState<boolean | null>(null);
   const [data, setData] = useState<PluginListResponse | null>(null);
@@ -110,6 +113,7 @@ export function PluginsPage() {
     if (!accepted || !mounted.current) return;
     await mutate(async () => {
       const result = await pluginsApi.deletePlugin(plugin.id);
+      removePluginPins(plugin.id);
       if (mounted.current && result.restartRequired) setRestartRequired(true);
     }, pt(installed ? 'removed' : 'removedConfig'));
   };
@@ -154,7 +158,15 @@ export function PluginsPage() {
             {meta && <p className="plugin-meta">{meta}</p>}{plugin.path && <p className="plugin-path" title={plugin.path}>{plugin.path}</p>}
             {status === 'missingFile' && <p className="plugin-card-description">{pt('missingFileHint')}</p>}
             {status === 'notLoaded' && <p className="plugin-card-description">{pt('notLoadedHint')}</p>}
-            {collectPluginResourceEntries([plugin]).length > 0 && <div className="plugin-menus">{collectPluginResourceEntries([plugin]).map(entry => <button key={entry.menuIndex} title={entry.description} className="secondary-button" disabled={locked} onClick={() => openResource(entry)}><ExternalLink size={14} />{entry.label}</button>)}</div>}
+            {collectPluginResourceEntries([plugin]).length > 0 && <div className="plugin-menus">{collectPluginResourceEntries([plugin]).map(entry => <div className="plugin-menu-item" key={entry.menuIndex}>
+              <button title={entry.description} className="secondary-button" disabled={locked} onClick={() => void openResource(entry)}><ExternalLink size={14} />{entry.label}</button>
+              <label className="plugin-pin-toggle"><input type="checkbox" disabled={locked} checked={pins.some(pin => pluginPinKey(pin) === pluginPinKey(resourcePin(entry)))}
+                aria-label={`${pt('pinToSidebar')}: ${entry.label}`} onChange={event => {
+                  try { setPluginPinned(resourcePin(entry), event.target.checked); }
+                  catch { setError(pt('pinSaveFailed')); }
+                }} />{pt('pinToSidebar')}</label>
+            </div>)}</div>}
+
             <div className="plugin-card-actions">
             {plugin.effectiveEnabled && plugin.supportsOAuth && plugin.oauthProvider && <button className="secondary-button" disabled={locked} onClick={() => setOAuthPlugin(plugin)}><LogIn size={15} />{pt('oauth')}</button>}
               {installed ? <button className="secondary-button" disabled={locked} onClick={() => void mutate(() => pluginsApi.updateEnabled(plugin.id, !plugin.enabled), pt('saved'))}>{pt(plugin.enabled ? 'disabled' : 'enabled')}</button> : <button className="secondary-button" disabled={locked} onClick={() => { setSearch(plugin.id); setFilter('all'); setTab('store'); }}><Download size={15} />{pt('findInStore')}</button>}

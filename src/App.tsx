@@ -38,6 +38,9 @@ import { QuotaPage } from './pages/QuotaPage';
 import { AgentsPage } from './pages/AgentsPage';
 import { EasyModePage } from './pages/EasyModePage';
 import { UsageRecordsPage } from './pages/UsageRecordsPage';
+import { PluginResourceIcon } from './components/PluginResourceIcon';
+import { usePinnedPluginResources } from './pluginPins';
+import { pluginText } from './i18n/plugins';
 import { PluginsPage } from './pages/PluginsPage';
 import { PluginResourcePage } from './pages/PluginResourcePage';
 import { PluginNavChildren, PluginNavToggle } from './components/SidebarPluginNav';
@@ -179,11 +182,12 @@ function AppContent() {
   const languageButtonRef = useRef<HTMLButtonElement>(null);
   const { status } = useCoreRuntime();
   const coreReady = Boolean(status?.ready);
+  const pinnedPages = usePinnedPluginResources(coreReady);
   const [navElement, setNavElement] = useState<HTMLElement | null>(null);
   const { entries: pluginEntries, fetched: pluginEntriesFetched } = usePluginNavEntries(coreReady);
   const pluginEntry = findPluginNavEntry(pluginEntries, active);
   const navPages = pages.filter((page) => page.id !== 'easy');
-  const { layout: autoPluginLayout, compact: navCompact } = usePluginNavLayout(navElement, navPages.length, pluginEntries.length);
+  const { layout: autoPluginLayout, compact: navCompact } = usePluginNavLayout(navElement, navPages.length + pinnedPages.length + (pinnedPages.length ? 1 : 0), pluginEntries.length);
   const [pluginReload, setPluginReload] = useState(0);
   const [pluginNavOverride, setPluginNavOverride] = useState<PluginNavOverride | null>(null);
   useEffect(() => setPluginNavOverride(null), [autoPluginLayout, pluginEntries.length]);
@@ -448,6 +452,16 @@ function AppContent() {
                   </Fragment>
                 );
               })}
+              {pinnedPages.length > 0 && <div className="nav-pinned-plugins">
+                <div className="nav-plugin-heading">{pluginText('pinnedPlugins', locale)}</div>
+                {pinnedPages.map(entry => (
+                  <button key={entry.route} type="button" className={active === entry.route ? 'active' : ''}
+                    aria-current={active === entry.route ? 'page' : undefined} title={`${entry.pluginTitle}: ${entry.description}`}
+                    onClick={() => select(entry.route as AppPageId)}>
+                    <PluginResourceIcon entry={entry} /><span>{entry.label}</span>
+                  </button>
+                ))}
+              </div>}
             </nav>
 
             <div className="sidebar-bottom">
