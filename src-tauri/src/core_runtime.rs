@@ -475,6 +475,7 @@ pub(crate) fn start_core_process_with_state(
 ) -> Result<CoreStatus, String> {
     network_proxy::refresh(gui_config_state)?;
     let config = gui_config_state.snapshot()?;
+    process_state.reset_crash_restart_attempts();
     start_core_process_inner(process_state, &config)?;
     if let Err(error) = gui_config_state.set_run_on_startup(true) {
         let _ = stop_core_process_inner(process_state);
@@ -511,6 +512,7 @@ pub(crate) fn restart_core_process_with_state(
     if current_core_status(Some(process_state), None)?.running {
         stop_core_process_inner(process_state)?;
     }
+    process_state.reset_crash_restart_attempts();
     start_core_process_inner(process_state, &config)?;
     if let Err(error) = gui_config_state.set_run_on_startup(true) {
         let _ = stop_core_process_inner(process_state);
@@ -2536,6 +2538,93 @@ pub(crate) fn is_process_alive(process_id: u32) -> bool {
         .status()
         .map(|status| status.success())
         .unwrap_or(false)
+}
+
+pub(crate) const MAX_CORE_CRASH_RESTART_ATTEMPTS: u32 = 5;
+pub(crate) const CORE_CRASH_STABLE_UPTIME: Duration = Duration::from_secs(60);
+
+pub(crate) fn core_crash_restart_backoff(attempt: u32) -> Option<Duration> {
+    match attempt {
+        1 => Some(Duration::from_secs(1)),
+        2 => Some(Duration::from_secs(2)),
+        3 => Some(Duration::from_secs(5)),
+        4 => Some(Duration::from_secs(10)),
+        5 => Some(Duration::from_secs(30)),
+        _ => None,
+    }
+}
+
+pub(crate) fn check_and_recover_crashed_core<F>(
+    process_state: &CoreProcessState,
+    mut restart_fn: F,
+) -> Result<bool, String>
+where
+    F: FnMut(Duration) -> Result<(), String>,
+{
+    if process_state.is_shutting_down() || process_state.is_starting() {
+        return Ok(false);
+    }
+    if !process_state.poll_unexpected_child_exit(CORE_CRASH_STABLE_UPTIME) {
+        return Ok(false);
+    }
+    let attempt = process_state.record_crash_restart_attempt();
+    let Some(backoff) = core_crash_restart_backoff(attempt) else {
+        return Err(pause_core_crash_recovery(process_state));
+    };
+    restart_fn(backoff)?;
+    process_state.finish_recovery_pass();
+    Ok(true)
+}
+
+pub(crate) fn pause_core_crash_recovery(process_state: &CoreProcessState) -> String {
+    process_state.finish_recovery_pass();
+    format!("CPA kernel crashed repeatedly ({MAX_CORE_CRASH_RESTART_ATTEMPTS} attempts); automatic restart paused")
+}
+
+pub(crate) fn restart_crashed_core_locked(
+    process_state: &CoreProcessState,
+    config: &GuiConfigFile,
+) -> Result<bool, String> {
+    if process_state.is_shutting_down() || !process_state.is_supervising() {
+        return Ok(false);
+    }
+    if current_core_status(Some(process_state), None)?.running {
+        process_state.complete_recovery_when_already_running();
+        return Ok(false);
+    }
+    start_core_process_inner(process_state, config)?;
+    Ok(true)
+}
+
+pub(crate) fn start_core_crash_supervisor(app: tauri::AppHandle) {
+    thread::Builder::new()
+        .name("cpa-core-crash-supervisor".to_string())
+        .spawn(move || loop {
+            thread::sleep(Duration::from_secs(2));
+            let process_state = app.state::<CoreProcessState>();
+            if process_state.is_shutting_down() {
+                break;
+            }
+            let gui_config_state = app.state::<GuiConfigState>();
+            let result = check_and_recover_crashed_core(process_state.inner(), |backoff| {
+                thread::sleep(backoff);
+                let Ok(_guard) = CORE_OPERATION_LOCK.lock() else {
+                    return Err("Kernel operation lock is poisoned".to_string());
+                };
+                let config = gui_config_state.snapshot()?;
+                if restart_crashed_core_locked(process_state.inner(), &config)? {
+                    emit_current_core_status(&app, process_state.inner(), config.port);
+                }
+                Ok(())
+            });
+            if let Err(error) = result {
+                eprintln!("Core crash supervisor failed to recover CPA kernel: {error}");
+                if let Ok(config) = gui_config_state.snapshot() {
+                    emit_current_core_status(&app, process_state.inner(), config.port);
+                }
+            }
+        })
+        .ok();
 }
 
 pub(crate) fn reset_dir(path: &Path) -> Result<(), String> {

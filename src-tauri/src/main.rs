@@ -64,7 +64,7 @@ use objc2::MainThreadMarker;
 use objc2_app_kit::NSEvent;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 #[cfg(target_os = "macos")]
 use std::sync::Arc;
 use std::{
@@ -298,6 +298,16 @@ struct AppUpdateInner {
     token: Option<CancellationToken>,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum ChildSupervision {
+    #[default]
+    Idle,
+    Running {
+        started_at: Instant,
+    },
+    Recovering,
+}
+
 #[derive(Default)]
 struct CoreProcessState {
     child: Mutex<Option<CoreChild>>,
@@ -305,6 +315,8 @@ struct CoreProcessState {
     starting: AtomicBool,
     shutting_down: AtomicBool,
     shutdown_complete: AtomicBool,
+    supervision: Mutex<ChildSupervision>,
+    crash_restart_attempts: AtomicU32,
 }
 
 #[derive(Default)]
@@ -1914,6 +1926,8 @@ impl CoreProcessState {
             starting: AtomicBool::new(starting),
             shutting_down: AtomicBool::new(false),
             shutdown_complete: AtomicBool::new(false),
+            supervision: Mutex::new(ChildSupervision::Idle),
+            crash_restart_attempts: AtomicU32::new(0),
         }
     }
 
@@ -1935,6 +1949,87 @@ impl CoreProcessState {
 
     fn set_starting(&self, starting: bool) {
         self.starting.store(starting, Ordering::Release);
+    }
+
+    fn reset_crash_restart_attempts(&self) {
+        self.crash_restart_attempts.store(0, Ordering::Release);
+    }
+
+    fn record_crash_restart_attempt(&self) -> u32 {
+        self.crash_restart_attempts.fetch_add(1, Ordering::AcqRel) + 1
+    }
+
+    fn is_supervising(&self) -> bool {
+        self.supervision
+            .lock()
+            .map(|supervision| !matches!(*supervision, ChildSupervision::Idle))
+            .unwrap_or(false)
+    }
+
+    fn clear_supervision(&self) {
+        if let Ok(mut supervision) = self.supervision.lock() {
+            *supervision = ChildSupervision::Idle;
+        }
+    }
+
+    fn finish_recovery_pass(&self) {
+        if let Ok(mut supervision) = self.supervision.lock() {
+            if matches!(*supervision, ChildSupervision::Recovering) {
+                *supervision = ChildSupervision::Idle;
+            }
+        }
+    }
+
+    fn complete_recovery_when_already_running(&self) {
+        self.finish_recovery_pass();
+        self.reset_crash_restart_attempts();
+    }
+
+    #[cfg(test)]
+    fn set_supervision_started_at(&self, started_at: Instant) {
+        if let Ok(mut supervision) = self.supervision.lock() {
+            *supervision = ChildSupervision::Running { started_at };
+        }
+    }
+
+    fn poll_unexpected_child_exit(&self, stable_uptime: Duration) -> bool {
+        let Ok(mut child) = self.child.lock() else {
+            return false;
+        };
+        let child_alive = if let Some(process) = child.as_mut() {
+            if let Ok(None) = process.try_wait() {
+                true
+            } else {
+                *child = None;
+                false
+            }
+        } else {
+            false
+        };
+
+        let Ok(mut supervision) = self.supervision.lock() else {
+            return false;
+        };
+        if child_alive {
+            if let ChildSupervision::Running { started_at } = *supervision {
+                if started_at.elapsed() >= stable_uptime {
+                    self.reset_crash_restart_attempts();
+                }
+            }
+            return false;
+        }
+
+        match *supervision {
+            ChildSupervision::Idle => false,
+            ChildSupervision::Running { started_at } => {
+                if started_at.elapsed() >= stable_uptime {
+                    self.reset_crash_restart_attempts();
+                }
+                *supervision = ChildSupervision::Recovering;
+                true
+            }
+            ChildSupervision::Recovering => true,
+        }
     }
 
     fn managed_pid(&self) -> Option<u32> {
@@ -1962,15 +2057,14 @@ impl CoreProcessState {
     }
 
     fn take_child(&self) -> Option<CoreChild> {
-        self.child.lock().ok().and_then(|mut child| child.take())
+        let taken = self.child.lock().ok().and_then(|mut child| child.take());
+        self.clear_supervision();
+        self.reset_crash_restart_attempts();
+        taken
     }
 
     fn adopt_process_ids(&self, binary_path: &Path, process_ids: Vec<u32>) -> Result<(), String> {
-        let mut adopted = self
-            .adopted_processes
-            .lock()
-            .map_err(|_| "Adopted kernel process status lock is poisoned".to_string())?;
-        *adopted = process_ids
+        let mut adopted_list: Vec<AdoptedCoreProcess> = process_ids
             .into_iter()
             .filter(|process_id| is_process_alive(*process_id))
             .map(|process_id| AdoptedCoreProcess {
@@ -1978,8 +2072,36 @@ impl CoreProcessState {
                 binary_path: binary_path.to_path_buf(),
             })
             .collect();
-        adopted.sort_unstable_by_key(|process| process.process_id);
-        adopted.dedup_by_key(|process| process.process_id);
+        adopted_list.sort_unstable_by_key(|process| process.process_id);
+        adopted_list.dedup_by_key(|process| process.process_id);
+        let has_adopted = !adopted_list.is_empty();
+        {
+            let mut adopted = self
+                .adopted_processes
+                .lock()
+                .map_err(|_| "Adopted kernel process status lock is poisoned".to_string())?;
+            *adopted = adopted_list;
+        }
+        if has_adopted {
+            let mut child = self
+                .child
+                .lock()
+                .map_err(|_| "Kernel process status lock is poisoned".to_string())?;
+            let has_live_managed_child = if let Some(process) = child.as_mut() {
+                if let Ok(None) = process.try_wait() {
+                    true
+                } else {
+                    *child = None;
+                    false
+                }
+            } else {
+                false
+            };
+            if !has_live_managed_child {
+                self.clear_supervision();
+                self.reset_crash_restart_attempts();
+            }
+        }
         Ok(())
     }
 
@@ -2006,6 +2128,11 @@ impl CoreProcessState {
             .lock()
             .map_err(|_| "Kernel process status lock is poisoned".to_string())?;
         *managed_child = Some(child);
+        if let Ok(mut supervision) = self.supervision.lock() {
+            *supervision = ChildSupervision::Running {
+                started_at: Instant::now(),
+            };
+        }
         Ok(pid)
     }
 }
@@ -2697,6 +2824,7 @@ fn main() {
                     emit_core_status(&core_app, &status);
                 }
             });
+            start_core_crash_supervisor(app.handle().clone());
 
             if let Some(ack_path) = portable_update_ack.as_ref() {
                 fs::write(ack_path, env!("CARGO_PKG_VERSION").as_bytes())
