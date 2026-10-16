@@ -337,13 +337,9 @@
   transition-duration: 0ms;
 }
 
-.sidebar-language-list {
-  position: absolute;
-  z-index: 120;
-  bottom: calc(100% + 6px);
-  left: 0;
+.sidebar-language-list,
+.plugin-nav-menu {
   display: flex;
-  min-width: 184px;
   flex-direction: column;
   gap: 1px;
   padding: 4px;
@@ -351,25 +347,37 @@
   border-radius: 10px;
   background: var(--sidebar-popover-bg);
   box-shadow: var(--sidebar-popover-shadow);
+}
+
+.sidebar-language-list {
+  position: absolute;
+  z-index: 120;
+  bottom: calc(100% + 6px);
+  left: 0;
+  min-width: 184px;
   transform-origin: bottom left;
   animation: sidebar-popover-in-up 160ms var(--sidebar-ease-out);
 }
 
-.sidebar-language-list button {
+.sidebar-language-list button,
+.plugin-nav-menu button {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
-  height: 30px;
   padding: 0 8px 0 10px;
   border: 0;
   border-radius: 6px;
   background: transparent;
   color: var(--sidebar-text);
   font-size: var(--font-size-meta);
-  font-weight: var(--font-weight-regular);
   text-align: left;
   transition: background-color 120ms ease, color 120ms ease;
+}
+
+.sidebar-language-list button {
+  justify-content: space-between;
+  height: 30px;
+  font-weight: var(--font-weight-regular);
 }
 
 .sidebar-language-list button:hover,
@@ -388,16 +396,18 @@
   color: var(--ui-accent);
 }
 
-.nav-plugin-parent {
-  position: relative;
-  flex: none;
+.nav-plugin-children {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
-.nav-plugin-parent > button:first-child {
-  padding-right: 38px;
+.nav-section .nav-plugin-children button {
+  padding-left: 36px;
 }
 
-.nav-section button.nav-plugin-toggle {
+.nav-section button.nav-plugin-toggle,
+.nav-section button.nav-plugin-more {
   position: absolute;
   top: 3px;
   right: 4px;
@@ -414,16 +424,6 @@
 
 .nav-plugin-toggle[aria-expanded='true'] > svg {
   transform: rotate(90deg);
-}
-
-.nav-plugin-children {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.nav-section .nav-plugin-children button {
-  padding-left: 36px;
 }
 
 .nav-plugin-tree {
@@ -444,14 +444,6 @@
 }
 
 .nav-section button.nav-plugin-more {
-  position: absolute;
-  top: 3px;
-  right: 4px;
-  width: 28px;
-  height: 28px;
-  justify-content: center;
-  padding: 0;
-  border-radius: 6px;
   opacity: 0;
   transition: opacity 120ms ease, background-color 150ms ease, color 150ms ease;
 }
@@ -519,35 +511,16 @@
 .plugin-nav-menu {
   position: fixed;
   z-index: 200;
-  display: flex;
   min-width: 188px;
   max-width: 280px;
   max-height: calc(100vh - 16px);
-  flex-direction: column;
-  gap: 1px;
-  padding: 4px;
   overflow-y: auto;
   overscroll-behavior: contain;
-  border: 1px solid var(--sidebar-popover-edge);
-  border-radius: 10px;
-  background: var(--sidebar-popover-bg);
-  box-shadow: var(--sidebar-popover-shadow);
   animation: sidebar-popover-in-down 160ms var(--sidebar-ease-out);
 }
 
 .plugin-nav-menu button {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   min-height: 30px;
-  padding: 0 8px 0 10px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--sidebar-text);
-  font-size: var(--font-size-meta);
-  text-align: left;
-  transition: background-color 120ms ease, color 120ms ease;
 }
 
 .plugin-nav-menu button > span {
@@ -790,7 +763,7 @@
     display: flex;
   }
 
-  .nav-plugin-parent > button:first-child,
+  .nav-section .nav-plugin-row > button:first-child,
   .nav-section .nav-plugin-children button {
     padding: 0 12px;
   }
@@ -801,10 +774,6 @@
 
   .nav-plugin-children {
     display: contents;
-  }
-
-  .nav-section .nav-plugin-row > button:first-child {
-    padding: 0 12px;
   }
 
   .nav-plugin-folder,

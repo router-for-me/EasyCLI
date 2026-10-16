@@ -74,9 +74,8 @@ const isFolderState = (value: unknown): value is PluginNavLayout => value === 'c
 function readFolderStates(): Map<string, PluginNavLayout> {
   try {
     const parsed: unknown = JSON.parse(window.localStorage.getItem(FOLDER_STATES_KEY) ?? '{}');
-    const entries: [unknown, unknown][] = Array.isArray(parsed) ? parsed.map((id) => [id, 'collapsed'])
-      : typeof parsed === 'object' && parsed !== null ? Object.entries(parsed) : [];
-    return new Map(entries.filter((entry): entry is [string, PluginNavLayout] => typeof entry[0] === 'string' && isFolderState(entry[1])));
+    const entries = typeof parsed === 'object' && parsed !== null ? Object.entries(parsed) : [];
+    return new Map(entries.filter((entry): entry is [string, PluginNavLayout] => isFolderState(entry[1])));
   } catch {
     return new Map();
   }
@@ -288,7 +287,6 @@ function RenameInput({ value, label, onDone }: { value: string; label: string; o
 
 export function PluginNavTree({
   nav,
-  arrangement,
   status,
   parentRow,
   pluginsExpanded,
@@ -302,7 +300,6 @@ export function PluginNavTree({
   onChange,
 }: {
   nav: ResolvedPluginNav;
-  arrangement: PluginNavArrangement;
   status: PluginNavArrangementStatus;
   parentRow: ReactNode;
   pluginsExpanded: boolean;
@@ -371,10 +368,9 @@ export function PluginNavTree({
     }
     if (target.kind === 'page') {
       const { path } = target.page.entry;
-      const inTop = arrangement.custom.some((node) => node.kind === 'page' && node.path === path);
+      const inTop = nav.custom.some((node) => node.kind === 'page' && node.page.entry.path === path);
       const inCustom = !nav.plugins.some((page) => page.entry.path === path);
-      const folders = arrangement.custom.filter((node) => node.kind === 'folder');
-      const targets = folders.filter((folder) => !folder.children.includes(path));
+      const targets = nav.custom.flatMap((node) => node.kind === 'folder' && !node.pages.some((page) => page.entry.path === path) ? [node] : []);
       const items: MenuItem[] = [{ key: 'rename', label: t('app.nav.layout.rename'), icon: Pencil, movesFocus: true, onSelect: () => setRenaming({ kind: 'page', path }) }];
       if (!inTop) items.push({ key: 'top', label: t('app.nav.layout.moveToTop'), icon: ArrowUpToLine, onSelect: () => onChange((current) => movePluginPageToTop(current, path)) });
       items.push({
