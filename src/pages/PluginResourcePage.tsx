@@ -8,7 +8,7 @@ import { EMPTY_BOUNDS, effectiveBounds, newWebviewToken, roundBounds, sameBounds
 
 const message = (error: unknown) => error instanceof Error ? error.message : String(error);
 
-export function PluginResourcePage({ entry, reloadToken }: { entry: PluginNavEntry; reloadToken: number }) {
+export function PluginResourcePage({ entry, title, reloadToken }: { entry: PluginNavEntry; title: string; reloadToken: number }) {
   const { t, locale } = useI18n();
   const pt = (key: Parameters<typeof pluginText>[0]) => pluginText(key, locale);
   const host = useRef<HTMLDivElement>(null);
@@ -69,7 +69,7 @@ export function PluginResourcePage({ entry, reloadToken }: { entry: PluginNavEnt
   }, [ready, wanted.x, wanted.y, wanted.width, wanted.height, wanted.viewportHeight]);
 
   return <section className="page plugin-resource-page">
-    <h1 className="sr-only">{entry.label}</h1>
+    <h1 className="sr-only">{title}</h1>
     <div ref={host} className="plugin-resource-host">
       {error ? <div className="plugin-error plugin-banner" role="alert"><span>{error}</span><button type="button" className="secondary-button" onClick={() => setAttempt((value) => value + 1)}>{pt('retry')}</button></div>
         : !ready && <p className="plugin-resource-status" role="status">{t('common.loading')}</p>}

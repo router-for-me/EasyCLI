@@ -1,7 +1,7 @@
 import { MessageNotice } from './appNotice';
 import { ThemeSelector } from './components/ThemeSelector';
 import { WindowFrame } from './components/WindowFrame';
-import { Fragment, useCallback, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import {
@@ -40,15 +40,19 @@ import { EasyModePage } from './pages/EasyModePage';
 import { UsageRecordsPage } from './pages/UsageRecordsPage';
 import { PluginsPage } from './pages/PluginsPage';
 import { PluginResourcePage } from './pages/PluginResourcePage';
-import { PluginNavChildren, PluginNavToggle } from './components/SidebarPluginNav';
+import { PluginNavTree, usePluginFolderStates } from './components/SidebarPluginNav';
 import { usePluginNavLayout } from './components/usePluginNavLayout';
 import { usePluginNavEntries } from './usePluginNavEntries';
 import {
+  PLUGIN_NAV_GROUP,
   findPluginNavEntry,
   isPluginRoute,
-  resolvePluginNavLayout,
+  pluginFolderGroup,
+  type PluginNavGroup,
   type PluginNavOverride,
 } from './services/pluginNavigation';
+import { findResolvedPluginPage, resolvePluginNav } from './services/pluginNavArrangement';
+import { pluginNavArrangementStore } from './services/pluginNavArrangementStore';
 import { languageOptions, useI18n } from './i18n';
 import { AppUpdateDialog, AppUpdateProvider, useAppUpdate } from './appUpdate';
 import { appUpdateIndicatorState } from './appUpdateModel';
@@ -182,16 +186,39 @@ function AppContent() {
   const [navElement, setNavElement] = useState<HTMLElement | null>(null);
   const { entries: pluginEntries, fetched: pluginEntriesFetched } = usePluginNavEntries(coreReady);
   const pluginEntry = findPluginNavEntry(pluginEntries, active);
+  const navArrangement = useSyncExternalStore(pluginNavArrangementStore.subscribe, pluginNavArrangementStore.get);
+  const pluginNav = useMemo(() => resolvePluginNav(navArrangement.arrangement, pluginEntries), [navArrangement.arrangement, pluginEntries]);
+  const pluginGroupCount = pluginNav.plugins.length;
+  const [pluginFolderStates, setPluginFolderState] = usePluginFolderStates();
+  const [navLayoutSaveFailed, setNavLayoutSaveFailed] = useState(false);
+  useEffect(() => pluginNavArrangementStore.onSaveFailed(() => setNavLayoutSaveFailed(true)), []);
   const navPages = pages.filter((page) => page.id !== 'easy');
-  const { layout: autoPluginLayout, compact: navCompact } = usePluginNavLayout(navElement, navPages.length, pluginEntries.length);
-  const [pluginReload, setPluginReload] = useState(0);
+  const pluginChildActive = pluginNav.plugins.some((page) => page.entry.route === active);
+  const pluginNavGroups = useMemo((): PluginNavGroup[] => [
+    ...pluginNav.custom.flatMap((node) => node.kind === 'folder' ? [{
+      id: pluginFolderGroup(node.id),
+      rows: Math.max(node.pages.length, 1),
+      active: node.pages.some((page) => page.entry.route === active),
+      manual: pluginFolderStates.get(node.id) ?? null,
+    }] : []),
+    { id: PLUGIN_NAV_GROUP, rows: pluginGroupCount, active: pluginChildActive, manual: null },
+  ], [pluginNav, pluginFolderStates, pluginGroupCount, pluginChildActive, active]);
   const [pluginNavOverride, setPluginNavOverride] = useState<PluginNavOverride | null>(null);
-  useEffect(() => setPluginNavOverride(null), [autoPluginLayout, pluginEntries.length]);
-  const pluginNavLayout = navCompact
-    ? 'expanded'
-    : resolvePluginNavLayout(autoPluginLayout, pluginEntries.length, pluginNavOverride);
+  const { collapsed: autoCollapsedGroups, pluginsAuto: autoPluginLayout, compact: navCompact } = usePluginNavLayout(
+    navElement,
+    navPages.length + pluginNav.custom.length,
+    pluginNavGroups,
+    pluginNavOverride,
+  );
+  const showPluginTree = pluginEntries.length > 0 || pluginNav.custom.length > 0;
+  const collapsedPluginFolders = useMemo(() => new Set(pluginNav.custom.flatMap((node) =>
+    node.kind === 'folder' && (pluginFolderStates.get(node.id) === 'collapsed' || autoCollapsedGroups.has(pluginFolderGroup(node.id))) ? [node.id] : [])),
+  [pluginNav, pluginFolderStates, autoCollapsedGroups]);
+  const [pluginReload, setPluginReload] = useState(0);
+  useEffect(() => setPluginNavOverride(null), [autoPluginLayout, pluginGroupCount]);
+  const pluginNavLayout = navCompact || !autoCollapsedGroups.has(PLUGIN_NAV_GROUP) ? 'expanded' : 'collapsed';
   const pluginNavExpanded = pluginNavLayout === 'expanded';
-  const pluginChildActive = pluginEntries.some((entry) => entry.route === active);
+  const pluginPageLabel = findResolvedPluginPage(pluginNav, active)?.label;
   const activePage = pages.find((page) => page.id === active);
   const ActivePage = activePage?.component;
   const selectedLanguage = languageOptions.find((option) => option.value === locale)
@@ -380,11 +407,11 @@ function AppContent() {
               ref={setNavElement}
               className="nav-section"
               aria-label={t('app.navigation')}
-              data-plugin-layout={pluginEntries.length ? pluginNavLayout : undefined}
+              data-plugin-layout={pluginGroupCount ? pluginNavLayout : undefined}
             >
               {navPages.map((page) => {
                 const Icon = page.icon;
-                const hasPluginChildren = page.id === 'plugins' && pluginEntries.length > 0;
+                const hasPluginChildren = page.id === 'plugins' && showPluginTree;
                 const isActive = page.id === active
                   || (hasPluginChildren && !pluginNavExpanded && pluginChildActive);
                 const locked = !canOpenAppPage(page.id, coreReady);
@@ -425,27 +452,26 @@ function AppContent() {
                 );
                 if (!hasPluginChildren) return row;
                 return (
-                  <Fragment key={page.id}>
-                    <div className="nav-plugin-parent">
-                      {row}
-                      <PluginNavToggle
-                        expanded={pluginNavExpanded}
-                        onToggle={() => setPluginNavOverride({
-                          layout: pluginNavExpanded ? 'collapsed' : 'expanded',
-                          auto: autoPluginLayout,
-                          count: pluginEntries.length,
-                        })}
-                      />
-                    </div>
-                    {pluginNavExpanded ? (
-                      <PluginNavChildren
-                        entries={pluginEntries}
-                        active={active}
-                        locked={!coreReady}
-                        onSelect={(route) => select(route as AppPageId)}
-                      />
-                    ) : null}
-                  </Fragment>
+                  <PluginNavTree
+                    key={page.id}
+                    nav={pluginNav}
+                    arrangement={navArrangement.arrangement}
+                    status={navArrangement.status}
+                    parentRow={row}
+                    pluginsExpanded={pluginNavExpanded}
+                    onTogglePlugins={() => setPluginNavOverride({
+                      layout: pluginNavExpanded ? 'collapsed' : 'expanded',
+                      auto: autoPluginLayout,
+                      count: pluginGroupCount,
+                    })}
+                    active={active}
+                    locked={!coreReady}
+                    compact={navCompact}
+                    collapsedFolders={collapsedPluginFolders}
+                    onFolderCollapsed={(id, collapsed) => setPluginFolderState(id, collapsed ? 'collapsed' : 'expanded')}
+                    onSelect={(route) => select(route as AppPageId)}
+                    onChange={pluginNavArrangementStore.update}
+                  />
                 );
               })}
             </nav>
@@ -557,7 +583,7 @@ function AppContent() {
             {!canOpenAppPage(active, coreReady) ? (
               <CoreLockedPage />
             ) : pluginEntry ? (
-              <PluginResourcePage key={pluginEntry.route} entry={pluginEntry} reloadToken={pluginReload} />
+              <PluginResourcePage key={pluginEntry.route} entry={pluginEntry} title={pluginPageLabel ?? pluginEntry.label} reloadToken={pluginReload} />
             ) : ActivePage ? (
               active === 'easy' ? (
                 <EasyModePage
@@ -572,6 +598,7 @@ function AppContent() {
               )
             ) : null}
           </main>
+          <MessageNotice message={navLayoutSaveFailed ? t('app.nav.layout.saveFailed') : null} onDismiss={() => setNavLayoutSaveFailed(false)} />
         </div>
       </div>
 
