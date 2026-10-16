@@ -1,7 +1,7 @@
 name: Build portable releases
 
 run-name: >-
-  ${{ github.event_name == 'push' && github.ref_type == 'branch' && 'Warm build caches' || 'Portable release' }} ${{ (github.ref_type == 'tag' && github.ref_name) || inputs.release_tag || github.ref_name }}
+  ${{ github.event_name == 'push' && github.ref == 'refs/heads/dev' && 'Dev test build' || github.event_name == 'push' && github.ref_type == 'branch' && 'Warm build caches' || 'Portable release' }} ${{ (github.ref_type == 'tag' && github.ref_name) || inputs.release_tag || github.ref_name }}
 
 on:
   workflow_dispatch:
@@ -18,12 +18,13 @@ on:
   push:
     branches:
       - main
+      - dev
     tags:
       - 'v*'
 
 concurrency:
-  group: portable-${{ github.ref }}-${{ github.event_name == 'push' && github.ref_type == 'branch' && 'cache' || 'release' }}
-  cancel-in-progress: ${{ github.event_name == 'push' && github.ref_type == 'branch' }}
+  group: portable-${{ github.ref }}-${{ github.event_name == 'push' && github.ref == 'refs/heads/dev' && github.run_id || github.event_name == 'push' && github.ref_type == 'branch' && 'cache' || 'release' }}
+  cancel-in-progress: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
 
 permissions:
   contents: read
@@ -38,7 +39,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ github.sha }}
       - name: Resolve release version
         id: resolve
         shell: bash
@@ -49,7 +50,11 @@ jobs:
 
           source_version="$(node scripts/version.mjs)"
           release_tag="$REQUESTED_VERSION"
-          if [ -z "$release_tag" ]; then
+          if [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF" == "refs/heads/dev" ]]; then
+            # Replace any existing prerelease/build suffix for an unambiguous test version.
+            base_version="${source_version%%[-+]*}"
+            release_tag="v${base_version}-dev.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+          elif [ -z "$release_tag" ]; then
             release_tag="v$source_version"
           else
             case "$release_tag" in
@@ -103,11 +108,11 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     env:
-      PACKAGE_RELEASE: ${{ github.event_name == 'workflow_dispatch' || github.ref_type == 'tag' }}
+      PACKAGE_RELEASE: ${{ github.event_name == 'workflow_dispatch' || github.ref_type == 'tag' || (github.event_name == 'push' && github.ref == 'refs/heads/dev') }}
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ github.sha }}
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.14
@@ -315,7 +320,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ github.sha }}
       - uses: actions/download-artifact@v8
         with:
           path: artifacts
