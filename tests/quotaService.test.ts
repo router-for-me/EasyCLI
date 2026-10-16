@@ -273,8 +273,8 @@ describe('quotaRowsFor', () => {
     });
 
     expect(rows.map((row) => row.label)).toEqual([
-      'Gemini Pro · 5h',
-      'Gemini Pro · weekly',
+      'Gemini Pro · 5-hour limit',
+      'Gemini Pro · Weekly limit',
     ]);
   });
 

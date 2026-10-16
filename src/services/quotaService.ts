@@ -1,3 +1,4 @@
+import { antigravityWindow, antigravityBucketLabel, antigravityGroupLabel, antigravityDescription } from './antigravityQuotaLabels';
 import { captureQuotaCacheGeneration } from './quotaCache';
 import { readClaudeResetGrants, type AnthropicResetGrantStatus } from './claudeResetGrants';
 import { selectResetGrant } from './selectClaudeResetGrant';
@@ -27,6 +28,7 @@ export type QuotaStatus = 'idle' | 'loading' | 'success' | 'error';
 export type QuotaRow = {
   label: string;
   remainingPercent: number | null;
+  quotaAvailable?: boolean;
   reset?: string;
   resetAtMs?: number;
   detail?: string;
@@ -605,28 +607,35 @@ export const quotaRowsFor = (provider: QuotaProvider, payload: unknown): QuotaRo
   return groups.flatMap((group) => {
     if (!isRecord(group) || !Array.isArray(group.buckets)) return [];
     const order = (bucket: unknown) => {
-      const window = readString(bucket, 'window').toLowerCase();
+      const window = antigravityWindow(readString(bucket, 'display_name', 'displayName', 'description'), readString(bucket, 'window'));
       return ['5h', 'five-hour', 'five_hour'].includes(window) ? 0 : ['weekly', 'week'].includes(window) ? 1 : 2;
     };
     const buckets = [...group.buckets].sort((a, b) => order(a) - order(b));
-    const groupLabel = readString(group, 'display_name', 'displayName')
-      || quotaText('quota.service.quota');
-    const groupDescription = readString(group, 'description');
+    const rawGroupLabel = readString(group, 'display_name', 'displayName');
+    const groupLabel = antigravityGroupLabel(rawGroupLabel) || quotaText('quota.service.quota');
+    const groupDescription = antigravityDescription(rawGroupLabel, readString(group, 'description'));
+    const weeklyExhausted = buckets.some(bucket => isRecord(bucket)
+      && antigravityWindow(readString(bucket, 'display_name', 'displayName', 'description'), readString(bucket, 'window')) === 'weekly'
+      && quotaFraction(bucket.remaining_fraction ?? bucket.remainingFraction) === 0);
     return buckets
       .map((bucket, index): QuotaRow | null => {
         if (!isRecord(bucket)) return null;
         const remaining = quotaFraction(bucket.remaining_fraction ?? bucket.remainingFraction);
         if (remaining === null) return null;
-        const bucketLabel = readString(bucket, 'display_name', 'displayName', 'window');
+        const rawBucketLabel = readString(bucket, 'display_name', 'displayName', 'description');
+        const window = readString(bucket, 'window');
+        const bucketLabel = antigravityBucketLabel(rawBucketLabel, window);
         const label = bucketLabel && (buckets.length > 1 || bucketLabel !== groupLabel)
           ? `${groupLabel} · ${bucketLabel}`
           : groupLabel;
         return {
           label: label || quotaText('quota.service.quota.numbered', { index: index + 1 }),
           remainingPercent: remaining * 100,
+          quotaAvailable: remaining === 1
+            && !(antigravityWindow(rawBucketLabel, window) === '5h' && weeklyExhausted),
           reset: absoluteResetLabel(bucket.reset_time ?? bucket.resetTime),
           resetAtMs: quotaResetFor(bucket, ['reset_time', 'resetTime']),
-          detail: readString(bucket, 'description') || groupDescription || undefined,
+          detail: [groupDescription, antigravityDescription('', readString(bucket, 'description'))].filter(Boolean).join(' · ') || undefined,
         };
       })
       .filter((row): row is QuotaRow => row !== null);
