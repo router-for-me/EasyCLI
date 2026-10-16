@@ -273,10 +273,9 @@ pub(crate) fn auto_install_bundled_core_if_needed(app: &tauri::AppHandle) -> Res
         remember_bundled_core_when_up_to_date(&install_dir, &info.version)?;
         return Ok(false);
     }
-    let window = app
-        .get_webview_window("main")
-        .map(|webview| webview.as_ref().window())
-        .ok_or_else(|| "Cannot access the main window to automatically install the offline kernel".to_string())?;
+    let window = main_window(app).ok_or_else(|| {
+        "Cannot access the main window to automatically install the offline kernel".to_string()
+    })?;
     let state = app.state::<CoreDownloadState>();
     state.start(CancellationToken::new(), Some(info.version.clone()))?;
     let result = install_core_with_runtime_restore(
@@ -2996,9 +2995,7 @@ pub(crate) fn configure_initial_main_window(
     app_handle: &tauri::AppHandle,
     start_hidden: bool,
 ) -> Result<(), String> {
-    let window = app_handle
-        .get_webview_window("main")
-        .ok_or_else(|| "Main window does not exist".to_string())?;
+    let window = main_window(app_handle).ok_or_else(|| "Main window does not exist".to_string())?;
 
     #[cfg(target_os = "macos")]
     set_macos_dock_visible(app_handle, !start_hidden);
