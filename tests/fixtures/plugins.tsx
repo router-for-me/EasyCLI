@@ -75,6 +75,10 @@ const storeEntries: Record<string, unknown>[] = [
 
 if (params.has('external-repository')) storeEntries[0].repository = 'https://github.com/rensumo/cpa-plugin-zcode';
 
+if (params.has('foreign-source')) storeEntries.unshift({ ...storeEntries[0], source_id: 'foreign', source_name: 'Foreign source',
+  repository: 'foreign/sample', install_source_status: 'different',
+});
+
 mockIPC(async (command, args) => {
   state.commands.push({ command, args });
   if (command === 'start_oauth_login') return { url: 'https://login.example.test/authorize?state=sample-state', state: 'sample-state' };
