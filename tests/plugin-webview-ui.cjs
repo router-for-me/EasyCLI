@@ -6,7 +6,7 @@ const path = require('node:path');
   const { createServer } = await import('vite');
   const react = (await import('@vitejs/plugin-react')).default;
   const root = path.resolve(__dirname, '..');
-  const server = await createServer({ configFile: false, root, plugins: [react()], logLevel: 'error', server: { host: '127.0.0.1', port: 0, strictPort: false } });
+  const server = await createServer({ configFile: false, root, cacheDir: 'node_modules/.vite-plugin-webview-ui', optimizeDeps: { noDiscovery: true, include: ['react', 'react-dom/client', 'react/jsx-runtime', 'lucide-react', '@dnd-kit/core', '@dnd-kit/sortable', '@dnd-kit/utilities', 'react-markdown'] }, plugins: [react()], logLevel: 'error', server: { host: '127.0.0.1', port: 0, strictPort: false, watch: null } });
   await server.listen();
   const address = server.httpServer.address();
   const base = `http://127.0.0.1:${typeof address === 'object' && address ? address.port : 1421}/`;

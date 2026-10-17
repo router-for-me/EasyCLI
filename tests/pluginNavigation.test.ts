@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import {
+  orderPluginNavEntries, mergePluginNavOrder,
   findPluginNavEntry,
   isPluginRoute,
   pluginNavLayout,
@@ -109,3 +110,12 @@ describe('plugin entry cache', () => {
     expect(() => writeCachedPluginNavEntries([entry('alpha', 0)])).not.toThrow();
   });
 });
+
+ test('saved order survives backend refresh and appends new pages without mutating input', () => {
+  const entries = [entry('a', 0), entry('b', 0), entry('c', 0)];
+  const order = [entries[1].route, entries[0].route];
+  expect(orderPluginNavEntries(entries, order).map(e => e.pluginID)).toEqual(['b', 'a', 'c']);
+  expect(entries.map(e => e.pluginID)).toEqual(['a', 'b', 'c']);
+  const hidden = entry('hidden', 0).route;
+  expect(mergePluginNavOrder([order[0], hidden, order[1]], [order[1], order[0], entries[2].route])).toEqual([order[1], hidden, order[0], entries[2].route]);
+ });

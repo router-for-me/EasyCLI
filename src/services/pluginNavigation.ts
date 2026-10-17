@@ -5,6 +5,31 @@ export type PluginNavLayout = 'expanded' | 'collapsed';
 export type PluginNavOverride = { layout: PluginNavLayout; auto: PluginNavLayout; count: number };
 
 const CACHE_KEY = 'cpa-gui-plugin-nav-entries';
+const ORDER_KEY = 'cpa-gui-plugin-nav-order';
+
+export function readPluginNavOrder(): string[] {
+  try {
+    const value: unknown = JSON.parse(window.localStorage.getItem(ORDER_KEY) ?? '[]');
+    return Array.isArray(value) ? [...new Set(value.filter((route): route is string => typeof route === 'string' && route.startsWith('/plugin-pages/')))] : [];
+  } catch { return []; }
+}
+
+export function writePluginNavOrder(order: string[]) {
+  try { window.localStorage.setItem(ORDER_KEY, JSON.stringify(order)); } catch { /* Keep the session order when storage is unavailable. */ }
+}
+
+export function orderPluginNavEntries(entries: PluginNavEntry[], order: string[]): PluginNavEntry[] {
+  const ranks = new Map(order.map((route, index) => [route, index]));
+  return [...entries].sort((a, b) => (ranks.get(a.route) ?? order.length) - (ranks.get(b.route) ?? order.length));
+}
+
+// Retain hidden/disabled pages so enabling a plugin restores its position.
+export function mergePluginNavOrder(order: string[], visible: string[]): string[] {
+  const visibleSet = new Set(visible);
+  let index = 0;
+  const next = order.map(route => visibleSet.has(route) ? visible[index++] : route);
+  return [...next, ...visible.slice(index)];
+}
 const ROUTE_PREFIX = '/plugin-pages/';
 
 export const isPluginRoute = (value: string): boolean => value.startsWith(ROUTE_PREFIX);

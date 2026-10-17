@@ -9,4 +9,8 @@
 
 .plugin-oauth-provider-status > span {
   flex: 1 1 240px;
+  overflow-wrap: anywhere;
 }
+
+.plugin-oauth-provider-status { padding: 14px 16px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-card); }
+.plugin-oauth-provider-status button { display: inline-flex; align-items: center; gap: 8px; }

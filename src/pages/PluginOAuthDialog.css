@@ -23,4 +23,15 @@
 .plugin-oauth-notice { color: var(--theme-4f825c); }
 .plugin-oauth-footer { flex-shrink: 0; padding: 16px 22px; border-top: 1px solid var(--theme-e3e1db); }
 .plugin-oauth-dialog button { min-height: 36px; }
+.plugin-oauth-dialog .config-dialog-heading > div { min-width: 0; }
+.plugin-oauth-dialog .config-dialog-heading h2 { overflow-wrap: anywhere; }
+.plugin-oauth-dialog svg, .plugin-oauth-dialog .config-dialog-heading > button { flex-shrink: 0; }
+.plugin-oauth-dialog button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.plugin-oauth-status { padding: 12px 14px; border-radius: 8px; background: var(--bg-secondary); color: var(--text-secondary); }
+.plugin-oauth-status.success { background: var(--success-badge-bg); color: var(--success-badge-text); }
+.plugin-oauth-status.error { color: var(--error-color); background: var(--bg-error-light); }
+.plugin-oauth-field input, .plugin-oauth-field textarea { font-weight: normal; line-height: 1.7; }
+.plugin-oauth-field :is(input, textarea):focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+.plugin-oauth-body form { padding-top: 16px; border-top: 1px solid var(--border-color); }
+.plugin-oauth-code { background: var(--bg-secondary); }
 @media (max-width: 560px) { .plugin-oauth-dialog .config-dialog-heading, .plugin-oauth-body, .plugin-oauth-footer { padding: 16px; } .plugin-oauth-link-actions button { flex: 1; } }
