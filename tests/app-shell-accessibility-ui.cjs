@@ -25,7 +25,7 @@ const path = require('node:path');
     await page.goto(`${base}?mock=running`, { waitUntil: 'commit' });
     await page.locator('.app-shell').waitFor();
 
-    assert.equal(await page.getByRole('heading', { level: 1, name: '首页' }).count(), 1);
+    assert.equal(await page.getByRole('heading', { level: 1, name: '首页' }).count(), 0);
 
     await page.locator('.nav-section').getByRole('button', { name: '使用记录' }).click();
     const tabs = page.getByRole('tab');
@@ -60,14 +60,14 @@ const path = require('node:path');
     assert.equal(await page.locator('.usage-filter-panel').count(), 0);
 
     await page.locator('.nav-section').getByRole('button', { name: '高级功能' }).click();
-    assert.equal(await page.locator('h1').count(), 1);
+    assert.equal(await page.locator('.config-page').getAttribute('aria-label'), '高级设置');
     const configTabs = page.locator('.config-subpage-tabs').getByRole('tab');
     assert.equal(await page.locator('.config-subpage-tabs').getAttribute('aria-orientation'), 'horizontal');
     assert.equal(await page.locator('.config-settings-sidebar').count(), 0);
     assert.equal(await page.locator('.config-settings-header p, .config-nav-save-hint, .config-category-heading, .config-section-index').count(), 0);
     assert.deepEqual(await configTabs.evaluateAll(elements => elements.map(element => element.id)), [
       'config-subpage-tab-general', 'config-subpage-tab-aliases', 'config-subpage-tab-routing', 'config-subpage-tab-requests',
-      'config-subpage-tab-oauth', 'config-subpage-tab-diagnostics', 'config-subpage-tab-extensions',
+      'config-subpage-tab-oauth', 'config-subpage-tab-diagnostics',
       'config-subpage-tab-software',
     ]);
     assert.equal(await page.locator('.config-page [role="tabpanel"]').count(), 1);

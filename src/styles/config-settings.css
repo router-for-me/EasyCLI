@@ -1,16 +1,15 @@
 .config-page { gap: 20px; min-width: 0; }
-.config-settings-search { display: flex; align-items: center; gap: 10px; flex: 0 0 240px; box-sizing: border-box; min-width: 0; padding: 9px 12px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-card); color: var(--text-tertiary); }
+.config-settings-search { display: flex; align-items: center; gap: 8px; flex: 0 0 160px; box-sizing: border-box; min-width: 0; padding: 9px 12px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-card); color: var(--text-tertiary); }
 .config-settings-search:focus-within { border-color: var(--primary-color); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary-color) 12%, transparent); }
 .config-settings-search > svg { flex: none; }
 .config-settings-search input { width: 100%; min-width: 0; padding: 3px 0; border: 0; outline: 0; background: transparent; color: var(--text-primary); font: inherit; font-size: 13px; }
 .config-settings-search input::-webkit-search-cancel-button { display: none; }
 .config-settings-search button { flex: none; width: 26px; height: 26px; }
 .config-settings-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: start; min-width: 0; }
-.config-settings-topnav { display: flex; align-items: center; gap: 16px; position: sticky; top: 0; z-index: 10; min-width: 0; padding: 0 0 4px; border-bottom: 1px solid var(--border-color); background: var(--theme-sticky-background, var(--bg-secondary)); }
-.config-settings-navigation.config-subpage-tabs { display: flex; flex-wrap: nowrap; gap: 4px; flex: 1 1 0; min-width: 0; width: auto; max-width: 100%; padding: 0 0 5px; margin: 0; border: 0; background: none; border-radius: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; scrollbar-color: var(--border-color) transparent; scroll-padding-inline: 4px; }
-.config-settings-navigation::-webkit-scrollbar { height: 5px; }
-.config-settings-navigation::-webkit-scrollbar-thumb { border-radius: 999px; background: var(--border-color); }
-.config-page .config-settings-navigation.config-subpage-tabs button { display: flex; flex: 0 0 auto; align-items: center; justify-content: center; gap: 7px; min-width: 0; width: auto; height: auto; min-height: 44px; margin: 0; padding: 10px 12px; border: 1px solid transparent; border-bottom: 2px solid transparent; border-radius: 8px 8px 0 0; background: transparent; color: var(--text-secondary); text-align: center; white-space: nowrap; font-size: 12px; line-height: 1.5; font-weight: 500; box-shadow: none; }
+.config-settings-topnav { display: flex; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 10; min-width: 0; padding: 0 0 4px; border-bottom: 1px solid var(--border-color); background: var(--theme-sticky-background, var(--bg-secondary)); }
+.config-settings-navigation.config-subpage-tabs { display: flex; flex-wrap: nowrap; gap: 4px; flex: 1 1 0; min-width: 0; width: auto; max-width: 100%; padding: 0; margin: 0; border: 0; background: none; border-radius: 0; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; scroll-padding-inline: 4px; }
+.config-settings-navigation::-webkit-scrollbar { display: none; width: 0; height: 0; }
+.config-page .config-settings-navigation.config-subpage-tabs button { display: flex; flex: 0 0 auto; align-items: center; justify-content: center; gap: 5px; min-width: 0; width: auto; height: auto; min-height: 44px; margin: 0; padding: 10px 8px; border: 1px solid transparent; border-bottom: 2px solid transparent; border-radius: 8px 8px 0 0; background: transparent; color: var(--text-secondary); text-align: center; white-space: nowrap; font-size: 12px; line-height: 1.5; font-weight: 500; box-shadow: none; }
 .config-page .config-settings-navigation.config-subpage-tabs button:hover { background: var(--bg-hover); color: var(--text-primary); }
 .config-page .config-settings-navigation.config-subpage-tabs button.active { border-bottom-color: var(--primary-color); background: var(--ui-accent-soft); color: var(--primary-color); font-weight: 650; box-shadow: none; }
 .config-page .config-settings-navigation.config-subpage-tabs button:focus-visible { outline: 2px solid var(--primary-color); outline-offset: -3px; }
@@ -112,7 +111,7 @@
 
 @media (max-width: 1150px) {
   .config-settings-layout { gap: 20px; }
-  .config-page .config-settings-navigation.config-subpage-tabs button { padding: 10px; }
+  .config-page .config-settings-navigation.config-subpage-tabs button { padding: 10px 8px; }
 }
 @media (max-width: 720px) {
   .config-page { gap: 20px; }
@@ -412,7 +411,6 @@
 }
 /* A single-purpose page has one centered workspace instead of an empty grid cell. */
 .config-page .config-settings-content #config-native-software { width: min(100%, 1000px); justify-self: center; }
-.config-page .config-settings-content #config-group-extensions-plugins { width: min(100%, 1100px); justify-self: center; }
 @container settings-card (min-width: 1040px) {
   .config-page :is(#config-group-extensions-concurrency, #config-group-extensions-inflight, #config-group-diagnostics, #config-group-request-behavior) .template-config-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .config-page :is(#config-group-extensions-concurrency, #config-group-extensions-inflight, #config-group-diagnostics, #config-group-request-behavior) .template-config-field:not(.template-config-toggle) {
