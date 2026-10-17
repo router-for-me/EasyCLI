@@ -7,7 +7,6 @@ import {
   AlertCircle,
   Search,
   ChevronRight,
-  Puzzle,
   SlidersHorizontal,
   Bug,
   Check,
@@ -97,7 +96,7 @@ type ConfigAction =
   | null;
 type ConfigSubpage = SettingsCategory;
 const CONFIG_SUBPAGES = settingsCategories.map(category => category.id);
-const CATEGORY_ICONS = { general: ShieldCheck, aliases: Link2, routing: Route, requests: SlidersHorizontal, oauth: KeyRound, diagnostics: FileText, extensions: Puzzle, software: Settings2 };
+const CATEGORY_ICONS = { general: ShieldCheck, aliases: Link2, routing: Route, requests: SlidersHorizontal, oauth: KeyRound, diagnostics: FileText, software: Settings2 };
 type SettingDestination = { category: ConfigSubpage; target: string; field?: string };
 type SettingSearchEntry = SettingDestination & { title: string; context: string; keywords: string };
 
@@ -1079,7 +1078,6 @@ export function ConfigPanelPage() {
     requests: sensitiveWordsDirty || retrySettingsDirty,
     diagnostics: loggingSettingsDirty,
     oauth: false,
-    extensions: false,
     software: softwareSettingsDirty,
   };
   const categoryDirty = (id: ConfigSubpage) => nativeCategoryDirty[id]
