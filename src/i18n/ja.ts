@@ -403,6 +403,8 @@ export const jaOverrides = {
   'agents.catalog.image': '画像',
   'agents.catalog.visible': 'Codex のモデル一覧に表示',
   'agents.catalog.parallel': '並列ツール呼び出しを許可',
+  'agents.catalog.toolSearch': 'Tool Search を許可（必要に応じてツールを読み込む）',
+  'agents.catalog.toolSearchHint': 'モデルと接続先の対応が必要です。互換性がない場合は無効にしてください。同期や再起動後も設定は保持されます。',
   'agents.catalog.systemPrompt': 'システムプロンプト',
   'agents.catalog.systemPromptHint': 'このモデルの既定のシステムプロンプトを置き換え、保存時に Codex モデル一覧へ同期します。モデルのリセットで元に戻せます。',
   'agents.catalog.invalidPrompt': 'システムプロンプトは空にできません。',
