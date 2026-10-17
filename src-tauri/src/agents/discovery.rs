@@ -1113,11 +1113,6 @@ pub(crate) fn inspect_agent_config_with_executables(
         copilot_cli.map(|(_, version)| version)
     } else if client == AgentClient::VscodeCopilot {
         None
-    } else if client == AgentClient::ZCode {
-        find_named_agent_executable(home, &["zcode"])
-            .filter(|path| executable.as_ref() != Some(path))
-            .as_deref()
-            .and_then(|path| read_agent_version(path, home))
     } else if should_probe_primary_agent_executable_version(client) {
         executable
             .as_deref()
@@ -1251,6 +1246,8 @@ pub(crate) fn agent_installation_detected(
 }
 
 pub(crate) fn should_probe_primary_agent_executable_version(client: AgentClient) -> bool {
+    // Desktop apps must use metadata only. A PATH entry (including a differently
+    // cased path or a wrapper) is not proof of a separate, safe CLI entry point.
     !matches!(client, AgentClient::ClaudeDesktop | AgentClient::ZCode | AgentClient::WorkBuddy)
 }
 

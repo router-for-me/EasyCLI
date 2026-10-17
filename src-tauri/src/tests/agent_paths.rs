@@ -344,6 +344,53 @@ fn zcode_windows_skips_stale_and_unrelated_registration_entries() {
 
 #[cfg(target_os = "windows")]
 #[test]
+fn zcode_windows_status_refresh_does_not_launch_path_candidates() {
+    let home = agent_test_home("zcode-status-no-launch");
+    let executable = home.join("ZCode.cmd");
+    let marker = home.join("launched.txt");
+    fs::write(
+        &executable,
+        format!("@echo off\r\necho launched > \"{}\"\r\necho 3.15.3\r\n", marker.display()),
+    )
+    .unwrap();
+
+    if env::var_os("CPA_ZCODE_STATUS_CHILD").is_none() {
+        // Isolate PATH in a child so parallel tests and real installations are unaffected.
+        let mut command = Command::new(env::current_exe().unwrap());
+        command.args([
+            "--exact",
+            "tests::agent_paths::zcode_windows_status_refresh_does_not_launch_path_candidates",
+            "--nocapture",
+        ]);
+        command.env("CPA_ZCODE_STATUS_CHILD", "1");
+        configure_background_command(&mut command);
+        let output = command.output().unwrap();
+        assert!(output.status.success(), "{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr));
+    } else {
+        env::set_var("PATH", &home);
+        assert_eq!(find_named_agent_executable(&home, &["zcode"]), Some(home.join("zcode.cmd")));
+        let other = home.join("OtherZCode.cmd");
+        fs::copy(&executable, &other).unwrap();
+        // Cover both case differences for the same file and a separate installation.
+        for selected in [&executable, &other] {
+            let status = inspect_agent_config_with_executables(
+                AgentClient::ZCode, &home, 8317, "test-key", Some(selected), None,
+            );
+            assert!(!marker.exists(), "status refresh launched the application");
+            assert!(status.installed);
+            assert_eq!(status.cli_version, None);
+            assert_eq!(status.app_version, None);
+            assert_eq!(status.launch_targets.len(), 1);
+            assert_eq!(status.launch_targets[0].id, "app");
+        }
+    }
+    fs::remove_dir_all(home).unwrap();
+}
+
+#[cfg(target_os = "windows")]
+#[test]
 fn zcode_windows_version_discovery_does_not_launch_the_application() {
     let home = agent_test_home("zcode-version-no-launch");
     let executable = home.join("zcode.cmd");
