@@ -4043,44 +4043,6 @@ fn normalized_model_tail(value: &str) -> String {
         .to_ascii_lowercase()
 }
 
-#[derive(Deserialize, Default)]
-struct UsageCredentialNotes {
-    #[serde(default)]
-    files: Vec<UsageCredentialNote>,
-}
-
-#[derive(Deserialize)]
-struct UsageCredentialNote {
-    #[serde(default)]
-    auth_index: String,
-    #[serde(default)]
-    note: String,
-}
-
-impl UsageCredentialNotes {
-    fn into_map(self) -> HashMap<String, String> {
-        self.files.into_iter().filter_map(|file| {
-            let index = file.auth_index.trim();
-            let note = file.note.trim();
-            (!index.is_empty() && !note.is_empty())
-                .then(|| (index.to_string(), note.to_string()))
-        }).collect()
-    }
-}
-
-async fn fetch_usage_credential_notes(config: &GuiConfigFile) -> HashMap<String, String> {
-    // Notes are optional enrichment: offline usage history must remain readable.
-    let fetch = async {
-        let response = management_http_client().ok()?
-            .get(management_endpoint(config, "credentials").ok()?)
-            .header("Authorization", management_authorization(config).ok()?)
-            .timeout(Duration::from_secs(3))
-            .send().await.ok()?.error_for_status().ok()?;
-        response.json::<UsageCredentialNotes>().await.ok()
-    };
-    fetch.await.unwrap_or_default().into_map()
-}
-
 #[tauri::command]
 pub(crate) async fn get_usage_analysis(
     query: UsageQuery,
@@ -5509,33 +5471,6 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn usage_credential_notes_use_v8_credentials_route() {
-        use tokio::{io::{AsyncReadExt, AsyncWriteExt}, net::TcpListener};
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let mut config = GuiConfigFile::default();
-        config.host = "127.0.0.1".into();
-        config.port = listener.local_addr().unwrap().port();
-        config.management_secret_key = "test-management-key".into();
-        let server = tokio::spawn(async move {
-            let (mut stream, _) = listener.accept().await.unwrap();
-            let mut request = Vec::new();
-            let mut buffer = [0; 1024];
-            while !request.windows(4).any(|part| part == b"\r\n\r\n") {
-                let count = stream.read(&mut buffer).await.unwrap();
-                assert!(count > 0);
-                request.extend_from_slice(&buffer[..count]);
-            }
-            assert!(request.starts_with(b"GET /v8/management/credentials HTTP/1.1\r\n"));
-            let body = r#"{"files":[{"auth_index":"grok-file","note":"Credential note"}]}"#;
-            let response = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.len(), body);
-            stream.write_all(response.as_bytes()).await.unwrap();
-        });
-        let notes = fetch_usage_credential_notes(&config).await;
-        server.await.unwrap();
-        assert_eq!(notes.get("grok-file").map(String::as_str), Some("Credential note"));
-    }
-
     #[test]
     fn usage_source_notes_and_request_key_notes_stay_independent() {
         let mut connection = Connection::open_in_memory().unwrap();
@@ -5550,12 +5485,7 @@ mod tests {
                 record_hash: String::new(), remark: remark.into(),
             });
         }
-        let notes: UsageCredentialNotes = serde_json::from_value(serde_json::json!({
-            "files": [{"auth_index": "grok-file", "note": " Grok credential note "},
-                      {"auth_index": "blank", "note": "  "}]
-        })).unwrap();
-        let notes = notes.into_map();
-        assert!(!notes.contains_key("blank"));
+        let notes = HashMap::from([("grok-file".into(), "Grok credential note".into())]);
         let mut oauth = sample_record("notes-oauth", "2026-08-27T00:00:00Z", "grok");
         oauth.provider = "grok".into();
         oauth.source = "account@example.com".into();
