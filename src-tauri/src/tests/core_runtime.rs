@@ -2,6 +2,86 @@ use super::support::*;
 use super::*;
 
 #[test]
+fn archived_failed_rollback_survives_a_successful_retry_without_installed_binary() {
+    let root = agent_test_home("archive-failed-rollback-retry");
+    let install = root.join("cpa-core");
+    let staging = root.join("cpa-core.staging");
+    let rollback = root.join("cpa-core.rollback");
+    fs::create_dir_all(&install).unwrap();
+    fs::create_dir_all(&staging).unwrap();
+    fs::write(install.join(core_binary_name()), b"original").unwrap();
+    fs::write(staging.join(core_binary_name()), b"replacement").unwrap();
+    backup_core_for_rollback(&install, &staging, &rollback).unwrap();
+    fs::remove_file(install.join(core_binary_name())).unwrap();
+
+    let archived = archive_previous_core_rollback(&rollback).unwrap().unwrap();
+    assert!(!rollback.exists());
+    apply_staged_core_with_rollback(&install, &staging, &rollback, || Ok(())).unwrap();
+    assert_eq!(fs::read(install.join(core_binary_name())).unwrap(), b"replacement");
+    assert_eq!(fs::read(archived.join("files").join(core_binary_name())).unwrap(), b"original");
+    assert!(archived.join("added-files.txt").is_file());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn retry_with_stale_backup_can_succeed_or_roll_back_without_losing_history() {
+    for fail_restart in [false, true] {
+        let root = agent_test_home(if fail_restart { "archive-retry-restart-failure" } else { "archive-retry-success" });
+        let install = root.join("cpa-core");
+        let staging = root.join("cpa-core.staging");
+        let rollback = root.join("cpa-core.rollback");
+        fs::create_dir_all(&install).unwrap();
+        fs::create_dir_all(&staging).unwrap();
+        fs::write(install.join(core_binary_name()), b"historical").unwrap();
+        fs::write(staging.join(core_binary_name()), b"next").unwrap();
+        backup_core_for_rollback(&install, &staging, &rollback).unwrap();
+        // Model an earlier update whose backup cleanup did not complete.
+        fs::write(install.join(core_binary_name()), b"current").unwrap();
+        let archived = archive_previous_core_rollback(&rollback).unwrap().unwrap();
+        let result = apply_staged_core_with_rollback(&install, &staging, &rollback, || {
+            if fail_restart { Err("restart failed".to_string()) } else { Ok(()) }
+        });
+        assert_eq!(result.is_err(), fail_restart);
+        let expected: &[u8] = if fail_restart { b"current" } else { b"next" };
+        assert_eq!(fs::read(install.join(core_binary_name())).unwrap(), expected);
+        assert_eq!(fs::read(archived.join("files").join(core_binary_name())).unwrap(), b"historical");
+        assert!(!rollback.exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+}
+
+#[test]
+fn rollback_archiving_handles_empty_partial_and_repeated_backups() {
+    let root = agent_test_home("archive-partial-rollback");
+    let rollback = root.join("cpa-core.rollback");
+    assert!(archive_previous_core_rollback(&rollback).unwrap().is_none());
+    fs::create_dir_all(&rollback).unwrap();
+    let empty = archive_previous_core_rollback(&rollback).unwrap().unwrap();
+    fs::create_dir_all(rollback.join("files")).unwrap();
+    fs::write(rollback.join("files").join("partial"), b"retain me").unwrap();
+    let partial = archive_previous_core_rollback(&rollback).unwrap().unwrap();
+    assert_ne!(empty, partial);
+    assert!(empty.is_dir());
+    assert_eq!(fs::read(partial.join("files").join("partial")).unwrap(), b"retain me");
+    assert!(!rollback.exists());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn rollback_archive_failure_preserves_original_backup() {
+    let root = agent_test_home("archive-rollback-failure");
+    let rollback = root.join("cpa-core.rollback");
+    fs::create_dir_all(&rollback).unwrap();
+    fs::write(rollback.join("original"), b"recoverable").unwrap();
+    // A file at the history path deterministically prevents directory creation.
+    fs::write(root.join("cpa-core.rollback-history"), b"occupied").unwrap();
+    let error = archive_previous_core_rollback(&rollback).unwrap_err();
+    assert!(error.contains("backup has been preserved"));
+    assert_eq!(fs::read(rollback.join("original")).unwrap(), b"recoverable");
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn retry_must_preserve_backup_from_failed_rollback() {
     let root = agent_test_home("review-preserve-failed-rollback");
     let install = root.join("cpa-core");

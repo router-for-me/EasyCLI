@@ -324,7 +324,7 @@ pub(crate) async fn install_core_version(
         let config = gui_config_state.snapshot()?;
         let proxy_url = config.proxy_url.clone();
         let rollback_dir = core_base_dir()?.join("cpa-core.rollback");
-        ensure_core_rollback_available(&rollback_dir)?;
+        archive_previous_core_rollback(&rollback_dir)?;
         let token = CancellationToken::new();
         state.start(token.clone(), version.clone())?;
 
@@ -2550,6 +2550,45 @@ pub(crate) fn reset_dir(path: &Path) -> Result<(), String> {
 const ROLLBACK_FILES_DIR: &str = "files";
 const ROLLBACK_ADDED_FILES: &str = "added-files.txt";
 
+/// Retain an interrupted update's backup before starting another transaction.
+/// Never infer that a backup is disposable from the installed binary's presence:
+/// it may be the broken replacement. History is deliberately not auto-deleted.
+pub(crate) fn archive_previous_core_rollback(rollback_dir: &Path) -> Result<Option<PathBuf>, String> {
+    match fs::symlink_metadata(rollback_dir) {
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!(
+            "Failed to inspect kernel rollback backup {}: {error}",
+            path_to_string(rollback_dir)
+        )),
+        Ok(_) => {}
+    }
+    let history = rollback_dir.with_file_name("cpa-core.rollback-history");
+    let archive_error = |error: io::Error| format!(
+        "Failed to archive previous kernel rollback backup {}: {error}. The backup has been preserved; move it to a safe location before retrying the update",
+        path_to_string(rollback_dir)
+    );
+    fs::create_dir_all(&history).map_err(&archive_error)?;
+    // Reserve a unique directory exclusively, so even retries in the same second
+    // cannot overwrite any earlier backup. Rename stays on the same filesystem.
+    let timestamp = unix_now();
+    for sequence in 0..10000 {
+        let slot = history.join(format!("{timestamp}-{sequence}"));
+        match fs::create_dir(&slot) {
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(archive_error(error)),
+            Ok(()) => {}
+        }
+        let archived = slot.join("backup");
+        if let Err(error) = fs::rename(rollback_dir, &archived) {
+            let _ = fs::remove_dir(&slot);
+            return Err(archive_error(error));
+        }
+        eprintln!("Previous kernel rollback backup preserved at {}", path_to_string(&archived));
+        return Ok(Some(archived));
+    }
+    Err(format!("Could not reserve a unique kernel backup directory in {}", path_to_string(&history)))
+}
+
 fn ensure_core_rollback_available(rollback_dir: &Path) -> Result<(), String> {
     match fs::symlink_metadata(rollback_dir) {
         Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
@@ -2561,6 +2600,17 @@ fn ensure_core_rollback_available(rollback_dir: &Path) -> Result<(), String> {
             "A previous kernel rollback backup is still present at {}. Restore it or move it to a safe location before retrying the update; it will not be overwritten",
             path_to_string(rollback_dir)
         )),
+    }
+}
+
+fn cleanup_completed_core_rollback(rollback_dir: &Path) {
+    if let Err(error) = fs::remove_dir_all(rollback_dir) {
+        if error.kind() != io::ErrorKind::NotFound {
+            eprintln!(
+                "Kernel transaction completed, but failed to clean up backup {}: {error}. A subsequent update will archive it before proceeding",
+                path_to_string(rollback_dir)
+            );
+        }
     }
 }
 
@@ -2671,7 +2721,7 @@ pub(crate) fn restore_core_rollback(
             parent = dir.parent();
         }
     }
-    let _ = fs::remove_dir_all(rollback_dir);
+    cleanup_completed_core_rollback(rollback_dir);
     Ok(())
 }
 
@@ -2708,9 +2758,7 @@ where
 
     match verify_or_restart() {
         Ok(()) => {
-            if rollback_dir.exists() {
-                let _ = fs::remove_dir_all(rollback_dir);
-            }
+            cleanup_completed_core_rollback(rollback_dir);
             Ok(())
         }
         Err(restart_error) if had_backup => match restore_core_rollback(install_dir, rollback_dir) {
