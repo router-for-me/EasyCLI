@@ -163,7 +163,7 @@ export function PluginConfigDialog({ plugin, onClose, onSaved }: {
               <label className="plugin-config-toggle"><input type="checkbox" checked={draft.enabled} onChange={event => { const checked = event.currentTarget.checked; changeDraft(current => ({ ...current, enabled: checked, enabledTouched: true })); }} /><span>{pt('enabled')}</span></label>
               <small>{pt('enabledHint')}</small>
               <div className="plugin-config-field">
-                <label htmlFor={`${id}-priority`}>{pt('priority')}<code>{pt('priority')}</code></label>
+                <label htmlFor={`${id}-priority`}>{pt('priority')}</label>
                 <input id={`${id}-priority`} type="text" inputMode="numeric" value={draft.priority} aria-invalid={Boolean(draft.errors.priority)} aria-describedby={`${id}-priority-hint${draft.errors.priority ? ` ${id}-priority-error` : ''}`} onChange={event => { const value = event.currentTarget.value; changeDraft(current => ({ ...current, priority: value, priorityTouched: true, errors: { ...current.errors, priority: '' } })); }} />
                 <small id={`${id}-priority-hint`}>{pt('priorityHint')}</small>
                 {draft.errors.priority ? <small className="plugin-config-error" id={`${id}-priority-error`}>{draft.errors.priority}</small> : null}

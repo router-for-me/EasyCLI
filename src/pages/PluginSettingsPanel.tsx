@@ -48,13 +48,17 @@ export function PluginSettingsPanel({ onSaved }: { onSaved: () => void }) {
   };
   return <form className="plugin-settings" onSubmit={e => { e.preventDefault(); void save(); }}>
     {error && <p className="plugin-error" role="alert">{error}</p>}
-    {!original ? <button className="secondary-button" type="button" onClick={() => setAttempt(n => n + 1)}>{error ? pt('retry') : t('common.loading')}</button> : <>
+    {!original ? (error ? <button className="secondary-button" type="button" onClick={() => setAttempt(n => n + 1)}>{pt('retry')}</button> : <p className="plugin-loading" role="status">{t('common.loading')}</p>) : <>
       <fieldset disabled={busy}>
+        <legend>{pt('storageSettings')}</legend>
         <label className="plugin-field">{pt('directory')}<input value={directory} onChange={e => setDirectory(e.target.value)} /></label>
+      </fieldset>
+      <fieldset disabled={busy}>
+        <legend>{pt('registrySettings')}</legend>
         <label className="plugin-field">{pt('sources')}<textarea rows={4} value={sources} onChange={e => setSources(e.target.value)} spellCheck={false} /><small>{pt('sourcesHint')}</small></label>
         <label className="plugin-field">{pt('auth')}<textarea rows={7} value={auth} onChange={e => setAuth(e.target.value)} spellCheck={false} /><small>{pt('authHint')}</small></label>
       </fieldset>
-      <button className="primary-button" type="submit" disabled={busy}>{busy ? t('common.loading') : t('common.save')}</button>
+      <div className="plugin-settings-actions"><button className="primary-button" type="submit" disabled={busy}>{busy ? t('common.loading') : t('common.save')}</button></div>
     </>}
   </form>;
 }
