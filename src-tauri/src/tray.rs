@@ -109,11 +109,8 @@ pub(crate) fn setup_macos_tray(app: &mut tauri::App<tauri::Wry>) -> tauri::Resul
     let double_click_interval = Duration::from_secs_f64(NSEvent::doubleClickInterval());
 
     let tray = TrayIconBuilder::with_id(MACOS_TRAY_ID)
-        .icon(
-            app.default_window_icon()
-                .cloned()
-                .expect("application icon is required for the tray"),
-        )
+        .icon(tauri::include_image!("icons/tray-macos.png"))
+        .icon_as_template(true)
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(move |app_handle, event| match event.id().as_ref() {
