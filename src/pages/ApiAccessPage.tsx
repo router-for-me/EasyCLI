@@ -1676,11 +1676,10 @@ export function ApiAccessPage() {
                     >
                   <div className="provider-row-main">
                     <div className="provider-row-title">
-                      <strong title={row.name}>{row.name}</strong>
+                      <strong title={row.remark || row.name}>{row.remark || row.name}</strong>
                       {Array.isArray(row.record.keys) && providerGroupStatus(row.record) === 'partial'
                         ? <span className="state-pill">{t('apiAccess.groups.partial')}</span>
                         : null}
-                      {row.remark ? <span title={row.remark}>{row.remark}</span> : null}
                     </div>
                     <span className="provider-row-url" title={row.baseUrl || undefined}>{row.baseUrl || t('apiAccess.defaultUrl')}</span>
                     <div className="provider-row-meta">
