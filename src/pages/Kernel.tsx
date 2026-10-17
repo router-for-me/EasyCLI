@@ -209,10 +209,7 @@ export function KernelPage({ view = 'home' }: { view?: KernelView }) {
   const overview = useHomeOverview(coreReady, healthContext);
 
   return (
-    <section className="page kernel-page home-page home-dashboard">
-      <header className="home-masthead">
-        <h1>{t('app.nav.home')}</h1>
-      </header>
+    <section className="page kernel-page home-page home-dashboard" aria-label={t('app.nav.home')}>
       <HomeOverviewCards snapshot={overview.snapshot} loading={overview.loading} coreReady={coreReady} onRefresh={overview.refresh} actions={<CoreHealthPanel compact
         coreReady={coreReady} models={overview.snapshot?.models ?? []}
         modelsLoading={overview.loading}
