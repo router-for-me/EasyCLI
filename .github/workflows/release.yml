@@ -1,9 +1,11 @@
 name: Build portable releases
 
 run-name: >-
-  ${{ github.event_name == 'push' && github.ref == 'refs/heads/dev' && 'Dev test build' || github.event_name == 'push' && github.ref_type == 'branch' && 'Warm build caches' || 'Portable release' }} ${{ (github.ref_type == 'tag' && github.ref_name) || inputs.release_tag || github.ref_name }}
+  ${{ github.event_name == 'pull_request' && 'PR test build' || github.event_name == 'push' && github.ref_type == 'branch' && 'Warm build caches' || 'Portable release' }} ${{ github.event.pull_request.number || (github.ref_type == 'tag' && github.ref_name) || inputs.release_tag || github.ref_name }}
 
 on:
+  pull_request:
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
     inputs:
       release_tag:
@@ -18,13 +20,12 @@ on:
   push:
     branches:
       - main
-      - dev
     tags:
       - 'v*'
 
 concurrency:
-  group: portable-${{ github.ref }}-${{ github.event_name == 'push' && github.ref == 'refs/heads/dev' && github.run_id || github.event_name == 'push' && github.ref_type == 'branch' && 'cache' || 'release' }}
-  cancel-in-progress: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+  group: portable-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.event_name == 'push' && github.ref_type == 'branch' && 'cache' || 'release' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
 
 permissions:
   contents: read
@@ -45,15 +46,16 @@ jobs:
         shell: bash
         env:
           REQUESTED_VERSION: ${{ (github.ref_type == 'tag' && github.ref_name) || inputs.release_tag }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
 
           source_version="$(node scripts/version.mjs)"
           release_tag="$REQUESTED_VERSION"
-          if [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF" == "refs/heads/dev" ]]; then
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
             # Replace any existing prerelease/build suffix for an unambiguous test version.
             base_version="${source_version%%[-+]*}"
-            release_tag="v${base_version}-dev.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+            release_tag="v${base_version}-pr.${PR_NUMBER}.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
           elif [ -z "$release_tag" ]; then
             release_tag="v$source_version"
           else
@@ -108,7 +110,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     env:
-      PACKAGE_RELEASE: ${{ github.event_name == 'workflow_dispatch' || github.ref_type == 'tag' || (github.event_name == 'push' && github.ref == 'refs/heads/dev') }}
+      PACKAGE_RELEASE: ${{ github.event_name == 'workflow_dispatch' || github.ref_type == 'tag' || github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -183,7 +185,7 @@ jobs:
           path: cpa-core
           key: ${{ steps.core-cache.outputs.cache-primary-key }}
       - name: Build signed macOS DMG
-        if: env.PACKAGE_RELEASE == 'true' && matrix.os == 'darwin'
+        if: env.PACKAGE_RELEASE == 'true' && matrix.os == 'darwin' && github.event_name != 'pull_request'
         shell: bash
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
@@ -289,7 +291,44 @@ jobs:
             --password "$APPLE_PASSWORD" \
             --team-id "$APPLE_TEAM_ID" \
             --wait
-          xcrun stapler staple "$output_dmg"
+          # Apple's ticket delivery can briefly fail even after notarization is accepted.
+          # Retry stapling only, without rebuilding or resubmitting the accepted DMG.
+          # Each attempt makes a fresh request immediately, with no added delay.
+          max_attempts=10000
+          for ((attempt = 1; attempt <= max_attempts; attempt++)); do
+            if xcrun stapler staple "$output_dmg"; then
+              break
+            else
+              staple_status=$?
+            fi
+            if [ "$attempt" -eq "$max_attempts" ]; then
+              echo "::error::DMG stapling failed after $attempt attempts (exit $staple_status)."
+              exit "$staple_status"
+            fi
+            echo "::warning::DMG stapling failed (exit $staple_status); requesting again immediately (attempt $((attempt + 1))/$max_attempts)."
+          done
+          xcrun stapler validate "$output_dmg"
+      - name: Build macOS PR DMG without Apple notarization
+        if: github.event_name == 'pull_request' && matrix.os == 'darwin'
+        shell: bash
+        env:
+          APPLE_SIGNING_IDENTITY: '-'
+        run: |
+          set -euo pipefail
+          cp "release/${{ steps.package.outputs.stem }}/portable-app.json" portable-app.json
+          bun tauri bundle --bundles app --ci --config src-tauri/tauri.dmg.conf.json
+          app_path="src-tauri/target/release/bundle/macos/EasyCLIProxyAPI.app"
+          test -d "$app_path"
+          staging_dir="$(mktemp -d "$RUNNER_TEMP/easycli-pr-dmg.XXXXXX")"
+          trap 'rm -rf "$staging_dir"' EXIT
+          ditto "$app_path" "$staging_dir/EasyCLIProxyAPI.app"
+          ln -s /Applications "$staging_dir/Applications"
+          hdiutil create \
+            -volname "EasyCLIProxyAPI" \
+            -srcfolder "$staging_dir" \
+            -format UDZO \
+            -ov \
+            "${{ steps.package.outputs.stem }}.dmg"
       - name: Archive Linux release
         if: env.PACKAGE_RELEASE == 'true' && matrix.os == 'linux'
         run: tar -czf "${{ steps.package.outputs.stem }}.tar.gz" -C release "${{ steps.package.outputs.stem }}"
@@ -299,17 +338,27 @@ jobs:
         run: |
           Compress-Archive -Path "release/${{ steps.package.outputs.stem }}" -DestinationPath "${{ steps.package.outputs.stem }}.zip"
       - uses: actions/upload-artifact@v7
+        id: upload
         if: env.PACKAGE_RELEASE == 'true'
         with:
           name: ${{ steps.package.outputs.stem }}
           path: ${{ steps.package.outputs.stem }}.${{ matrix.suffix }}
           if-no-files-found: error
-          retention-days: 14
+          retention-days: ${{ github.event_name == 'pull_request' && 7 || 14 }}
+      - name: Link PR test package
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
+          PACKAGE_NAME: ${{ steps.package.outputs.stem }}
+        run: |
+          echo "[Download $PACKAGE_NAME]($ARTIFACT_URL) (GitHub login required; retained for 7 days)." >> "$GITHUB_STEP_SUMMARY"
+          echo "PR test build. macOS packages use ad-hoc signing without Apple notarization and may show security warnings." >> "$GITHUB_STEP_SUMMARY"
   publish:
     name: Publish GitHub release
     if: >-
-      startsWith(github.ref, 'refs/tags/')
-      || inputs.release_tag != ''
+      github.event_name != 'pull_request'
+      && (startsWith(github.ref, 'refs/tags/') || inputs.release_tag != '')
     needs:
       - version
       - build
@@ -366,7 +415,7 @@ jobs:
           esac
 
           prerelease="$MANUAL_PRERELEASE"
-          release_args=(--title "EasyCLIProxyAPI $RELEASE_TAG" --notes-file "$RUNNER_TEMP/easycli-release-notes.md")
+          release_args=(--title "$RELEASE_TAG" --notes-file "$RUNNER_TEMP/easycli-release-notes.md")
           if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
             if [[ "$RELEASE_TAG" == *-* ]]; then
               prerelease=true
@@ -382,7 +431,7 @@ jobs:
 
           if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" artifacts/* --clobber
-            gh release edit "$RELEASE_TAG" --notes-file "$RUNNER_TEMP/easycli-release-notes.md"
+            gh release edit "$RELEASE_TAG" --title "$RELEASE_TAG" --notes-file "$RUNNER_TEMP/easycli-release-notes.md"
           else
             gh release create "$RELEASE_TAG" "${release_args[@]}" artifacts/*
           fi
