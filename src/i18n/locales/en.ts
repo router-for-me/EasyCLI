@@ -352,7 +352,7 @@ export const en: Record<MessageKey, string> = {
   'agents.catalog.image': 'Image',
   'agents.catalog.visible': 'Show in the Codex model list',
   'agents.catalog.parallel': 'Allow parallel tool calls',
-  'agents.catalog.toolSearch': 'Allow Tool Search (load tools on demand)',
+  'agents.catalog.toolSearch': 'Allow Tool Search',
   'agents.catalog.toolSearchHint': 'Requires model and upstream provider support; disable if incompatible. This setting persists across syncs and restarts.',
   'agents.catalog.systemPrompt': 'System prompt',
   'agents.catalog.systemPromptHint': 'Replaces this model’s default system prompt and syncs to the Codex model list when saved. Use “Reset model” to restore it.',
