@@ -9,6 +9,7 @@ import {
   isRecord,
   managementApi,
   normalizeAuthIndex,
+  readBoolean,
   readString,
 } from './managementApi';
 import { authFileName } from './authFiles';
@@ -23,7 +24,7 @@ const quotaText = (
 ) => translate(getCurrentLocale(), key, variables);
 
 export type AuthFile = Record<string, unknown>;
-export type QuotaProvider = 'claude' | 'codex' | 'kimi' | 'xai' | 'antigravity' | 'devin';
+export type QuotaProvider = 'claude' | 'codex' | 'kimi' | 'xai' | 'antigravity' | 'devin' | 'plugin';
 export type QuotaStatus = 'idle' | 'loading' | 'success' | 'error';
 export type QuotaRow = {
   label: string;
@@ -62,6 +63,8 @@ const endpointByProvider: Record<QuotaProvider, string> = {
   kimi: 'https://api.kimi.com/coding/v1/usages',
   xai: 'https://cli-chat-proxy.grok.com/v1/billing',
   antigravity: 'https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary',
+  // Served by the core's plugin quota API; no direct upstream endpoint.
+  plugin: '',
 };
 
 const CLAUDE_PROFILE_URL = 'https://api.anthropic.com/api/oauth/profile';
@@ -99,9 +102,17 @@ const headersByProvider: Record<QuotaProvider, Record<string, string>> = {
     // Keep quota and loadCodeAssist requests aligned with Management Center's Hub client.
     'User-Agent': 'antigravity/hub/2.23.0 darwin/arm64',
   },
+  // The core injects the credential; the client sends no provider headers.
+  plugin: {},
 };
 
 export const providerForFile = (file: AuthFile): QuotaProvider | null => {
+  // Plugin providers (e.g. WorkBuddy) advertise quota support in the credential
+  // payload and are resolved by the core, so no per-provider client logic is needed.
+  if (readBoolean(file, 'supports_quota', 'supportsQuota')
+    || readString(file, 'quota_provider', 'quotaProvider')) {
+    return 'plugin';
+  }
   const value = readString(file, 'provider', 'type', 'account_type').toLowerCase().replace(/_/g, '-');
   if (value === 'x-ai' || value === 'grok') return 'xai';
   if (value === 'cognition') return 'devin';
@@ -952,6 +963,7 @@ async function loadQuotaSnapshot(file: AuthFile): Promise<QuotaState> {
   }
   try {
     if (booleanValue(file.disabled) === true) throw new Error(quotaText('quota.fileDisabled'));
+    if (provider === 'plugin') return await loadPluginQuota(file);
     const codexMetadata = provider === 'codex' ? codexMetadataFor(file) : undefined;
     const codexAccountId = codexMetadata?.accountId || '';
     const responseClock: { serverTimeOffsetMs?: number } = {};
@@ -1023,6 +1035,83 @@ async function loadQuotaSnapshot(file: AuthFile): Promise<QuotaState> {
       error: error instanceof Error ? error.message : String(error),
     };
   }
+}
+
+// Quota for plugin providers is resolved by the core, which owns the credential
+// and normalizes the upstream payload. The client only sends the auth index.
+async function loadPluginQuota(file: AuthFile): Promise<QuotaState> {
+  const authIndex = normalizeAuthIndex(file.auth_index ?? file.authIndex);
+  if (!authIndex) {
+    return { status: 'error', rows: [], error: quotaText('quota.service.error.missingAuthIndex') };
+  }
+  try {
+    const payload = await managementApi.post<Record<string, unknown>>(
+      '/credentials/quota/fetch',
+      { auth_index: authIndex },
+      { timeoutMs: 20_000 },
+    );
+    if (!isRecord(payload)) {
+      return { status: 'error', rows: [], error: quotaText('quota.service.error.unrecognized') };
+    }
+    const rows = pluginQuotaRows(payload);
+    if (rows.length === 0) {
+      return { status: 'error', rows: [], error: quotaText('quota.service.error.unrecognized') };
+    }
+    return {
+      status: 'success',
+      rows,
+      plan: pluginQuotaPlan(payload),
+      fetchedAt: Date.now(),
+    };
+  } catch (error) {
+    return {
+      status: 'error',
+      rows: [],
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function pluginQuotaPlan(payload: Record<string, unknown>): string | undefined {
+  const subscription = isRecord(payload.subscription) ? payload.subscription : null;
+  const plan = subscription ? readString(subscription, 'plan', 'tierName', 'tierId') : '';
+  return plan || undefined;
+}
+
+function pluginQuotaResetAtMs(value: string): number | undefined {
+  if (!value) return undefined;
+  const parsed = Date.parse(value.includes('T') ? value : value.replace(' ', 'T'));
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function pluginQuotaRows(payload: Record<string, unknown>): QuotaRow[] {
+  const rows: QuotaRow[] = [];
+  const summary = Array.isArray(payload.summary) ? payload.summary.filter(isRecord) : [];
+  const remaining = summary.find((metric) => readString(metric, 'key') === 'credits_remaining');
+  const total = summary.find((metric) => readString(metric, 'key') === 'credits_total');
+  const remainingValue = remaining ? Number(remaining.value) : NaN;
+  const totalValue = total ? Number(total.value) : NaN;
+  if (Number.isFinite(remainingValue) && Number.isFinite(totalValue) && totalValue > 0) {
+    rows.push({
+      label: readString(remaining ?? {}, 'label') || readString(total ?? {}, 'label') || 'Credits',
+      remainingPercent: Math.max(0, Math.min(100, (remainingValue / totalValue) * 100)),
+      detail: `${remainingValue} / ${totalValue} ${readString(remaining ?? {}, 'unit')}`.trim(),
+    });
+  }
+  const groups = Array.isArray(payload.groups) ? payload.groups.filter(isRecord) : [];
+  for (const group of groups) {
+    const buckets = Array.isArray(group.buckets) ? group.buckets.filter(isRecord) : [];
+    for (const bucket of buckets) {
+      const fraction = Number(bucket.remainingFraction);
+      rows.push({
+        label: readString(bucket, 'window', 'label') || readString(group, 'displayName'),
+        remainingPercent: Number.isFinite(fraction) ? Math.max(0, Math.min(100, fraction * 100)) : null,
+        resetAtMs: pluginQuotaResetAtMs(readString(bucket, 'resetTime')),
+        detail: readString(bucket, 'description') || undefined,
+      });
+    }
+  }
+  return rows;
 }
 
 const createRedeemRequestId = () => {
