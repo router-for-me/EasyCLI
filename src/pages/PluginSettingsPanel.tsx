@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useI18n } from '../i18n';
 import { pluginText } from '../i18n/plugins';
 import { isRecord } from '../services/managementApi';
 import { safePluginWebURL } from '../services/pluginResources';
 import { pluginsApi, type PluginSettings } from '../services/plugins';
 
-export function PluginSettingsPanel({ onSaved }: { onSaved: () => void }) {
+export function PluginSettingsPanel({ onSaved, globalControl }: { onSaved: () => void; globalControl: ReactNode }) {
   const { t, locale } = useI18n();
   const pt = (key: Parameters<typeof pluginText>[0]) => pluginText(key, locale);
   const [original, setOriginal] = useState<PluginSettings | null>(null);
@@ -49,14 +49,17 @@ export function PluginSettingsPanel({ onSaved }: { onSaved: () => void }) {
   return <form className="plugin-settings" onSubmit={e => { e.preventDefault(); void save(); }}>
     {error && <p className="plugin-error" role="alert">{error}</p>}
     {!original ? (error ? <button className="secondary-button" type="button" onClick={() => setAttempt(n => n + 1)}>{pt('retry')}</button> : <p className="plugin-loading" role="status">{t('common.loading')}</p>) : <>
-      <fieldset disabled={busy}>
+      <fieldset className="plugin-settings-card" disabled={busy}>
         <legend>{pt('storageSettings')}</legend>
-        <label className="plugin-field">{pt('directory')}<input value={directory} onChange={e => setDirectory(e.target.value)} /></label>
+        <div className="plugin-settings-columns plugin-settings-basics">{globalControl}
+        <label className="plugin-field">{pt('directory')}<input value={directory} onChange={e => setDirectory(e.target.value)} /></label></div>
       </fieldset>
-      <fieldset disabled={busy}>
+      <fieldset className="plugin-settings-card" disabled={busy}>
         <legend>{pt('registrySettings')}</legend>
-        <label className="plugin-field">{pt('sources')}<textarea rows={4} value={sources} onChange={e => setSources(e.target.value)} spellCheck={false} /><small>{pt('sourcesHint')}</small></label>
-        <label className="plugin-field">{pt('auth')}<textarea rows={7} value={auth} onChange={e => setAuth(e.target.value)} spellCheck={false} /><small>{pt('authHint')}</small></label>
+        <div className="plugin-settings-columns">
+        <label className="plugin-field">{pt('sources')}<textarea rows={5} value={sources} onChange={e => setSources(e.target.value)} spellCheck={false} /><small>{pt('sourcesHint')}</small></label>
+        <label className="plugin-field">{pt('auth')}<textarea rows={5} value={auth} onChange={e => setAuth(e.target.value)} spellCheck={false} /><small>{pt('authHint')}</small></label>
+        </div>
       </fieldset>
       <div className="plugin-settings-actions"><button className="primary-button" type="submit" disabled={busy}>{busy ? t('common.loading') : t('common.save')}</button></div>
     </>}

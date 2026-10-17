@@ -160,33 +160,32 @@ export function PluginsPage() {
   const matches = (values: (string | undefined)[]) => values.join(' ').toLowerCase().includes(search.trim().toLowerCase());
   const plugins = (data?.plugins ?? []).filter(plugin => matches([plugin.id, plugin.metadata?.name, plugin.metadata?.author]));
   const storePlugins = (store?.plugins ?? []).filter(plugin => matches([plugin.id, plugin.name, plugin.description, plugin.author, ...plugin.tags]) && (filter === 'all' || (filter === 'installed' && plugin.installed) || (filter === 'updates' && plugin.updateAvailable)));
-  const installedCount = data?.plugins.filter(isPluginInstalled).length ?? 0;
-  const configOnlyCount = data?.plugins.filter(plugin => plugin.configured && !isPluginInstalled(plugin)).length ?? 0;
   const sourceErrors = (tab === 'installed' ? localUpdates : store)?.sourceErrors ?? [];
   const locked = busy || loading || Boolean(configPlugin || installEntry || oauthPlugin);
 
-  return <div className="plugins-page">
-    <header className="plugins-heading"><div><h1>{pt('title')}</h1><p>{pt('description')}</p></div><button className="secondary-button" disabled={locked} onClick={() => void load(tabRef.current, true)}><RefreshCw size={16} aria-hidden="true" />{t('common.refresh')}</button></header>
+  return <div className="plugins-page" role="region" aria-label={pt('title')}>
+    <div className="plugin-navigation">
+      {supported === true && <nav className="plugin-tabs" aria-label={pt('title')}>{(['installed', 'store', 'settings'] as const).map(value => <button key={value} className={tab === value ? 'active' : ''} aria-current={tab === value ? 'page' : undefined} disabled={busy} onClick={() => { setTab(value); setSearch(''); setFilter('all'); }}>{pt(value === 'installed' ? 'local' : value)}</button>)}</nav>}
+      <div className="plugin-toolbar">
+        {supported === true && tab !== 'settings' && <>
+        <div className="plugin-search">
+          <Search size={17} aria-hidden="true" />
+          <input ref={searchRef} type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder={pt('search')} aria-label={pt('search')} />
+          <button type="button" className="plugin-search-clear" disabled={!search} aria-label={t('common.clear')} title={t('common.clear')}
+            onClick={() => { setSearch(''); searchRef.current?.focus(); }}><X size={15} aria-hidden="true" /></button>
+        </div>
+        {tab === 'store' && <select aria-label={pt('store')} value={filter} onChange={e => setFilter(e.target.value)}>{['all', 'installed', 'updates'].map(value => <option key={value} value={value}>{pt(value as 'all' | 'installed' | 'updates')}</option>)}</select>}
+        </>}
+        <button type="button" className="secondary-button plugin-development-guide" onClick={() => void invoke('open_external_url', { url: 'https://help.router-for.me/cn/plugin/development.html' }).catch(reason => { if (mounted.current) setError(message(reason)); })}><ExternalLink size={16} aria-hidden="true" />{pt('developmentGuide')}</button>
+        <button className="secondary-button plugin-refresh" disabled={locked} onClick={() => void load(tabRef.current, true)}><RefreshCw size={16} aria-hidden="true" />{t('common.refresh')}</button>
+      </div>
+    </div>
     {error && <div className="plugin-error plugin-banner" role="alert"><span>{error}{isGitHubRateLimit(error) ? <GitHubTokenHint /> : null}</span><button className="secondary-button" disabled={busy || loading} onClick={() => void load(tabRef.current, true)}>{pt('retry')}</button></div>}
     {supported === false ? <section className="plugin-empty"><Puzzle size={36} /><p>{pt('unsupported')}</p></section> : supported === null ? <section className="plugin-empty" role="status">{loading ? t('common.loading') : pt('retry')}</section> : <>
-      <div className="plugin-summary"><label className="plugin-global-toggle"><input type="checkbox" checked={data?.pluginsEnabled ?? false} disabled={locked || !data} onChange={e => { const enabled = e.target.checked; void mutate(() => pluginsApi.updateSettings({ enabled }), pt('saved')); }} />{pt('global')}</label><span><Folder size={15} aria-hidden="true" />{data?.pluginsDir || pt('directory')}</span><span>{pt('installed')} <strong>{installedCount}</strong>{configOnlyCount > 0 && <> · {pt('configOnly')} <strong>{configOnlyCount}</strong></>}</span></div>
       {data && !data.pluginsEnabled && <p className="plugin-banner">{pt('disabledHint')}</p>}
       {restartRequired && <div className="plugin-banner"><span>{pt('restart')}</span><button className="secondary-button" disabled={locked} onClick={async () => { if (await askConfirmation({ title: pt('restartButton'), message: pt('restartConfirm') })) void mutate(async () => { await invoke('restart_core_process'); if (mounted.current) setRestartRequired(false); }, pt('saved')); }}>{pt('restartButton')}</button></div>}
       <>
-        <div className="plugin-navigation">
-        <nav className="plugin-tabs" aria-label={pt('title')}>{(['installed', 'store', 'settings'] as const).map(value => <button key={value} className={tab === value ? 'active' : ''} aria-current={tab === value ? 'page' : undefined} disabled={busy} onClick={() => { setTab(value); setSearch(''); setFilter('all'); }}>{pt(value === 'installed' ? 'local' : value)}</button>)}</nav>
-          {tab !== 'settings' &&
-          <div className="plugin-toolbar">
-            <div className="plugin-search">
-              <Search size={17} aria-hidden="true" />
-              <input ref={searchRef} type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder={pt('search')} aria-label={pt('search')} />
-              <button type="button" className="plugin-search-clear" disabled={!search} aria-label={t('common.clear')} title={t('common.clear')}
-                onClick={() => { setSearch(''); searchRef.current?.focus(); }}><X size={15} aria-hidden="true" /></button>
-            </div>
-            {tab === 'store' && <select aria-label={pt('store')} value={filter} onChange={e => setFilter(e.target.value)}>{['all', 'installed', 'updates'].map(value => <option key={value} value={value}>{pt(value as 'all' | 'installed' | 'updates')}</option>)}</select>}
-          </div>}
-        </div>
-        {tab === 'settings' ? <PluginSettingsPanel onSaved={() => { notice.showNotice(pt('saved')); void load(); }} /> : <>
+        {tab === 'settings' ? <PluginSettingsPanel onSaved={() => { notice.showNotice(pt('saved')); void load(); }} globalControl={<label className="plugin-global-toggle"><input type="checkbox" checked={data?.pluginsEnabled ?? false} disabled={locked || !data} onChange={e => { const enabled = e.target.checked; void mutate(() => pluginsApi.updateSettings({ enabled }), pt('saved')); }} />{pt('global')}</label>} /> : <>
           {sourceErrors.length ? <details className="plugin-source-errors"><summary>{pt('sourceErrors')}</summary>{sourceErrors.map((entry, index) => <p key={index}>{entry.sourceName || entry.sourceId || entry.sourceUrl}: {entry.message}</p>)}{sourceErrors.some(entry => isGitHubRateLimit(entry.message)) ? <GitHubTokenHint /> : null}</details> : null}
           {loading && <p className="plugin-loading" role="status">{t('common.loading')}…</p>}
           {tab === 'installed' ? <div className="plugin-grid">{plugins.map(plugin => {
