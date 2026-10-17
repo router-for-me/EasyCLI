@@ -9,6 +9,7 @@ mod codex_sessions;
 mod configuration_watcher;
 mod core_config;
 mod core_runtime;
+mod core_recovery;
 mod desktop_theme;
 mod instance_lock;
 #[cfg(target_os = "linux")]
@@ -300,6 +301,7 @@ struct AppUpdateInner {
 
 #[derive(Default)]
 struct CoreProcessState {
+    recovery: core_recovery::CoreRecovery,
     child: Mutex<Option<CoreChild>>,
     adopted_processes: Mutex<Vec<AdoptedCoreProcess>>,
     starting: AtomicBool,
@@ -430,6 +432,8 @@ struct CoreStatus {
     install_dir: String,
     binary_path: Option<String>,
     message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    recovery: Option<core_recovery::RecoveryStatus>,
 }
 
 #[derive(Serialize)]
@@ -1909,6 +1913,7 @@ impl AppUpdateState {
 impl CoreProcessState {
     fn new(starting: bool) -> Self {
         Self {
+            recovery: core_recovery::CoreRecovery::default(),
             child: Mutex::new(None),
             adopted_processes: Mutex::new(Vec::new()),
             starting: AtomicBool::new(starting),
@@ -1940,11 +1945,16 @@ impl CoreProcessState {
     fn managed_pid(&self) -> Option<u32> {
         if let Ok(mut child) = self.child.lock() {
             if let Some(process) = child.as_mut() {
-                if let Ok(None) = process.try_wait() {
-                    return Some(process.id());
+                match process.try_wait() {
+                    Ok(None) => return Some(process.id()),
+                    Ok(Some(exit)) => {
+                        self.recovery.exited(format!("PID {}: {exit}", process.id()));
+                        *child = None;
+                    }
+                    // A status-check error is not proof of exit. Dropping a live
+                    // CoreChild would terminate its Windows job and create an outage.
+                    Err(_) => return Some(process.id()),
                 }
-
-                *child = None;
             }
         }
 
@@ -1952,11 +1962,15 @@ impl CoreProcessState {
             .lock()
             .ok()
             .and_then(|mut processes| {
+                let had_processes = !processes.is_empty();
                 processes.retain(|process| {
                     process_executable_path(process.process_id)
                         .as_deref()
                         .is_some_and(|path| executable_paths_match(&process.binary_path, path))
                 });
+                if had_processes && processes.is_empty() {
+                    self.recovery.exited("Adopted kernel process exited".into());
+                }
                 processes.first().map(|process| process.process_id)
             })
     }
@@ -1980,6 +1994,9 @@ impl CoreProcessState {
             .collect();
         adopted.sort_unstable_by_key(|process| process.process_id);
         adopted.dedup_by_key(|process| process.process_id);
+        if !adopted.is_empty() {
+            self.recovery.running();
+        }
         Ok(())
     }
 
@@ -2006,6 +2023,7 @@ impl CoreProcessState {
             .lock()
             .map_err(|_| "Kernel process status lock is poisoned".to_string())?;
         *managed_child = Some(child);
+        self.recovery.running();
         Ok(pid)
     }
 }
@@ -2613,6 +2631,7 @@ fn main() {
             }
 
             network_proxy::start_monitor(app.handle().clone());
+            core_recovery::start(app.handle().clone());
             start_codex_model_catalog_sync(app.handle().clone());
 
             let usage_app = app.handle().clone();
@@ -2873,6 +2892,7 @@ fn main() {
             if process_state.shutting_down.swap(true, Ordering::AcqRel) {
                 return;
             }
+            process_state.recovery.cancel();
             if let Err(error) = persist_main_window_size(app_handle) {
                 eprintln!("Failed to save main window size: {error}");
             }

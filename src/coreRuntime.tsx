@@ -13,6 +13,12 @@ export type CoreStatus = {
   installDir: string;
   binaryPath: string | null;
   message: string;
+  recovery?: {
+    phase: 'waiting' | 'restarting' | 'failed';
+    attempt: number;
+    delaySeconds: number;
+    detail: string;
+  } | null;
 };
 
 type CoreRuntimeContextValue = {

@@ -633,13 +633,15 @@ static SYNC_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 async fn synchronize(app: &tauri::AppHandle, require_core: bool) -> Result<(), String> {
     let _guard = SYNC_LOCK.lock().await;
+    // Keep the existing process check active even if proxy synchronization fails.
+    let core_running = require_core || app.state::<CoreProcessState>().managed_pid().is_some();
     let work_app = app.clone();
     let config = tauri::async_runtime::spawn_blocking(move || {
         apply(work_app.state::<GuiConfigState>().inner())
     })
     .await
     .map_err(|e| e.to_string())??;
-    if require_core || app.state::<CoreProcessState>().managed_pid().is_some() {
+    if core_running {
         verify_core_proxy(&config).await?;
     }
     Ok(())
