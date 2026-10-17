@@ -179,18 +179,25 @@ export function KernelPage({ view = 'home' }: { view?: KernelView }) {
   const coreInstalled = Boolean(coreStatus?.installed);
   const coreRunning = Boolean(coreStatus?.running);
   const coreReady = Boolean(coreStatus?.ready);
-  const coreProcessBusy = processBusy || Boolean(coreStatus?.starting);
+  const recovery = coreStatus?.recovery;
+  const recovering = recovery?.phase === 'waiting' || recovery?.phase === 'restarting';
+  const canStop = coreRunning || recovering;
+  const coreProcessBusy = processBusy || Boolean(coreStatus?.starting) || recovery?.phase === 'restarting';
 
-  const statusTone = statusError ? 'error' : coreProcessBusy ? 'pending' : coreRunning ? 'success' : 'neutral';
+  const statusTone = statusError || recovery?.phase === 'failed' ? 'error' : coreProcessBusy || recovering ? 'pending' : coreRunning ? 'success' : 'neutral';
   const statusLabel = statusError
     ? t('common.detectionFailed')
     : !coreStatus
       ? t('common.detecting')
-      : coreProcessBusy
-        ? t('common.processing')
-        : coreRunning
-          ? t('kernel.status.running')
-          : t(coreInstalled ? 'kernel.status.stopped' : 'kernel.status.notInstalled');
+      : recovering
+        ? t('kernel.recovery.recovering')
+        : recovery?.phase === 'failed'
+          ? t('kernel.recovery.failed')
+          : coreProcessBusy
+            ? t('common.processing')
+            : coreRunning
+              ? t('kernel.status.running')
+              : t(coreInstalled ? 'kernel.status.stopped' : 'kernel.status.notInstalled');
 
   const resolvedAppVersion = appUpdate?.currentVersion || installedAppVersion;
   const currentAppVersion = resolvedAppVersion
@@ -260,20 +267,24 @@ export function KernelPage({ view = 'home' }: { view?: KernelView }) {
             </div>
           </dl>
           {statusError && <p className="home-runtime-error" role="alert">{statusError}</p>}
+          {recovery && <div role={recovery.phase === 'failed' ? 'alert' : 'status'}>
+            <p>{t(recovery.phase === 'failed' ? 'kernel.recovery.failedHint' : recovery.phase === 'waiting' ? 'kernel.recovery.waitingHint' : 'kernel.recovery.restartingHint', { attempt: recovery.attempt, seconds: recovery.delaySeconds })}</p>
+            {recovery.detail && <details><summary>{t('kernel.recovery.details')}</summary><p className="home-runtime-error">{recovery.detail}</p></details>}
+          </div>}
 
           <div className="button-row panel-action-row control-action-row">
             <button
               type="button"
-              className={coreRunning ? 'danger-button home-runtime-stop' : 'primary-button'}
+              className={canStop ? 'danger-button home-runtime-stop' : 'primary-button'}
               disabled={!coreInstalled || coreProcessBusy}
               onClick={() =>
                 void runCoreProcessCommand(
-                  coreRunning ? 'stop_core_process' : 'start_core_process',
+                  canStop ? 'stop_core_process' : 'start_core_process',
                 )
               }
             >
-              {coreRunning ? <Square size={13} aria-hidden="true" /> : <Play size={14} aria-hidden="true" />}
-              {coreProcessBusy ? t('common.processing') : coreRunning ? t('kernel.action.stop') : t('kernel.action.start')}
+              {canStop ? <Square size={13} aria-hidden="true" /> : <Play size={14} aria-hidden="true" />}
+              {coreProcessBusy ? t('common.processing') : canStop ? t('kernel.action.stop') : t('kernel.action.start')}
             </button>
             <button
               type="button"

@@ -183,6 +183,56 @@ fn core_child_sleep_command() -> Command {
     command
 }
 
+#[test]
+fn observed_child_exit_schedules_recovery_once_without_a_new_monitor() {
+    let state = CoreProcessState::new(false);
+    let pid = state.store_child(spawn_core_child(core_child_sleep_command()).unwrap()).unwrap();
+    assert_eq!(state.managed_pid(), Some(pid));
+    assert!(state.recovery.status().is_none());
+    {
+        let mut child = state.child.lock().unwrap();
+        let child = child.as_mut().unwrap();
+        child.kill().unwrap();
+        child.wait().unwrap();
+    }
+    assert_eq!(state.managed_pid(), None);
+    let status = state.recovery.status().unwrap();
+    assert_eq!(status.phase, "waiting");
+    assert_eq!(status.attempt, 1);
+    assert!(status.detail.contains(&pid.to_string()));
+    assert_eq!(state.managed_pid(), None);
+    assert_eq!(state.recovery.status().unwrap().attempt, 1);
+    state.recovery.cancel();
+}
+
+#[test]
+fn intentional_child_stop_does_not_request_recovery() {
+    let state = CoreProcessState::new(false);
+    state.store_child(spawn_core_child(core_child_sleep_command()).unwrap()).unwrap();
+    // Same ordering as stop_core_process_inner, without scanning or stopping
+    // any real installed kernels in the developer's workspace.
+    state.recovery.cancel();
+    let mut child = state.take_child().unwrap();
+    terminate_child(&mut child).unwrap();
+    drop(child);
+    assert_eq!(state.managed_pid(), None);
+    assert!(!state.recovery.wants_running());
+    assert!(state.recovery.status().is_none());
+}
+
+#[test]
+fn adopted_process_exit_also_requests_recovery() {
+    let state = CoreProcessState::new(false);
+    let mut child = spawn_core_child(core_child_sleep_command()).unwrap();
+    state.adopt_process_ids(&env::current_exe().unwrap(), vec![child.id()]).unwrap();
+    assert_eq!(state.managed_pid(), Some(child.id()));
+    child.kill().unwrap();
+    child.wait().unwrap();
+    assert_eq!(state.managed_pid(), None);
+    assert_eq!(state.recovery.status().unwrap().phase, "waiting");
+    state.recovery.cancel();
+}
+
 fn assert_core_child_survives(child: &mut Child) {
     thread::sleep(Duration::from_millis(200));
     let status = child.try_wait();

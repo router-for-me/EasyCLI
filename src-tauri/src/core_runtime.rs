@@ -419,7 +419,10 @@ pub(crate) fn pause_core_process_for_install(
     process_state: &CoreProcessState,
 ) -> Result<bool, String> {
     process_state.ensure_active()?;
-    let was_running = current_core_status(Some(process_state), None)?.running;
+    let was_running = current_core_status(Some(process_state), None)?.running
+        || process_state.recovery.wants_running();
+    // Also cancel a pending recovery when an update finds an already-dead core.
+    process_state.recovery.cancel();
     if was_running {
         stop_core_process_inner(process_state)?;
     }
@@ -475,6 +478,7 @@ pub(crate) fn start_core_process_with_state(
 ) -> Result<CoreStatus, String> {
     network_proxy::refresh(gui_config_state)?;
     let config = gui_config_state.snapshot()?;
+    process_state.recovery.cancel();
     start_core_process_inner(process_state, &config)?;
     if let Err(error) = gui_config_state.set_run_on_startup(true) {
         let _ = stop_core_process_inner(process_state);
@@ -508,6 +512,7 @@ pub(crate) fn restart_core_process_with_state(
 ) -> Result<CoreStatus, String> {
     network_proxy::refresh(gui_config_state)?;
     let config = gui_config_state.snapshot()?;
+    process_state.recovery.cancel();
     if current_core_status(Some(process_state), None)?.running {
         stop_core_process_inner(process_state)?;
     }
@@ -1350,6 +1355,7 @@ pub(crate) fn current_core_status(
         running,
         ready,
         starting,
+        recovery: process_state.and_then(|state| state.recovery.status()),
         managed: managed_pid.is_some(),
         process_id,
         current_version,
@@ -1697,6 +1703,7 @@ pub(crate) fn configure_networked_command(command: &mut Command, proxy_url: &str
 }
 
 pub(crate) fn stop_core_process_inner(process_state: &CoreProcessState) -> Result<(), String> {
+    process_state.recovery.cancel();
     let mut stopped_any = false;
     let mut errors = Vec::new();
 
