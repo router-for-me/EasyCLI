@@ -49,6 +49,14 @@
 .plugin-config-actions button, .plugin-config-discard button { min-height: 38px; }
 .plugin-config-discard { display: grid; gap: 10px; margin-bottom: 14px; padding: 12px; border: 1px solid var(--theme-d5d2cb); border-radius: 6px; font-size: var(--font-size-meta); }
 .plugin-config-loading { display: flex; justify-content: center; align-items: center; gap: 10px; min-height: 140px; color: var(--theme-7a746c); }
+.plugin-config-dialog .config-dialog-heading > div { min-width: 0; }
+.plugin-config-dialog .config-dialog-heading h2 { overflow-wrap: anywhere; }
+.plugin-config-dialog .config-dialog-heading svg { flex-shrink: 0; }
+.plugin-config-dialog .config-dialog-heading > button { flex-shrink: 0; }
+.plugin-config-field input, .plugin-config-field select, .plugin-config-field textarea { font-weight: normal; }
+.plugin-config-field code { padding: 2px 7px; border-radius: 4px; background: var(--bg-secondary); }
+.plugin-config-field :is(input, select, textarea):focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+.plugin-config-actions button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
 @media (max-width: 560px) {
   .plugin-config-dialog .config-dialog-heading, .plugin-config-body, .plugin-config-footer { padding: 16px; }
   .plugin-config-actions button { flex: 1; }

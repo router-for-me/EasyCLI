@@ -6,9 +6,11 @@ import { pluginText } from '../i18n/plugins';
 import { FloatingNotice, useAppNotice } from '../appNotice';
 import { useConfirmation } from '../components/ConfirmationDialog';
 import { pluginsApi, pluginStoreApi, type PluginListEntry, type PluginListResponse, type PluginStoreEntry, type PluginStoreResponse } from '../services/plugins';
-import { buildPluginResourceRoute, collectPluginResourceEntries, getPluginTitle, isOfficialPlugin, notifyPluginResourcesChanged, type PluginResourceEntry } from '../services/pluginResources';
+import { buildPluginResourceRoute, collectPluginResourceEntries, getPluginTitle, isDefaultPluginStoreSource, getPluginRepositorySlug, notifyPluginResourcesChanged, type PluginResourceEntry } from '../services/pluginResources';
 import { getPluginStatus, isPluginInstalled } from '../services/pluginStatus';
 import { refreshPluginReleaseVersions } from '../services/pluginReleaseVersions';
+import { waitForPluginInstall, waitForPluginToggle, type PluginActionStatus } from '../services/pluginPolling';
+import type { PluginStoreInstallResult } from '../services/plugins';
 import { PluginConfigDialog } from './PluginConfigDialog';
 import { PluginInstallDialog } from './PluginInstallDialog';
 import { PluginOAuthDialog } from './PluginOAuthDialog';
@@ -73,7 +75,7 @@ export function PluginsPage() {
     ? data.plugins.filter(plugin => plugin.path && plugin.enabled && !plugin.effectiveEnabled).map(plugin => plugin.id).sort().join('|')
     : '';
   useEffect(() => {
-    if (!pendingPlugins || busy || loading || restartRequired) return;
+    if (!pendingPlugins || busy || loading || restartRequired || installEntry) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
     let attempts = 0;
@@ -89,7 +91,7 @@ export function PluginsPage() {
     };
     timer = setTimeout(() => void poll(), 1500);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [pendingPlugins, busy, loading, restartRequired]);
+  }, [pendingPlugins, busy, loading, restartRequired, installEntry]);
 
   const mutate = async (operation: () => Promise<unknown>, success: string) => {
     if (pending.current) return;
@@ -102,6 +104,38 @@ export function PluginsPage() {
       await load();
     } catch (reason) { if (mounted.current) setError(message(reason)); }
     finally { pending.current = false; if (mounted.current) setBusy(false); }
+  };
+  const reportStatus = (status: PluginActionStatus, success: string) => {
+    if (!mounted.current || status === 'cancelled') return;
+    notice.showNotice(status === 'ready' ? success : pt(status === 'restart' ? 'restart' : status === 'globalDisabled' ? 'disabledHint' : 'runtimePending'), status === 'ready' ? 'success' : 'info');
+  };
+  const toggle = async (plugin: PluginListEntry) => {
+    if (pending.current) return;
+    pending.current = true; setBusy(true); setError('');
+    ++requests.current;
+    let written = false;
+    try {
+      await pluginsApi.updateEnabled(plugin.id, !plugin.enabled);
+      written = true;
+      const status = await waitForPluginToggle(plugin.id, !plugin.enabled, () => !mounted.current);
+      reportStatus(status, pt('runtimeReady'));
+      if (mounted.current) await load();
+    } catch (reason) {
+      if (mounted.current) setError(`${written ? pt('refreshFailed') + ' ' : ''}${message(reason)}`);
+    } finally { pending.current = false; if (mounted.current) setBusy(false); }
+  };
+  const installed = async (result: PluginStoreInstallResult) => {
+    ++requests.current;
+    setRestartRequired(previous => previous || result.restartRequired);
+    try {
+      reportStatus(await waitForPluginInstall(result, () => !mounted.current), pt('installedSuccess'));
+    } catch (reason) {
+      // Installation already succeeded. A failed status read must never invite a duplicate install.
+      if (mounted.current) notice.showNotice(`${pt('refreshFailed')} ${message(reason)}`, 'info');
+    } finally {
+      if (mounted.current) { setInstallEntry(null); notifyPluginResourcesChanged(); }
+    }
+    if (mounted.current) await load();
   };
   const remove = async (plugin: PluginListEntry) => {
     const installed = isPluginInstalled(plugin);
@@ -157,16 +191,17 @@ export function PluginsPage() {
             {collectPluginResourceEntries([plugin]).length > 0 && <div className="plugin-menus">{collectPluginResourceEntries([plugin]).map(entry => <button key={entry.menuIndex} title={entry.description} className="secondary-button" disabled={locked} onClick={() => openResource(entry)}><ExternalLink size={14} />{entry.label}</button>)}</div>}
             <div className="plugin-card-actions">
             {plugin.effectiveEnabled && plugin.supportsOAuth && plugin.oauthProvider && <button className="secondary-button" disabled={locked} onClick={() => setOAuthPlugin(plugin)}><LogIn size={15} />{pt('oauth')}</button>}
-              {installed ? <button className="secondary-button" disabled={locked} onClick={() => void mutate(() => pluginsApi.updateEnabled(plugin.id, !plugin.enabled), pt('saved'))}>{pt(plugin.enabled ? 'disabled' : 'enabled')}</button> : <button className="secondary-button" disabled={locked} onClick={() => { setSearch(plugin.id); setFilter('all'); setTab('store'); }}><Download size={15} />{pt('findInStore')}</button>}
+              {installed ? <button className="secondary-button" disabled={locked} onClick={() => void toggle(plugin)}>{pt(plugin.enabled ? 'disabled' : 'enabled')}</button> : <button className="secondary-button" disabled={locked} onClick={() => { setSearch(plugin.id); setFilter('all'); setTab('store'); }}><Download size={15} />{pt('findInStore')}</button>}
               <button className="secondary-button" disabled={locked} onClick={() => setConfigPlugin(plugin)}><Settings2 size={15} />{pt('configure')}</button>
               {status === 'notLoaded' && <button className="secondary-button" disabled={locked} onClick={() => void invoke('open_core_logs_directory').catch(reason => { if (mounted.current) setError(message(reason)); })}><Folder size={15} />{pt('openLogs')}</button>}
               <button className="icon-button quiet plugin-delete" disabled={locked} aria-label={removeLabel} title={removeLabel} onClick={() => void remove(plugin)}><Trash2 size={16} /></button>
             </div>
           </article>; })}</div> : <>
-            {store?.sourceErrors.length ? <details className="plugin-source-errors" open><summary>{pt('sourceErrors')}</summary>{store.sourceErrors.map((entry, index) => <p key={index}>{entry.sourceName || entry.sourceId || entry.sourceUrl}: {entry.message}</p>)}{store.sourceErrors.some(entry => isGitHubRateLimit(entry.message)) ? <GitHubTokenHint /> : null}</details> : null}
+            {store?.sourceErrors.length ? <details className="plugin-source-errors"><summary>{pt('sourceErrors')}</summary>{store.sourceErrors.map((entry, index) => <p key={index}>{entry.sourceName || entry.sourceId || entry.sourceUrl}: {entry.message}</p>)}{store.sourceErrors.some(entry => isGitHubRateLimit(entry.message)) ? <GitHubTokenHint /> : null}</details> : null}
             <div className="plugin-grid">{storePlugins.map(entry => <article className="plugin-card" key={entry.storeId}>
-              <div className="plugin-card-title"><span className="plugin-icon"><Puzzle size={23} /></span><div><h2>{entry.name || entry.id}</h2><code>{entry.id}</code></div><span className={`plugin-badge ${isOfficialPlugin(entry) ? 'active' : 'warning'}`}>{pt(isOfficialPlugin(entry) ? 'official' : 'thirdParty')}</span></div>
-              <p className="plugin-card-description">{entry.description}</p><p className="plugin-meta">{[entry.installedVersion && entry.updateAvailable ? `${entry.installedVersion} → ${entry.version}` : entry.installedVersion || entry.version, entry.author, entry.license].filter(Boolean).join(' · ')}</p><p className="plugin-meta">{pt('source')}: {entry.sourceName || entry.sourceId}</p>
+              <div className="plugin-card-title"><span className="plugin-icon"><Puzzle size={23} /></span><div><h2>{entry.name || entry.id}</h2><code>{entry.id}</code></div><span className={`plugin-badge ${isDefaultPluginStoreSource(entry) ? 'active' : ''}`}>{pt(isDefaultPluginStoreSource(entry) ? 'officialStore' : 'additionalStore')}</span></div>
+              <p className="plugin-card-description">{entry.description}</p><p className="plugin-meta">{[entry.installedVersion && entry.updateAvailable ? `${entry.installedVersion} → ${entry.version}` : entry.installedVersion || entry.version, entry.author, entry.license].filter(Boolean).join(' · ')}</p><p className="plugin-meta">{pt('storeSource')}: {isDefaultPluginStoreSource(entry) ? pt('officialStore') : entry.sourceName || entry.sourceId}</p>
+              {entry.repository && <p className="plugin-meta plugin-repository" title={entry.repository}>{pt('repository')}: <span>{getPluginRepositorySlug(entry.repository) || entry.repository}</span></p>}
               {entry.platforms.length > 0 && <p className="plugin-meta">{entry.platforms.map(platform => `${platform.goos}/${platform.goarch}`).join(' · ')}</p>}
               <div className="plugin-card-actions">{entry.installed && <span className="plugin-badge">{pt(entry.updateAvailable ? 'updates' : 'installed')}</span>}<button className="primary-button" disabled={locked || (entry.authRequired && !entry.authConfigured)} onClick={() => setInstallEntry(entry)}><Download size={15} />{pt(entry.authRequired && !entry.authConfigured ? 'authMissing' : !entry.installed ? 'install' : entry.updateAvailable ? 'update' : 'reinstall')}</button></div>
             </article>)}</div>
@@ -176,7 +211,7 @@ export function PluginsPage() {
       </>
     </>}
     {configPlugin && <PluginConfigDialog plugin={configPlugin} onClose={() => setConfigPlugin(null)} onSaved={() => { notice.showNotice(pt('saved')); void load(); }} />}
-    {installEntry && <PluginInstallDialog entry={installEntry} onClose={() => setInstallEntry(null)} onInstalled={result => { setInstallEntry(null); setRestartRequired(previous => previous || result.restartRequired); notice.showNotice(pt('installedSuccess')); void load(); }} />}
+    {installEntry && <PluginInstallDialog key={installEntry.storeId} entry={installEntry} onClose={() => setInstallEntry(null)} onInstalled={installed} />}
     {oauthPlugin && <PluginOAuthDialog plugin={oauthPlugin} onClose={() => setOAuthPlugin(null)} onCompleted={() => { notice.showNotice(pt('authorized')); void load(); }} />}
     {confirmationDialog}<FloatingNotice notice={notice.notice} onDismiss={notice.clearNotice} />
   </div>;

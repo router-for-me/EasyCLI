@@ -119,6 +119,7 @@ const fs = require('node:fs');
     await page.locator('.plugins-heading').getByRole('button', { name: 'Refresh', exact: true }).click();
     await card('Sample provider').getByText('1.0.0 → 4.0.0', { exact: false }).waitFor();
     assert.equal(await page.evaluate(() => window.pluginsFixture.commands.some(call => call.command === 'get_plugin_latest_releases' && call.args.repositories.includes('router-for-me/direct'))), false);
+    await page.locator('.plugin-source-errors summary').click();
     await page.getByText('Offline source: Fixture registry unavailable').waitFor();
     assert.equal(await card('Private provider').getByRole('button', { name: 'Store authentication required' }).isDisabled(), true);
     await page.getByRole('combobox', { name: 'Plugin store' }).selectOption('updates');
@@ -128,6 +129,11 @@ const fs = require('node:fs');
     await dialog().getByLabel('Version tag (blank for latest)').fill('../unsafe');
     assert.equal(await dialog().getByRole('button', { name: 'Install', exact: true }).isDisabled(), true);
     await dialog().getByLabel('Version tag (blank for latest)').fill('v1.2.3');
+    assert.equal(await dialog().getByRole('button', { name: 'Install', exact: true }).isDisabled(), true, 'Third-party registry cannot bypass trust confirmation with official-looking metadata');
+    await dialog().getByLabel(/Type the following/).fill('wrong/repository');
+    assert.equal(await dialog().getByRole('button', { name: 'Install', exact: true }).isDisabled(), true);
+    assert.equal((await installs()).length, 0);
+    await dialog().getByLabel(/Type the following/).fill('router-for-me/analytics');
     await page.evaluate(() => { window.pluginsFixture.holdInstall = true; });
     await dialog().getByRole('button', { name: 'Install', exact: true }).click();
     await page.waitForFunction(() => window.pluginsFixture.installs.length === 1);
@@ -137,9 +143,10 @@ const fs = require('node:fs');
     assert.deepEqual((await installs())[0].query, { source: 'community', version: 'v1.2.3' });
     await page.evaluate(() => { window.pluginsFixture.holdInstall = false; window.pluginsFixture.releaseInstall(); });
     await dialog().waitFor({ state: 'detached' });
-    await page.getByText('Restart the core to fully apply this change.', { exact: true }).waitFor();
+    await page.getByText('Restart the core to fully apply this change.', { exact: true }).first().waitFor();
 
     await card('Sample provider').getByRole('button', { name: 'Update', exact: true }).click();
+    assert.equal(await dialog().getByLabel(/Type the following/).count(), 0, 'Official source installs need no typed confirmation');
     await dialog().getByLabel('Version tag (blank for latest)').fill('v2.0.0');
     await page.evaluate(() => { window.pluginsFixture.failNextInstall = true; });
     await dialog().getByRole('button', { name: 'Update', exact: true }).click();
@@ -204,6 +211,7 @@ const fs = require('node:fs');
         }
         await card('Community analytics').getByRole('button', { name: locale === 'en' ? 'Install' : '安装', exact: true }).click();
         await dialog().waitFor();
+        assert.equal(await dialog().getByRole('textbox').last().inputValue(), '', 'Confirmation resets on each open');
         // Exercise wrapping and scrolling with metadata longer than a typical registry entry.
         await dialog().locator('h2').evaluate(el => { el.textContent += ' · model-fallback-router-compatibility'; });
         await dialog().locator('.plugin-install-origin small').evaluate(el => { el.textContent = 'https://raw.githubusercontent.com/example/plugins-store/main/' + 'long-registry-path-'.repeat(10) + 'registry.json'; });
@@ -225,12 +233,22 @@ const fs = require('node:fs');
         await dialog().waitFor({ state: 'detached' });
       }
     }
+    await open('external-repository&locale=zh-CN');
+    await page.locator('.plugin-tabs button').nth(1).click();
+    await card('Sample provider').getByRole('button', { name: '更新', exact: true }).click();
+    assert.match(await dialog().locator('.plugin-install-origin dd').first().innerText(), /^官方商店/);
+    await dialog().getByText('商店来源', { exact: true }).waitFor();
+    assert.match(await dialog().locator('.plugin-warning').innerText(), /收录于官方商店.*代码仓库不属于官方组织/);
+    assert.doesNotMatch(await dialog().innerText(), /未经官方审核/);
+    await dialog().getByLabel(/输入以下内容以确认更新/).fill('rensumo/cpa-plugin-zcode');
+    assert.equal(await dialog().getByRole('button', { name: '更新', exact: true }).isEnabled(), true);
+    await page.keyboard.press('Escape');
     await open('unsupported');
     await page.getByText('This core does not support plugins.', { exact: false }).waitFor();
     assert.equal(await page.locator('.plugin-tabs').count(), 0);
     assert.equal(await page.evaluate(() => window.pluginsFixture.requests.length), 0, 'Unsupported cores do not receive plugin mutations or list requests');
     assert.deepEqual(errors, []);
-    console.log('Plugin UI passed: configured-only and unloaded states, installed counts, store lookup, configuration removal, resources, global/instance toggle, store filters, single-step installation, versions, retry, settings, uninstall, unsupported cores, responsive English/Chinese.');
+    console.log('Plugin UI passed: configured-only and unloaded states, installed counts, store lookup, configuration removal, resources, global/instance toggle, store filters, third-party trust confirmation, official installation, versions, retry, settings, uninstall, unsupported cores, responsive English/Chinese.');
   } finally {
     await browser?.close();
     await server.close();

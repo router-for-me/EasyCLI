@@ -77,7 +77,7 @@
 .plugin-install-repository span { min-width: 0; }
 .plugin-install-repository button { flex-shrink: 0; }
 .plugin-install-origin small { display: block; color: var(--text-tertiary); }
-.plugin-warning { display: flex; gap: 10px; padding: 16px; background: var(--bg-error-light); border-radius: 8px; color: var(--error-color); }
+.plugin-warning { display: flex; gap: 10px; padding: 14px 16px; background: var(--theme-fff7e9); border: 1px solid color-mix(in srgb, var(--amber-text) 22%, transparent); border-radius: 8px; color: var(--amber-text); font-weight: normal; line-height: 1.8; }
 .plugin-warning svg { flex-shrink: 0; }
 .plugin-dialog-actions { display: flex; flex-shrink: 0; flex-wrap: wrap; justify-content: flex-end; gap: 10px; padding: 18px 20px; border-top: 1px solid var(--border-color); }
 .plugins-page .primary-button, .plugins-page .secondary-button, .plugin-install-dialog .primary-button, .plugin-install-dialog .secondary-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
@@ -91,3 +91,30 @@
 .plugin-resource-host > .plugin-banner { margin: 16px; }
 @media (max-width: 700px) { .plugins-heading { align-items: flex-start; gap: 12px; } .plugins-heading h1 { font-size: 24px; } .plugin-summary { padding: 14px; gap: 14px; } .plugin-summary > span { width: 100%; } .plugin-summary > span:last-child { margin-left: 0; } .plugin-card, .plugin-settings { padding: 16px; } .plugin-banner { flex-wrap: wrap; } .plugin-navigation > .plugin-toolbar { flex-basis: 100%; } .plugin-search { max-width: none; } }
 @media (max-width: 420px) { .plugin-card-title { grid-template-columns: 40px minmax(0, 1fr); } .plugin-card-title > .plugin-badge { grid-column: 2; justify-self: start; } .plugin-tabs button { padding-inline: 10px; } }
+
+/* Keep technical metadata subordinate to the plugin name and available actions. */
+.plugin-repository span { font-family: ui-monospace, monospace; font-size: 11px; }
+.plugin-card-title code { display: block; }
+.plugin-card-actions button { white-space: normal; overflow-wrap: anywhere; }
+.plugin-source-errors summary, .plugin-source-address summary { cursor: pointer; }
+.plugin-source-errors summary:focus-visible, .plugin-source-address summary:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 4px; border-radius: 3px; }
+.plugin-source-address { margin-top: 5px; color: var(--text-tertiary); font-weight: normal; }
+.plugin-source-address small { padding-top: 8px; line-height: 1.7; user-select: text; }
+.plugin-install-repository span { user-select: text; }
+.plugin-install-body .plugin-field input { font-weight: normal; }
+.plugin-install-body .plugin-field code { font-weight: normal; line-height: 1.6; user-select: all; }
+.plugin-settings { width: 100%; max-width: 920px; box-sizing: border-box; }
+.plugin-settings fieldset + fieldset { padding-top: 24px; border-top: 1px solid var(--border-color); }
+.plugin-settings legend { padding: 0 0 16px; font-size: 15px; font-weight: 650; color: var(--text-primary); }
+.plugin-settings .plugin-field input { font-weight: normal; }
+.plugin-settings-actions { display: flex; justify-content: flex-end; padding-top: 18px; border-top: 1px solid var(--border-color); }
+.plugin-settings-actions > button { width: auto; min-width: 96px; }
+.plugin-field input:focus-visible, .plugin-field textarea:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+.plugin-install-dialog .plugin-dialog-actions > button { width: auto; min-width: 88px; min-height: 38px; }
+@media (max-width: 560px) {
+  .plugin-install-origin { grid-template-columns: 1fr; gap: 5px; }
+  .plugin-install-origin dd + dt { margin-top: 10px; }
+  .plugin-install-dialog .config-dialog-heading, .plugin-install-body, .plugin-dialog-actions { padding: 16px; }
+  .plugin-install-dialog .plugin-dialog-actions > button { flex: 1; }
+  .plugin-settings-actions > button { width: 100%; }
+}
