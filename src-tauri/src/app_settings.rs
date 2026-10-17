@@ -140,7 +140,7 @@ fn find_api_access_record_remark(
     exact_remark
 }
 
-fn resolve_api_access_remark(
+pub(crate) fn resolve_api_access_remark(
     config: &GuiConfigFile,
     query: &ApiAccessRemarkQuery,
 ) -> Result<String, String> {

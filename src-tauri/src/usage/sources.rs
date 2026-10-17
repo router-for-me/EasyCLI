@@ -1,4 +1,6 @@
-//! Source identities and readable labels from current credential/provider metadata.
+//! Labels for the usage Source column, matched by auth_index against current metadata.
+//! OAuth uses credential note/name/email; API providers use key/group note, then a
+//! matching local API access remark when available, otherwise the sanitized base URL.
 use super::*;
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -43,6 +45,7 @@ fn credentials(value: &Value) -> Option<HashMap<String, Source>> {
 }
 
 fn provider_label(_kind: &str, group: &Value, key: &Value) -> String {
+    // API notes are also source labels. The local GUI remark fallback is applied in fetch.
     let note = field(key, &["note"]);
     let note = if note.is_empty() {
         field(group, &["note"])
@@ -101,6 +104,130 @@ fn providers(value: &Value) -> Option<HashMap<String, Source>> {
     Some(result)
 }
 
+// Match the same record identity used by API Access, including per-key overrides.
+fn api_remark_locator(record: &Value) -> crate::ApiAccessRemarkLocator {
+    fn normalize(v: &Value) -> Option<Value> {
+        match v {
+            Value::Null => None,
+            Value::String(s) if s.is_empty() => None,
+            Value::Array(a) if a.is_empty() => None,
+            Value::Array(a) => Some(Value::Array(
+                a.iter()
+                    .map(|v| normalize(v).unwrap_or(Value::Null))
+                    .collect(),
+            )),
+            Value::Object(o) => {
+                let sorted: BTreeMap<_, _> = o
+                    .iter()
+                    .filter_map(|(k, v)| normalize(v).map(|v| (k.clone(), v)))
+                    .collect();
+                if sorted.is_empty() {
+                    None
+                } else {
+                    Some(serde_json::to_value(sorted).unwrap())
+                }
+            }
+            _ => Some(v.clone()),
+        }
+    }
+    let keys = record
+        .get("keys")
+        .or_else(|| record.get("api-key-entries"))
+        .and_then(Value::as_array);
+    let api_keys = keys
+        .map(|a| {
+            a.iter()
+                .map(|k| field(k, &["api-key", "apiKey"]).to_string())
+                .collect()
+        })
+        .unwrap_or_else(|| vec![field(record, &["api-key", "apiKey"]).to_string()]);
+    let mut identity = record.clone();
+    if let Some(o) = identity.as_object_mut() {
+        for k in [
+            "name",
+            "api-key",
+            "apiKey",
+            "api-key-entries",
+            "keys",
+            "base-url",
+            "baseUrl",
+            "disabled",
+            "auth-index",
+            "authIndex",
+            "auth_index",
+            "test-model",
+            "testModel",
+        ] {
+            o.remove(k);
+        }
+        if o.get("priority").and_then(Value::as_i64) == Some(0) {
+            o.remove("priority");
+        }
+        if o.get("websockets").and_then(Value::as_bool) == Some(false) {
+            o.remove("websockets");
+        }
+        if let Some(Value::Array(a)) = o.get_mut("excluded-models") {
+            a.retain(|v| v.as_str().is_none_or(|s| s.trim() != "*"));
+        }
+        if let Some(Value::Array(a)) = o.get_mut("models") {
+            for model in a {
+                if let Some(t) = model.get_mut("thinking").and_then(Value::as_object_mut) {
+                    for (from, to) in [
+                        ("zero_allowed", "zero-allowed"),
+                        ("dynamic_allowed", "dynamic-allowed"),
+                    ] {
+                        if let Some(v) = t.remove(from) {
+                            t.entry(to.to_string()).or_insert(v);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    crate::ApiAccessRemarkLocator {
+        provider_name: field(record, &["name"]).into(),
+        base_url: field(record, &["base-url", "baseUrl"]).into(),
+        api_keys,
+        config_identity: serde_json::to_string(
+            &normalize(&identity).unwrap_or(serde_json::json!({})),
+        )
+        .unwrap(),
+    }
+}
+
+fn local_api_remark(
+    config: &GuiConfigFile,
+    kind: &str,
+    group: &Value,
+    key: &Value,
+) -> Option<String> {
+    let section = crate::usage_provider_section(kind)?;
+    let mut row = group.clone();
+    if section != "openai-compatibility" {
+        let o = row.as_object_mut()?;
+        o.remove("name");
+        o.remove("keys");
+        if let Some(k) = key.as_object() {
+            o.extend(
+                k.iter()
+                    .filter(|(_, v)| !v.is_null())
+                    .map(|(k, v)| (k.clone(), v.clone())),
+            );
+        }
+    }
+    for record in [&row, group] {
+        let query = crate::ApiAccessRemarkQuery {
+            provider_section: section.into(),
+            locator: api_remark_locator(record),
+        };
+        let remark = crate::app_settings::resolve_api_access_remark(config, &query).ok()?;
+        if !remark.is_empty() {
+            return Some(remark);
+        }
+    }
+    None
+}
+
 async fn fetch_json(config: &GuiConfigFile, path: &str) -> Option<Value> {
     management_http_client()
         .ok()?
@@ -138,9 +265,12 @@ pub(super) async fn fetch(config: &GuiConfigFile) -> Snapshot {
                     if !field(key, &["note"]).is_empty() || !field(group, &["note"]).is_empty() {
                         continue;
                     }
-                    if let Some(note) = config
-                        .api_access_remark_for_source(kind, field(key, &["api-key", "api_key"]))
-                    {
+                    // Exact row matching disambiguates providers sharing an API key.
+                    if let Some(note) = local_api_remark(config, kind, group, key).or_else(|| {
+                        config
+                            .api_access_remark_for_source(kind, field(key, &["api-key", "api_key"]))
+                            .map(str::to_string)
+                    }) {
                         if let Some(source) =
                             sources.get_mut(field(key, &["auth_index", "auth-index"]))
                         {
@@ -261,6 +391,52 @@ pub(super) fn apply_events(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn late_remarks_resolve_shared_keys_by_record() {
+        let key = serde_json::json!({"api-key":"shared-test-key", "auth_index":"first"});
+        let group = serde_json::json!({"name":"Codex", "base-url":"https://first.example/v1", "keys":[key.clone()]});
+        let mut config = GuiConfigFile::default();
+        assert_eq!(local_api_remark(&config, "codex", &group, &key), None);
+        for (url, remark) in [
+            ("https://first.example/v1", "My relay"),
+            ("https://second.example/v1", "sss"),
+        ] {
+            let locator = api_remark_locator(
+                &serde_json::json!({"base-url":url,"api-key":"shared-test-key"}),
+            );
+            let hash = crate::api_access_key_hash("shared-test-key").unwrap();
+            let mut bytes = Vec::new();
+            for component in ["codex-api-key", "", url] {
+                bytes.extend_from_slice(&(component.len() as u64).to_be_bytes());
+                bytes.extend_from_slice(component.as_bytes());
+            }
+            bytes.extend_from_slice(&1u64.to_be_bytes());
+            for component in [hash.as_str(), locator.config_identity.as_str()] {
+                bytes.extend_from_slice(&(component.len() as u64).to_be_bytes());
+                bytes.extend_from_slice(component.as_bytes());
+            }
+            config.api_access_remarks.push(crate::GuiApiAccessRemark {
+                provider_section: "codex-api-key".into(),
+                api_key_hash: hash,
+                record_hash: crate::sha256_bytes(&bytes),
+                remark: remark.into(),
+            });
+        }
+        assert_eq!(
+            config.api_access_remark_for_source("codex", "shared-test-key"),
+            None
+        );
+        assert_eq!(
+            local_api_remark(&config, "codex", &group, &key).as_deref(),
+            Some("My relay")
+        );
+        let other = serde_json::json!({"name":"Codex", "base-url":"https://second.example/v1", "keys":[key.clone()]});
+        assert_eq!(
+            local_api_remark(&config, "codex", &other, &key).as_deref(),
+            Some("sss")
+        );
+    }
 
     #[test]
     fn sources_follow_current_metadata_not_historical_labels() {
