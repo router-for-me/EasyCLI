@@ -2,6 +2,10 @@ import { getCurrentLocale, type AppLocale } from './index';
 import { createTraditionalMessages } from './traditional';
 
 const messages = {
+  localInstall: ['本地安装', 'Install local plugin', 'ローカルインストール'],
+  localBinary: ['插件动态库', 'Plugin library', 'プラグインライブラリ'],
+  localTrust: ['仅安装你信任且适配当前系统、架构和内核版本的插件。插件可访问内核的数据与系统资源。文件将复制到插件目录；同名文件不会覆盖。压缩包请先解压。', 'Only install plugins you trust that match your OS, architecture, and kernel version. Plugins can access kernel data and system resources. The file will be copied to the plugin directory without overwriting existing files. Extract archives first.', '信頼できる、現在の OS・アーキテクチャ・コアに対応するプラグインのみインストールしてください。プラグインはコアのデータとシステム資源にアクセスできます。同名ファイルは上書きしません。圧縮ファイルは先に展開してください。'],
+  localInstalled: ['文件已安装。请在本地插件中配置并启用，必要时重启内核；文件复制成功不代表插件已加载。', 'File installed. Configure and enable it in Local plugins; restart the kernel if needed. Copying the file does not confirm successful loading.', 'ファイルをインストールしました。ローカルプラグインで設定・有効化し、必要に応じてコアを再起動してください。コピー成功は読み込み成功を意味しません。'],
   reorderPage: ['调整页面顺序', 'Reorder page', 'ページの順序を変更'],
   reorderHint: ['拖动调整顺序；键盘可按空格选中、方向键移动、空格确认，Esc 取消。', 'Drag to reorder. With a keyboard, press Space to pick up, arrow keys to move, Space to drop, or Escape to cancel.', 'ドラッグで並べ替えます。スペースで選択、矢印で移動、スペースで確定、Esc でキャンセルできます。'],
   title: ['插件', 'Plugins', 'プラグイン'],

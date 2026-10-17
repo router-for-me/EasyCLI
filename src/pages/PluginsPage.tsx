@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { open } from '@tauri-apps/plugin-dialog';
 import { Download, ExternalLink, Folder, LogIn, Puzzle, RefreshCw, Search, Settings2, Trash2, X } from 'lucide-react';
 import { useI18n } from '../i18n';
 import { pluginText } from '../i18n/plugins';
@@ -156,6 +157,24 @@ export function PluginsPage() {
       if (mounted.current && result.restartRequired) setRestartRequired(true);
     }, pt(installed ? 'removed' : 'removedConfig'));
   };
+  const installLocal = async () => {
+    if (pending.current) return;
+    pending.current = true; setBusy(true);
+    try {
+      const selected = await open({ multiple: false, directory: false, title: pt('localInstall'), filters: [{ name: pt('localBinary'), extensions: ['dll', 'so', 'dylib'] }] });
+      if (!selected || !mounted.current) return;
+      const filename = selected.split(/[\\/]/).pop() || selected;
+      if (!await askConfirmation({ title: pt('localInstall'), message: `${filename}\n\n${pt('localTrust')}`, confirmText: pt('install') }) || !mounted.current) return;
+      const path = await invoke<string>('install_local_plugin', { source: selected });
+      if (!mounted.current) return;
+      setRestartRequired(true);
+      setSearch(''); setFilter('all'); setTab('installed');
+      notice.showNotice(`${pt('localInstalled')} ${path}`, 'info');
+      notifyPluginResourcesChanged();
+      await load('installed');
+    } catch (reason) { if (mounted.current) setError(message(reason)); }
+    finally { pending.current = false; if (mounted.current) setBusy(false); }
+  };
   const openResource = (entry: PluginResourceEntry) => window.dispatchEvent(new CustomEvent('app:navigate', { detail: buildPluginResourceRoute(entry.pluginID, entry.menuIndex) }));
   const matches = (values: (string | undefined)[]) => values.join(' ').toLowerCase().includes(search.trim().toLowerCase());
   const plugins = (data?.plugins ?? []).filter(plugin => matches([plugin.id, plugin.metadata?.name, plugin.metadata?.author]));
@@ -176,6 +195,7 @@ export function PluginsPage() {
         </div>
         {tab === 'store' && <select aria-label={pt('store')} value={filter} onChange={e => setFilter(e.target.value)}>{['all', 'installed', 'updates'].map(value => <option key={value} value={value}>{pt(value as 'all' | 'installed' | 'updates')}</option>)}</select>}
         </>}
+        {supported === true && <button type="button" className="secondary-button plugin-development-guide" disabled={locked} onClick={() => void installLocal()}><Download size={16} aria-hidden="true" />{pt('localInstall')}</button>}
         <button type="button" className="secondary-button plugin-development-guide" onClick={() => void invoke('open_external_url', { url: 'https://help.router-for.me/cn/plugin/development.html' }).catch(reason => { if (mounted.current) setError(message(reason)); })}><ExternalLink size={16} aria-hidden="true" />{pt('developmentGuide')}</button>
         <button className="secondary-button plugin-refresh" disabled={locked} onClick={() => void load(tabRef.current, true)}><RefreshCw size={16} aria-hidden="true" />{t('common.refresh')}</button>
       </div>

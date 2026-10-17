@@ -2810,6 +2810,7 @@ fn main() {
             clear_core_management_secret_key,
             management_api::management_request,
             plugins::get_plugin_support,
+            plugins::local_install::install_local_plugin,
             plugin_webview::show_plugin_webview,
             plugin_webview::set_plugin_webview_bounds,
             plugin_webview::hide_plugin_webview,

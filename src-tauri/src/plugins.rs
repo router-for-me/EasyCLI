@@ -5,6 +5,8 @@ use super::{
 };
 use futures_util::StreamExt;
 
+pub(crate) mod local_install;
+
 #[derive(serde::Serialize)]
 pub(crate) struct PluginLatestRelease {
     repository: String,
