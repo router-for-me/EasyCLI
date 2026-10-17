@@ -146,7 +146,7 @@ const viewports = [{ width: 640, height: 600 }, { width: 964, height: 700 }, { w
           assert.equal(await trigger.getAttribute('aria-expanded'), 'false', `${label}: clicking outside closes field help`);
         };
 
-        assert.equal(await page.getByRole('heading', { level: 1, name: locale === 'en' ? 'Advanced settings' : '高级设置', exact: true }).count(), 1);
+        assert.equal(await page.getByRole('heading', { level: 1, name: locale === 'en' ? 'Advanced settings' : '高级设置', exact: true }).count(), 0);
         assert.equal(await page.locator('.config-page [role="tabpanel"]').count(), 1);
         assert.equal(await page.locator('.config-settings-header p').count(), 0,
           `${label}: settings header must not repeat layout explanations`);
@@ -157,18 +157,25 @@ const viewports = [{ width: 640, height: 600 }, { width: 964, height: 700 }, { w
         assert.equal(await page.locator('.config-subpage-tabs [role="tab"]').evaluateAll(elements =>
           elements.every(element => element.getAttribute('aria-controls') === 'config-subpage-panel')), true);
         const navigation = page.locator('.config-subpage-tabs');
+        assert.equal(await page.locator('.config-settings-topnav .config-settings-search').count(), 1);
+        if (viewport.width > 720) {
+          const navBox = await navigation.boundingBox();
+          const searchBox = await page.locator('.config-settings-search').boundingBox();
+          assert.ok(searchBox.x >= navBox.x + navBox.width, `${label}: search sits to the right of tabs`);
+          assert.ok(Math.abs(searchBox.y + searchBox.height / 2 - navBox.y - navBox.height / 2) < 2, `${label}: tabs and search share a row`);
+        }
         assert.equal(await navigation.getAttribute('aria-orientation'), 'horizontal');
         assert.equal(await page.locator('.config-settings-sidebar, .config-page aside').count(), 0,
           `${label}: settings must not add another vertical sidebar`);
         await settle();
         const navigationLayout = await navigation.evaluate(element => {
-          const header = document.querySelector('.config-settings-header').getBoundingClientRect();
+          const toolbar = document.querySelector('.config-settings-topnav').getBoundingClientRect();
           const panel = document.querySelector('#config-subpage-panel').getBoundingClientRect();
           const bounds = element.getBoundingClientRect();
           const elements = [...element.querySelectorAll('[role="tab"]')];
           const buttons = elements.map(button => button.getBoundingClientRect());
           return {
-            aboveContent: bounds.top >= header.bottom - 1 && bounds.bottom <= panel.top + 1,
+            aboveContent: bounds.top >= toolbar.top - 1 && toolbar.bottom <= panel.top + 1,
             singleRow: Math.max(...buttons.map(button => button.top)) - Math.min(...buttons.map(button => button.top)) <= 1,
             labelsFit: elements.every((button, index) => {
               const range = document.createRange();
@@ -239,7 +246,7 @@ const viewports = [{ width: 640, height: 600 }, { width: 964, height: 700 }, { w
         const nativePort = page.locator('#config-native-network .config-network-port-field input');
         assert.ok((await nativePort.boundingBox()).width <= 160, `${label}: port input stays compact`);
         if (viewport.width >= 964) {
-          const secret = await page.locator('.config-secret-input').boundingBox();
+          const secret = await page.locator('#config-native-management .config-secret-input').boundingBox();
           assert.ok(secret.width <= 420, `${label}: secret input must not stretch across the page`);
         }
         assert.equal(await page.getByLabel(locale === 'en' ? 'Port' : '端口', { exact: true }).count(), 1,
@@ -434,11 +441,11 @@ const viewports = [{ width: 640, height: 600 }, { width: 964, height: 700 }, { w
           fs.mkdirSync(directory, { recursive: true });
           await page.setViewportSize({ width: 640, height: 900 });
           await tab('general');
-          await page.locator('.config-settings-header').scrollIntoViewIfNeeded();
+          await page.locator('.config-settings-topnav').scrollIntoViewIfNeeded();
           await settle();
           await page.screenshot({ path: path.join(directory, locale === 'en' ? 'settings-access-640-en.png' : 'settings-access-640.png') });
           await tab('routing');
-          await page.locator('.config-settings-header').scrollIntoViewIfNeeded();
+          await page.locator('.config-settings-topnav').scrollIntoViewIfNeeded();
           await settle();
           await page.screenshot({ path: path.join(directory, locale === 'en' ? 'settings-routing-640-en.png' : 'settings-routing-640.png') });
           await page.setViewportSize(viewport);
@@ -450,11 +457,11 @@ const viewports = [{ width: 640, height: 600 }, { width: 964, height: 700 }, { w
           fs.mkdirSync(directory, { recursive: true });
           await page.setViewportSize({ width: 1280, height: 900 });
           await tab('general');
-          await page.locator('.config-settings-header').scrollIntoViewIfNeeded();
+          await page.locator('.config-settings-topnav').scrollIntoViewIfNeeded();
           await settle();
           await page.screenshot({ path: path.join(directory, 'settings-access.png') });
           await tab('routing');
-          await page.locator('.config-settings-header').scrollIntoViewIfNeeded();
+          await page.locator('.config-settings-topnav').scrollIntoViewIfNeeded();
           await settle();
           await page.screenshot({ path: path.join(directory, 'settings-routing.png') });
           await page.locator('.theme-selector-trigger').click();
@@ -463,7 +470,7 @@ const viewports = [{ width: 640, height: 600 }, { width: 964, height: 700 }, { w
           await settle();
           await page.screenshot({ path: path.join(directory, 'settings-routing-dark.png') });
           await tab('general');
-          await page.locator('.config-settings-header').scrollIntoViewIfNeeded();
+          await page.locator('.config-settings-topnav').scrollIntoViewIfNeeded();
           await settle();
           await page.screenshot({ path: path.join(directory, 'settings-access-dark.png') });
           await page.locator('.theme-selector-trigger').click();
