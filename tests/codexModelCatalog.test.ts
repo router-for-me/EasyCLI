@@ -26,9 +26,19 @@ const configuration = (): CodexModelConfiguration => ({
   input_modalities: ['text', 'image'],
   visibility: 'list',
   supports_parallel_tool_calls: false,
+  supports_search_tool: false,
 });
 
 describe('Codex 模型列表编辑', () => {
+  test('仅修改 Tool Search 也能触发保存，并可恢复默认值', () => {
+    const original = configuration();
+    const edited = cloneCodexModelConfiguration(original);
+    edited.supports_search_tool = true;
+    expect(sameCodexModelConfiguration(original, edited)).toBeFalse();
+    expect(validateCodexModelConfiguration(edited)).toBeNull();
+    expect(original.supports_search_tool).toBeFalse();
+    expect(sameCodexModelConfiguration(original, cloneCodexModelConfiguration(original))).toBeTrue();
+  });
   test('识别系统提示词修改并拒绝空提示词', () => {
     const original = configuration();
     const edited = { ...original, base_instructions: '请用中文回答。\n保留换行。' };

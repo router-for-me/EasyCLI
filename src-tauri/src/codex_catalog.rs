@@ -43,6 +43,17 @@ struct CatalogSources {
     max_template_priority: i64,
 }
 
+impl CatalogSources {
+    fn template_for_slug(&self, slug: &str) -> Option<&Template> {
+        let key = normalize_id(slug);
+        // Keep the public routing ID intact; strip slash-delimited prefixes only
+        // for template lookup, preferring the most specific exact match.
+        std::iter::once(key.as_str())
+            .chain(key.match_indices('/').map(|(index, _)| &key[index + 1..]))
+            .find_map(|candidate| self.templates.get(candidate))
+    }
+}
+
 #[derive(Clone, Debug)]
 struct CatalogState {
     sources: CatalogSources,
@@ -477,7 +488,7 @@ fn prepare_catalog_with_customizations(
         if key.is_empty() {
             continue;
         }
-        if let Some(template) = sources.templates.get(&key) {
+        if let Some(template) = sources.template_for_slug(&runtime.slug) {
             let mut value = template.value.clone();
             value.insert("slug".to_string(), Value::String(runtime.slug.clone()));
             value.insert(
@@ -1357,6 +1368,47 @@ mod tests {
             let model = &output_models(&catalog)[0];
             assert_eq!(model["context_window"], maximum);
             assert_eq!(model["max_context_window"], maximum);
+        }
+    }
+
+    #[test]
+    fn prefixed_models_inherit_official_capabilities_without_changing_routing_ids() {
+        let sources = parse_sources(MODEL_CATALOG_JSON).unwrap();
+        for (slug, base) in [
+            ("Fy/gpt-6.1-sol", "gpt-6.1-sol"),
+            ("Plus-Yf/gpt-6.1-sol", "gpt-6.1-sol"),
+            ("Any-Test/gpt-6-astra", "gpt-6-astra"),
+            ("team/provider/GPT-6.1-SOL", "gpt-6.1-sol"),
+        ] {
+            let generate = |id: &str| {
+                let runtime = runtime(serde_json::json!({"data":[{"id":id}]}));
+                output_models(&prepare_catalog_with_sources(&runtime, &sources).unwrap())[0].clone()
+            };
+            let prefixed = generate(slug);
+            let original = generate(base);
+            assert_eq!(prefixed["slug"], slug);
+            assert_eq!(prefixed["display_name"], slug);
+            for (field, value) in &original {
+                if !matches!(field.as_str(), "slug" | "display_name") {
+                    assert_eq!(prefixed.get(field), Some(value), "{slug}: {field}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn prefix_template_lookup_prefers_exact_matches_and_does_not_guess_aliases() {
+        let mut sources = test_sources();
+        let mut exact = sources.templates["a"].clone();
+        exact.order = 99;
+        sources.templates.insert("provider/a".into(), exact);
+        assert_eq!(sources.template_for_slug("provider/a").unwrap().order, 99);
+        assert_eq!(sources.template_for_slug("team/provider/a").unwrap().order, 99);
+        for slug in ["provider/unknown", "provider/a-fast", "provider/not-a", "a/"] {
+            assert!(sources.template_for_slug(slug).is_none(), "{slug}");
+            let runtime = runtime(serde_json::json!({"data":[{"id":slug}]}));
+            let models = output_models(&prepare_catalog_with_sources(&runtime, &sources).unwrap());
+            assert_eq!(models[0]["supports_search_tool"], false);
         }
     }
 

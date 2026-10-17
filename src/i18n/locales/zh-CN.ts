@@ -351,6 +351,8 @@ export const zhCN = {
   'agents.catalog.image': '图片',
   'agents.catalog.visible': '在 Codex 模型列表中显示',
   'agents.catalog.parallel': '允许并行工具调用',
+  'agents.catalog.toolSearch': '允许 Tool Search（按需加载工具）',
+  'agents.catalog.toolSearchHint': '需要模型和上游渠道支持；不兼容时请关闭。此设置会在同步和重启后保留。',
   'agents.catalog.systemPrompt': '系统提示词',
   'agents.catalog.systemPromptHint': '替换当前模型的默认系统提示词，保存后同步到 Codex 模型列表。可通过“恢复此模型默认值”还原。',
   'agents.catalog.invalidPrompt': '系统提示词不能为空。',

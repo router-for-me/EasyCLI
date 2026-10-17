@@ -21,6 +21,7 @@ export type CodexModelConfiguration = {
   input_modalities: Array<'text' | 'image'>;
   visibility: 'list' | 'hide' | 'none';
   supports_parallel_tool_calls: boolean;
+  supports_search_tool: boolean;
 };
 
 export type CodexCatalogEditorModel = {
@@ -69,6 +70,7 @@ export function sameCodexModelConfiguration(left: CodexModelConfiguration, right
     && left.default_reasoning_level === right.default_reasoning_level
     && left.visibility === right.visibility
     && left.supports_parallel_tool_calls === right.supports_parallel_tool_calls
+    && left.supports_search_tool === right.supports_search_tool
     && left.input_modalities.join(',') === right.input_modalities.join(',')
     && left.supported_reasoning_levels.length === right.supported_reasoning_levels.length
     && left.supported_reasoning_levels.every((level, index) => level.effort === right.supported_reasoning_levels[index].effort

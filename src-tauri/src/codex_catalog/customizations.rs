@@ -6,7 +6,7 @@ use std::path::Path;
 
 pub(super) type ModelCustomizations = BTreeMap<String, Map<String, Value>>;
 
-pub(super) const EDITABLE_FIELDS: [&str; 12] = [
+pub(super) const EDITABLE_FIELDS: [&str; 13] = [
     "display_name",
     "description",
     "base_instructions",
@@ -19,6 +19,7 @@ pub(super) const EDITABLE_FIELDS: [&str; 12] = [
     "input_modalities",
     "visibility",
     "supports_parallel_tool_calls",
+    "supports_search_tool",
 ];
 
 #[derive(Serialize, Deserialize)]
@@ -67,7 +68,9 @@ fn editable_configuration(model: &Map<String, Value>) -> Map<String, Value> {
             (
                 field.to_string(),
                 model.get(*field).cloned().unwrap_or_else(|| {
-                    if *field == "effective_context_window_percent" {
+                    if *field == "supports_search_tool" {
+                        Value::Bool(false)
+                    } else if *field == "effective_context_window_percent" {
                         Value::from(95)
                     } else {
                         Value::Null
@@ -146,9 +149,11 @@ fn validate_configuration(model: &Map<String, Value>) -> Result<(), String> {
             return Err("Invalid model display status".to_string());
         }
     }
-    if let Some(value) = model.get("supports_parallel_tool_calls") {
-        if !value.is_boolean() {
-            return Err("Parallel tool calls must be a boolean".to_string());
+    for field in ["supports_parallel_tool_calls", "supports_search_tool"] {
+        if let Some(value) = model.get(field) {
+            if !value.is_boolean() {
+                return Err(format!("{field} must be a boolean"));
+            }
         }
     }
     if let Some(value) = model.get("input_modalities") {
@@ -244,8 +249,8 @@ pub(super) fn snapshot_for_state(
         let defaults = editable_configuration(&model);
         apply_customizations(&mut model, &state.customizations)?;
         models.push(CatalogEditorModel {
+            has_official_template: state.sources.template_for_slug(&slug).is_some(),
             slug,
-            has_official_template: state.sources.templates.contains_key(&key),
             context_source: runtime_models
                 .iter()
                 .find(|runtime| normalize_id(&runtime.slug) == key)
@@ -430,6 +435,62 @@ mod tests {
             std::process::id(),
             SEQUENCE.fetch_add(1, Ordering::Relaxed)
         ))
+    }
+
+    #[test]
+    fn tool_search_overrides_survive_regeneration_and_restart_for_prefixed_and_unknown_models() {
+        for (slug, enabled) in [("Fy/gpt-6.1-sol", false), ("provider/custom-model", true)] {
+            let mut state = CatalogState {
+                sources: parse_sources(MODEL_CATALOG_JSON).unwrap(),
+                json: MODEL_CATALOG_JSON.to_string(),
+                customizations: Default::default(),
+            };
+            let runtime = parse_public_models(&serde_json::json!({"data":[{"id":slug}]})).unwrap();
+            let snapshot = snapshot_for_state(&runtime, &state).unwrap();
+            assert_eq!(snapshot.models[0].has_official_template, !enabled);
+            assert_eq!(snapshot.models[0].defaults["supports_search_tool"], !enabled);
+            let mut configuration = snapshot.models[0].configuration.clone();
+            configuration.insert("supports_search_tool".into(), Value::Bool(enabled));
+            let path = temporary_path();
+            save_for_state(&path, &runtime, CatalogEditorRequest {
+                revision: snapshot.revision,
+                models: vec![CatalogEditorModelRequest { slug: slug.into(), configuration }],
+            }, &mut state).unwrap();
+            // A refreshed template must not replace the saved per-routing-ID override.
+            let mut cloud: Value = serde_json::from_str(MODEL_CATALOG_JSON).unwrap();
+            cloud["catalog_revision"] = Value::from(state.sources.revision + 1);
+            for model in cloud["models"].as_array_mut().unwrap() {
+                model["description"] = Value::from("Refreshed template");
+            }
+            let cloud = cloud.to_string();
+            assert!(state.activate(&cloud, parse_sources(&cloud).unwrap()));
+            let restarted = CatalogState {
+                customizations: decode_customizations(&std::fs::read(&path).unwrap()).unwrap(),
+                ..state.clone()
+            };
+            for current in [&state, &restarted] {
+                let catalog = prepare_catalog_with_customizations(
+                    &runtime, &current.sources, &current.customizations,
+                ).unwrap();
+                let generated: Value = serde_json::from_str(&catalog.json).unwrap();
+                assert_eq!(generated["models"][0]["supports_search_tool"], enabled);
+            }
+            let snapshot = snapshot_for_state(&runtime, &restarted).unwrap();
+            assert!(snapshot.models[0].customized);
+            let mut restored = restarted.clone();
+            save_for_state(&path, &runtime, CatalogEditorRequest {
+                revision: snapshot.revision,
+                models: vec![CatalogEditorModelRequest {
+                    slug: slug.into(), configuration: snapshot.models[0].defaults.clone(),
+                }],
+            }, &mut restored).unwrap();
+            let snapshot = snapshot_for_state(&runtime, &restored).unwrap();
+            assert!(!snapshot.models[0].customized);
+            assert_eq!(snapshot.models[0].configuration["supports_search_tool"], !enabled);
+            std::fs::remove_file(path).unwrap();
+        }
+        assert!(validate_configuration(&serde_json::json!({"supports_search_tool":"true"})
+            .as_object().unwrap()).is_err());
     }
 
     #[test]
