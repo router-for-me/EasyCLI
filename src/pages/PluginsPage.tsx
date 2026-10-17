@@ -28,6 +28,7 @@ export function PluginsPage() {
   const [supported, setSupported] = useState<boolean | null>(null);
   const [data, setData] = useState<PluginListResponse | null>(null);
   const [store, setStore] = useState<PluginStoreResponse | null>(null);
+  const [localUpdates, setLocalUpdates] = useState<PluginStoreResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -50,19 +51,27 @@ export function PluginsPage() {
   const load = useCallback(async (target: Tab = tabRef.current, refreshVersions = false) => {
     const revision = ++requests.current;
     setLoading(true); setError('');
+    if (target === 'installed') setLocalUpdates(null);
     try {
       const support = await invoke<boolean>('get_plugin_support');
       if (!mounted.current || revision !== requests.current) return;
       setSupported(support);
-      if (!support) { setData(null); setStore(null); return; }
+      if (!support) { setData(null); setStore(null); setLocalUpdates(null); return; }
       const next = await pluginsApi.list();
       if (!mounted.current || revision !== requests.current) return;
       setData(next);
       notifyPluginResourcesChanged();
       if (target === 'store') {
-        let nextStore = await pluginStoreApi.list();
-        if (mounted.current && revision === requests.current && refreshVersions) nextStore = await refreshPluginReleaseVersions(nextStore);
+        const nextStore = await pluginStoreApi.list();
         if (mounted.current && revision === requests.current) setStore(nextStore);
+      } else if (target === 'installed' && refreshVersions) {
+        const nextStore = await pluginStoreApi.list();
+        if (!mounted.current || revision !== requests.current) return;
+        const installedIDs = new Set(next.plugins.filter(isPluginInstalled).map(plugin => plugin.id));
+        const updates = await refreshPluginReleaseVersions({ ...nextStore, plugins: nextStore.plugins.filter(entry =>
+          installedIDs.has(entry.id) && entry.installed && ['matched', 'assumed'].includes(entry.installSourceStatus),
+        ) });
+        if (mounted.current && revision === requests.current) setLocalUpdates(updates);
       }
     } catch (reason) { if (mounted.current && revision === requests.current) setError(message(reason)); }
     finally { if (mounted.current && revision === requests.current) setLoading(false); }
@@ -153,6 +162,7 @@ export function PluginsPage() {
   const storePlugins = (store?.plugins ?? []).filter(plugin => matches([plugin.id, plugin.name, plugin.description, plugin.author, ...plugin.tags]) && (filter === 'all' || (filter === 'installed' && plugin.installed) || (filter === 'updates' && plugin.updateAvailable)));
   const installedCount = data?.plugins.filter(isPluginInstalled).length ?? 0;
   const configOnlyCount = data?.plugins.filter(plugin => plugin.configured && !isPluginInstalled(plugin)).length ?? 0;
+  const sourceErrors = (tab === 'installed' ? localUpdates : store)?.sourceErrors ?? [];
   const locked = busy || loading || Boolean(configPlugin || installEntry || oauthPlugin);
 
   return <div className="plugins-page">
@@ -177,11 +187,13 @@ export function PluginsPage() {
           </div>}
         </div>
         {tab === 'settings' ? <PluginSettingsPanel onSaved={() => { notice.showNotice(pt('saved')); void load(); }} /> : <>
+          {sourceErrors.length ? <details className="plugin-source-errors"><summary>{pt('sourceErrors')}</summary>{sourceErrors.map((entry, index) => <p key={index}>{entry.sourceName || entry.sourceId || entry.sourceUrl}: {entry.message}</p>)}{sourceErrors.some(entry => isGitHubRateLimit(entry.message)) ? <GitHubTokenHint /> : null}</details> : null}
           {loading && <p className="plugin-loading" role="status">{t('common.loading')}…</p>}
           {tab === 'installed' ? <div className="plugin-grid">{plugins.map(plugin => {
             const status = getPluginStatus(plugin, data?.pluginsEnabled ?? false);
             const installed = isPluginInstalled(plugin);
-            const meta = [plugin.metadata?.version, plugin.metadata?.author].filter(Boolean).join(' · ');
+            const update = localUpdates?.plugins.find(entry => entry.id === plugin.id && entry.updateAvailable);
+            const meta = [update ? `${update.installedVersion} → ${update.version}` : plugin.metadata?.version, plugin.metadata?.author].filter(Boolean).join(' · ');
             const removeLabel = `${pt(installed ? 'remove' : 'removeConfig')} ${getPluginTitle(plugin)}`;
             return <article className="plugin-card plugin-local-card" key={plugin.id}>
             <div className="plugin-card-title"><span className="plugin-icon"><Puzzle size={23} /></span><div><h2>{getPluginTitle(plugin)}</h2>{getPluginTitle(plugin) !== plugin.id && <code>{plugin.id}</code>}</div><span className={`plugin-badge ${status === 'active' ? 'active' : status === 'missingFile' || status === 'notLoaded' ? 'warning' : ''}`}>{pt(status)}</span></div>
@@ -190,6 +202,7 @@ export function PluginsPage() {
             {status === 'notLoaded' && <p className="plugin-card-description">{pt('notLoadedHint')}</p>}
             {collectPluginResourceEntries([plugin]).length > 0 && <div className="plugin-menus">{collectPluginResourceEntries([plugin]).map(entry => <button key={entry.menuIndex} title={entry.description} className="secondary-button" disabled={locked} onClick={() => openResource(entry)}><ExternalLink size={14} />{entry.label}</button>)}</div>}
             <div className="plugin-card-actions">
+              {installed && update && <button className="primary-button" disabled={locked || (update.authRequired && !update.authConfigured)} onClick={() => setInstallEntry(update)}><Download size={15} />{pt(update.authRequired && !update.authConfigured ? 'authMissing' : 'update')}</button>}
             {plugin.effectiveEnabled && plugin.supportsOAuth && plugin.oauthProvider && <button className="secondary-button" disabled={locked} onClick={() => setOAuthPlugin(plugin)}><LogIn size={15} />{pt('oauth')}</button>}
               {installed ? <button className="secondary-button" disabled={locked} onClick={() => void toggle(plugin)}>{pt(plugin.enabled ? 'disabled' : 'enabled')}</button> : <button className="secondary-button" disabled={locked} onClick={() => { setSearch(plugin.id); setFilter('all'); setTab('store'); }}><Download size={15} />{pt('findInStore')}</button>}
               <button className="secondary-button" disabled={locked} onClick={() => setConfigPlugin(plugin)}><Settings2 size={15} />{pt('configure')}</button>
@@ -197,7 +210,6 @@ export function PluginsPage() {
               <button className="icon-button quiet plugin-delete" disabled={locked} aria-label={removeLabel} title={removeLabel} onClick={() => void remove(plugin)}><Trash2 size={16} /></button>
             </div>
           </article>; })}</div> : <>
-            {store?.sourceErrors.length ? <details className="plugin-source-errors"><summary>{pt('sourceErrors')}</summary>{store.sourceErrors.map((entry, index) => <p key={index}>{entry.sourceName || entry.sourceId || entry.sourceUrl}: {entry.message}</p>)}{store.sourceErrors.some(entry => isGitHubRateLimit(entry.message)) ? <GitHubTokenHint /> : null}</details> : null}
             <div className="plugin-grid">{storePlugins.map(entry => <article className="plugin-card" key={entry.storeId}>
               <div className="plugin-card-title"><span className="plugin-icon"><Puzzle size={23} /></span><div><h2>{entry.name || entry.id}</h2><code>{entry.id}</code></div><span className={`plugin-badge ${isDefaultPluginStoreSource(entry) ? 'active' : ''}`}>{pt(isDefaultPluginStoreSource(entry) ? 'officialStore' : 'additionalStore')}</span></div>
               <p className="plugin-card-description">{entry.description}</p><p className="plugin-meta">{[entry.installedVersion && entry.updateAvailable ? `${entry.installedVersion} → ${entry.version}` : entry.installedVersion || entry.version, entry.author, entry.license].filter(Boolean).join(' · ')}</p><p className="plugin-meta">{pt('storeSource')}: {isDefaultPluginStoreSource(entry) ? pt('officialStore') : entry.sourceName || entry.sourceId}</p>
