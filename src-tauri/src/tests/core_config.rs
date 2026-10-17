@@ -2154,6 +2154,20 @@ fn startup_merge_without_current_config_uses_gui_defaults() {
 }
 
 #[test]
+fn fresh_config_omits_template_plugin_instances_but_preserves_existing_ones() {
+    let template = "plugins:\n  enabled: false\n  dir: plugins\n  configs:\n    example:\n      enabled: true\n    model-fallback-router:\n      enabled: true\n";
+    let fresh = merge_core_config_yaml(template, None, &GuiConfigFile::default()).unwrap();
+    let fresh: serde_norway::Value = serde_norway::from_str(&fresh).unwrap();
+    assert!(fresh["plugins"].get("configs").is_none());
+    assert_eq!(fresh["plugins"]["dir"], "plugins");
+
+    let existing = merge_core_config_yaml(template, Some(template), &GuiConfigFile::default()).unwrap();
+    let existing: serde_norway::Value = serde_norway::from_str(&existing).unwrap();
+    assert_eq!(existing["plugins"]["configs"]["example"]["enabled"], true);
+    assert_eq!(existing["plugins"]["configs"]["model-fallback-router"]["enabled"], true);
+}
+
+#[test]
 fn startup_merge_can_shrink_template_api_key_sequence() {
     let template = "host: \"\"\nport: 8317\nremote-management:\n  secret-key: \"\"\nauth-dir: ~/.cli-proxy-api\napi-keys:\n  - template-one\n  - template-two\n  - template-three\ndebug: false\nplugins:\n  enabled: false\nrouting:\n  strategy: round-robin\n";
     let current = "host: 127.0.0.1\nport: 8317\nremote-management:\n  secret-key: hashed\nauth-dir: C:/oauth\napi-keys:\n  - '123456'\ndebug: false\nplugins:\n  enabled: false\nrouting:\n  strategy: round-robin\n";

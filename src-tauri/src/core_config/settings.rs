@@ -308,7 +308,20 @@ pub(crate) fn merge_core_config_yaml(
                 current.to_string()
             }
         }
-        None => merge_core_config_fields(template, None)?,
+        None => {
+            // Only new configurations omit template plugin instances. No scan or
+            // cleanup is performed for existing installations.
+            let file = template.parse::<yaml_edit::YamlFile>()
+                .map_err(|error| format!("Failed to parse kernel configuration template: {error}"))?;
+            let root = file.document().and_then(|document| document.as_mapping())
+                .ok_or_else(|| "Kernel configuration template root must be a YAML mapping".to_string())?;
+            if let Some(value) = root.get("plugins") {
+                if let Some(plugins) = value.as_mapping() {
+                    plugins.remove("configs");
+                }
+            }
+            merge_core_config_fields(&file.to_string(), None)?
+        },
     };
     // Old mirrored values may be stale after a kernel upgrade. Only an explicit
     // software-side opt-out should disable statistics when starting the kernel.

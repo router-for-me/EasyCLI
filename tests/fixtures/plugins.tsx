@@ -9,6 +9,8 @@ localStorage.setItem('easy-cli-proxy-api.locale', params.get('locale') ?? 'en');
 document.documentElement.dataset.theme = params.get('theme') ?? 'light';
 type Request = { method: string; path: string; query?: Record<string, string>; body?: unknown };
 const state = {
+  localSelection: '/downloads/local-demo-v1.0.0.dll' as string | null,
+  localInstallError: '',
   supported: !params.has('unsupported'),
   commands: [] as { command: string; args: unknown }[],
   requests: [] as Request[],
@@ -83,6 +85,12 @@ mockIPC(async (command, args) => {
   state.commands.push({ command, args });
   if (command === 'start_oauth_login') return { url: 'https://login.example.test/authorize?state=sample-state', state: 'sample-state' };
   if (command === 'get_oauth_status') return { status: 'wait' };
+  if (command === 'plugin:dialog|open') return state.localSelection;
+  if (command === 'install_local_plugin') {
+    if (state.localInstallError) throw new Error(state.localInstallError);
+    pluginEntries.push({ id: 'local-demo', path: '/plugins/windows/amd64/local-demo-v1.0.0.dll', configured: false, registered: false, metadata: null, menus: [], config_fields: [] });
+    return '/plugins/windows/amd64/local-demo-v1.0.0.dll';
+  }
   if (command === 'get_plugin_support') return state.supported;
   if (command === 'get_plugin_latest_releases') return (args?.repositories as string[]).map(repository => ({ repository, version: state.latestReleaseVersion, error: null }));
   if (command === 'open_external_url' || command === 'restart_core_process') return null;
