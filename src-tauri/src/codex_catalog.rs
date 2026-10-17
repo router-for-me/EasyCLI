@@ -4,6 +4,8 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{OnceLock, RwLock};
 
 mod customizations;
+#[cfg(test)]
+mod prefix_tests;
 mod runtime_context;
 pub(crate) use customizations::{
     editor_snapshot, load_customizations, save_customizations, CatalogEditorRequest,
@@ -41,6 +43,21 @@ struct CatalogSources {
     fallback: Map<String, Value>,
     templates: HashMap<String, Template>,
     max_template_priority: i64,
+}
+
+impl CatalogSources {
+    fn template_for(&self, slug: &str) -> Option<&Template> {
+        let key = normalize_id(slug);
+        self.templates.get(&key).or_else(|| {
+            // Strip only the routing prefix. The remaining model ID may itself
+            // contain a slash, and an explicit full-ID template takes priority.
+            let (prefix, model_id) = key.split_once('/')?;
+            if prefix.is_empty() || model_id.is_empty() {
+                return None;
+            }
+            self.templates.get(model_id)
+        })
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -473,11 +490,10 @@ fn prepare_catalog_with_customizations(
 
     let mut entries = Vec::with_capacity(runtime_models.len());
     for runtime in runtime_models {
-        let key = normalize_id(&runtime.slug);
-        if key.is_empty() {
+        if runtime.slug.trim().is_empty() {
             continue;
         }
-        if let Some(template) = sources.templates.get(&key) {
+        if let Some(template) = sources.template_for(&runtime.slug) {
             let mut value = template.value.clone();
             value.insert("slug".to_string(), Value::String(runtime.slug.clone()));
             value.insert(

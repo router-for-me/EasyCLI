@@ -243,9 +243,10 @@ pub(super) fn snapshot_for_state(
         let key = normalize_id(&slug);
         let defaults = editable_configuration(&model);
         apply_customizations(&mut model, &state.customizations)?;
+        let has_official_template = state.sources.template_for(&slug).is_some();
         models.push(CatalogEditorModel {
             slug,
-            has_official_template: state.sources.templates.contains_key(&key),
+            has_official_template,
             context_source: runtime_models
                 .iter()
                 .find(|runtime| normalize_id(&runtime.slug) == key)
