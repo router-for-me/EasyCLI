@@ -555,6 +555,19 @@ function createState(scenario: BrowserMockScenario) {
       pid: null as number | null,
       mode: null as string | null,
     },
+    workbuddyStatus: {
+      running: true,
+      ready: true,
+      host: '127.0.0.1',
+      port: 8788,
+      pid: 58921 as number | null,
+      pythonPath: 'C:\\Python312\\python.exe',
+      accountsCount: 2,
+      baseUrl: 'http://127.0.0.1:8788/v1',
+      accountsDir: 'C:\\EasyCLIProxyAPI\\workbuddy-proxy\\accounts',
+      message: 'WorkBuddy proxy is running at http://127.0.0.1:8788/v1',
+      error: null as string | null,
+    },
     thinkingAliases: [
       {
         position: { section: 'oauth-model-alias', providerIndex: null, modelIndex: 0 },
@@ -1363,6 +1376,128 @@ export function createBrowserMockRuntime(
         state.deepSeekStatus = { running: true, pid: 43110, mode: 'web' };
         return clone(state.deepSeekStatus);
       }
+      case 'get_workbuddy_proxy_status': return clone(state.workbuddyStatus);
+      case 'start_workbuddy_proxy': {
+        state.workbuddyStatus.running = true;
+        state.workbuddyStatus.ready = true;
+        state.workbuddyStatus.pid = 58921;
+        return clone(state.workbuddyStatus);
+      }
+      case 'stop_workbuddy_proxy': {
+        state.workbuddyStatus.running = false;
+        state.workbuddyStatus.ready = false;
+        state.workbuddyStatus.pid = null;
+        return clone(state.workbuddyStatus);
+      }
+      case 'restart_workbuddy_proxy': {
+        state.workbuddyStatus.running = true;
+        state.workbuddyStatus.ready = true;
+        state.workbuddyStatus.pid = 58921;
+        return clone(state.workbuddyStatus);
+      }
+      case 'detect_workbuddy_desktop_accounts': return [
+        {
+          fileName: 'workbuddy-desktop-ai.info',
+          filePath: 'C:\\Users\\Mock\\AppData\\Local\\CodeBuddyExtension\\Data\\Public\\auth\\workbuddy-desktop-ai.info',
+          uid: '6461aca0-1e34-4f9b-8888-4a4c9a286ef0',
+          nickname: 'MockUser',
+          realm: 'intl',
+          domain: 'www.workbuddy.ai',
+          encrypted: true,
+          lastModified: '2026-10-14 12:00:00',
+        },
+      ];
+      case 'import_workbuddy_desktop_account': return { ok: true, imported: 1 };
+      case 'start_workbuddy_oauth': return {
+        state: 'mock-wb-state-123',
+        authUrl: 'https://www.workbuddy.ai/login?mock=1',
+        realm: 'intl',
+        platform: 'CLI',
+      };
+      case 'poll_workbuddy_oauth': {
+        if (!state.authFiles.some((file) => file.name === 'workbuddy-wb_mock_user.json')) {
+          state.authFiles.push({
+            name: 'workbuddy-wb_mock_user.json', provider: 'workbuddy', type: 'workbuddy', source: 'file',
+            auth_index: `mock-workbuddy-${state.authFiles.length + 1}`, priority: 0, disabled: false, modtime: Date.now(),
+          });
+        }
+        return {
+          status: 'success',
+          uid: 'wb_mock_user',
+          accessToken: 'mock-wb-token',
+          expiresIn: 2592000,
+        };
+      }
+      case 'sync_workbuddy_provider_to_cpa': return 'WorkBuddy successfully synchronized as OpenAI-compatible provider at http://127.0.0.1:8788/v1';
+      case 'get_workbuddy_accounts':
+      case 'refresh_workbuddy_credits': return {
+        accounts: [
+          {
+            uid: '6461aca0-1e34-4f9b-8888-4a4c9a286ef0',
+            nickname: '伯 小',
+            email: 'bytelkshan@gmail.com',
+            realm: 'intl',
+            enabled: true,
+            credits: {
+              remain: 784.76,
+              used: 45.24,
+              size: 830.0,
+              used_percent: '5.5%',
+              remain_percent: '94.5%',
+              is_paid_user: false,
+              checkin: {
+                today_checked_in: true,
+                streak_days: 7,
+                daily_credit: 5,
+              },
+            },
+          },
+          {
+            uid: 'wb_mock_cn',
+            nickname: '国内测试账号',
+            email: 'tencent_user@qq.com',
+            realm: 'cn',
+            enabled: true,
+            credits: {
+              remain: 150.0,
+              used: 50.0,
+              size: 200.0,
+              used_percent: '25.0%',
+              remain_percent: '75.0%',
+              is_paid_user: false,
+              checkin: {
+                today_checked_in: false,
+                streak_days: 3,
+                daily_credit: 5,
+              },
+            },
+          },
+        ],
+      };
+      case 'run_workbuddy_checkin': return {
+        results: [{ uid: 'wb_mock_cn', nickname: 'Mock CN', ok: true, msg: '签到成功，获得 +5 积分' }],
+      };
+      case 'run_workbuddy_daily_activity': return {
+        results: [{ uid: 'wb_mock_intl', nickname: 'Mock Intl', ok: true, msg: '活跃打卡完成 (completed)' }],
+      };
+      case 'run_workbuddy_growth_tasks': return {
+        ok: true, credit_added: 42, accounts_count: 1,
+        logs: ['领取每日免费积分包 +20', '完成成长任务 +22'],
+      };
+      case 'run_workbuddy_streak_bonus': return { ok: true, msg: '连登 7 天，抽奖获得 +10 积分' };
+      case 'run_workbuddy_travel': return {
+        ok: true, msg: '猫猫旅行带回 +8 积分',
+        results: [{ uid: 'wb_mock_cn', nickname: 'Mock CN', action: 'travel', msg: '带回 +8 积分', reward_credit: 8 }],
+      };
+      case 'run_workbuddy_all_tasks': return {
+        steps: [
+          { task: 'checkin', label: '每日签到', result: { results: [{ uid: 'wb_mock_cn', nickname: 'Mock CN', ok: true, msg: '签到成功' }] } },
+          { task: 'daily-activity', label: '每日活跃打卡', result: { results: [{ uid: 'wb_mock_intl', nickname: 'Mock Intl', ok: true, msg: '活跃打卡完成' }] } },
+          { task: 'growth', label: '一键成长任务', result: { ok: true, credit_added: 42 } },
+          { task: 'streak-bonus', label: '连登管家与抽奖', result: { ok: true, msg: '连登 7 天，抽奖 +10 积分' } },
+          { task: 'travel', label: '猫猫旅行', result: { ok: true, msg: '猫猫旅行带回 +8 积分' } },
+        ],
+      };
       case 'list_agent_config_backups': return {
         versions: [{
           id: 'mock-backup-2026-09-25', createdAt: isoHoursAgo(5), fileCount: 2,

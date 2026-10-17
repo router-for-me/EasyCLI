@@ -130,6 +130,13 @@ async fn run_core_command(
             app.state::<CoreProcessState>().inner(),
             app.state::<GuiConfigState>().inner(),
         )?;
+        if status.running {
+            let wb_state = app.state::<workbuddy_proxy::WorkBuddyProxyState>();
+            let _ = workbuddy_proxy::start_workbuddy_proxy_sync(wb_state.inner());
+        } else {
+            let wb_state = app.state::<workbuddy_proxy::WorkBuddyProxyState>();
+            let _ = workbuddy_proxy::stop_workbuddy_proxy_sync(wb_state.inner());
+        }
         emit_core_status(&app, &status);
         Ok(status)
     })
@@ -1573,7 +1580,15 @@ pub(crate) fn start_core_process_inner(
         ));
     }
 
+    // Pick the companion port before writing the config so both sides agree even
+    // when the preferred port is held by another process.
+    let companion_port = workbuddy_proxy::reserve_workbuddy_port(
+        workbuddy_proxy::DEFAULT_WORKBUDDY_PORT,
+        workbuddy_proxy::DEFAULT_WORKBUDDY_HOST,
+    );
     let config_path = merge_core_config_for_start(&install_dir, gui_config)?;
+    // Runs after the merge so the merged template cannot drop the provider entry.
+    let _ = workbuddy_proxy::sync_workbuddy_provider_to_cpa_sync(companion_port, None);
     let config_path = path_to_string(&config_path);
     let log_path = core_start_log_path(&install_dir, &gui_config.auth_dir)?;
     let start_once = || {

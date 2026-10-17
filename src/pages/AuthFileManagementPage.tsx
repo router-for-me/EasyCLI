@@ -34,6 +34,7 @@ import devinIcon from '../assets/icons/devin.svg';
 import kimiIcon from '../assets/icons/kimi-light.svg';
 import metaIcon from '../assets/icons/meta.svg';
 import vertexIcon from '../assets/icons/vertex.svg';
+import workbuddyIcon from '../assets/icons/workbuddy.png';
 import {
   formatDate,
   managementApi,
@@ -58,12 +59,12 @@ import {
 import {
   authFileName,
   authFileIdentities,
+  authFileProviderKey,
   authFileCooldownResetIndex,
   dedupeAuthFiles,
   isOAuthCredentialFile,
   isRuntimeOnlyAuthFile,
   oauthModelProvidersFromAuthFiles,
-  normalizeOAuthProvider,
   parseAuthFilePriority,
   resetAuthFileCooldown,
   setOAuthCredentialFileDisabled,
@@ -100,10 +101,12 @@ const providerIcons: Record<string, string> = {
   xai: grokIcon,
   devin: devinIcon,
   meta: metaIcon,
+  workbuddy: workbuddyIcon,
 };
 
 const providerName = (file: AuthFile) => {
-  const value = normalizeOAuthProvider(readString(file, 'provider', 'type', 'account_type'));
+  const value = authFileProviderKey(file);
+  if (value === 'workbuddy') return 'WorkBuddy';
   if (value === 'claude') return 'Claude';
   if (value === 'antigravity') return 'Antigravity';
   if (value === 'xai') return 'xAI';
@@ -112,9 +115,7 @@ const providerName = (file: AuthFile) => {
   return value ? value.charAt(0).toUpperCase() + value.slice(1) : translate(getCurrentLocale(), 'authFiles.unknownProvider');
 };
 
-const providerKey = (file: AuthFile) => {
-  return normalizeOAuthProvider(readString(file, 'provider', 'type', 'account_type'));
-};
+const providerKey = (file: AuthFile) => authFileProviderKey(file);
 
 const fileName = authFileName;
 

@@ -748,6 +748,7 @@ pub(crate) async fn restart_agent_app(
             | AgentClient::ClaudeDesktop
             | AgentClient::ZCode
             | AgentClient::WorkBuddy
+            | AgentClient::DeepSeekHarness
     ) {
         return Err(format!("{} does not support restarting the desktop application", client.name()));
     }
@@ -932,6 +933,9 @@ fn find_desktop_restart_target(
         }
         AgentClient::WorkBuddy => {
             find_workbuddy_desktop_executable(home).map(DesktopAppTarget::Application)
+        }
+        AgentClient::DeepSeekHarness => {
+            find_deepseek_harness_desktop_application(home).map(DesktopAppTarget::Application)
         }
         AgentClient::ClaudeDesktop => {
             let executable = find_claude_desktop_executable(home).map(DesktopAppTarget::Application);
@@ -1759,7 +1763,7 @@ mod tests {
             assert_eq!(status.launch_targets[0].detail, path_to_string(&desktop));
         }
         for client in [AgentClient::Codex, AgentClient::OpenCode, AgentClient::ClaudeDesktop,
-            AgentClient::ZCode, AgentClient::WorkBuddy] {
+            AgentClient::ZCode, AgentClient::WorkBuddy, AgentClient::DeepSeekHarness] {
             match find_desktop_restart_target(client, &root, Some(&desktop)).unwrap() {
                 DesktopAppTarget::Application(path) => assert_eq!(path, desktop),
                 #[cfg(target_os = "windows")]

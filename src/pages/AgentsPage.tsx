@@ -1644,7 +1644,7 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
   };
 
   const restartDesktopApp = async () => {
-    if (!['codex', 'opencode', 'claude-desktop', 'zcode', 'workbuddy'].includes(selected)) return;
+    if (!['codex', 'opencode', 'claude-desktop', 'zcode', 'workbuddy', 'deepseek-harness'].includes(selected)) return;
     setBusyAction('restart-app');
     setLaunchError('');
     try {
@@ -2392,7 +2392,7 @@ export function AgentsPage({ embedded = false, onConfigurationApplied }: AgentsP
           <MessageNotice tone="success" message={!configurationErrorMessage ? configurationNotice || clearNotice : null}
             onDismiss={() => { setConfigurationNotice(''); setClearNotice(''); }} />
           {activeSubpage === 'core' ? <AgentRunControls name={activeDefinition.name} dualTargets={hasIndependentCliAndApp}
-            desktop={(hasIndependentCliAndApp && !isDeepSeekHarnessClient) || selected === 'claude-desktop' || selected === 'zcode' || selected === 'workbuddy'}
+            desktop={hasIndependentCliAndApp || selected === 'claude-desktop' || selected === 'zcode' || selected === 'workbuddy'}
             cliService={selected === 'codex'} cliServiceRestarting={selected === 'codex' && cliServiceRestarting}
             targets={activeLaunchTargets} enabled={launchEnabled} busyAction={busyAction}
             harness={isDeepSeekHarnessClient ? deepSeekHarnessProcessStatus : null}

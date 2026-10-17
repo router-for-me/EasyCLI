@@ -37,6 +37,7 @@ mod tray;
 mod usage;
 #[cfg(target_os = "windows")]
 mod windows_frame;
+mod workbuddy_proxy;
 
 #[cfg(test)]
 use configuration_watcher::nearest_existing_watch_directory;
@@ -2526,7 +2527,8 @@ fn main() {
         .manage(GuiConfigState::new(gui_config))
         .manage(plugin_webview::PluginWebviewState::default())
         .manage(MainWindowSizeState::new(initial_window_size))
-        .manage(AgentConfigStatusCache::default());
+        .manage(AgentConfigStatusCache::default())
+        .manage(workbuddy_proxy::WorkBuddyProxyState::default());
 
     let app = app.on_window_event(|window, event| {
         if window.label() != "main" {
@@ -2705,6 +2707,9 @@ fn main() {
                 } else if should_start_core_on_launch(&config) {
                     if let Err(error) = start_core_process_inner(process_state.inner(), &config) {
                         eprintln!("Failed to automatically start CPA kernel: {error}");
+                    } else {
+                        let wb_state = core_app.state::<workbuddy_proxy::WorkBuddyProxyState>();
+                        let _ = workbuddy_proxy::start_workbuddy_proxy_sync(wb_state.inner());
                     }
                 }
 
@@ -2873,7 +2878,24 @@ fn main() {
             codex_sessions::apply_codex_session_index_cleanup,
             codex_sessions::context::get_codex_session_context,
             codex_sessions::context::save_codex_session_context,
-            codex_sessions::context::open_codex_session_rollout
+            codex_sessions::context::open_codex_session_rollout,
+            workbuddy_proxy::get_workbuddy_proxy_status,
+            workbuddy_proxy::start_workbuddy_proxy,
+            workbuddy_proxy::stop_workbuddy_proxy,
+            workbuddy_proxy::restart_workbuddy_proxy,
+            workbuddy_proxy::detect_workbuddy_desktop_accounts,
+            workbuddy_proxy::import_workbuddy_desktop_account,
+            workbuddy_proxy::start_workbuddy_oauth,
+            workbuddy_proxy::poll_workbuddy_oauth,
+            workbuddy_proxy::sync_workbuddy_provider_to_cpa,
+            workbuddy_proxy::get_workbuddy_accounts,
+            workbuddy_proxy::refresh_workbuddy_credits,
+            workbuddy_proxy::run_workbuddy_checkin,
+            workbuddy_proxy::run_workbuddy_daily_activity,
+            workbuddy_proxy::run_workbuddy_growth_tasks,
+            workbuddy_proxy::run_workbuddy_streak_bonus,
+            workbuddy_proxy::run_workbuddy_travel,
+            workbuddy_proxy::run_workbuddy_all_tasks
         ])
         .build(tauri::generate_context!())
         .expect("failed to build app");
@@ -2918,6 +2940,8 @@ fn main() {
             if let Err(error) = stop_managed_deepseek_harness(deepseek_process_state.inner()) {
                 eprintln!("Failed to stop DeepSeek Harness: {error}");
             }
+            let wb_state = app_handle.state::<workbuddy_proxy::WorkBuddyProxyState>();
+            let _ = workbuddy_proxy::stop_workbuddy_proxy_sync(wb_state.inner());
             let gui_config_state = app_handle.state::<GuiConfigState>();
             let process_state = app_handle.state::<CoreProcessState>();
             if !process_state.shutdown_complete.load(Ordering::Acquire) {
